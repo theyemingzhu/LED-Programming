@@ -1402,15 +1402,19 @@ export function StripDiscoveryPanel({
   // About the card's own power ceiling, not any one port — previously buried
   // in a collapsed Details disclosure, where an owner who never opened it
   // never saw it at all.
-  // In the page, not the notice layer: on a phone the floating notice sat
-  // over "Check the last LED" while the owner was counting. A note about the
-  // card's power ceiling is read once and must never cover the next control.
-  const powerWarning = maxMilliampsSource === 'default'
-    ? `The card ${currentPowerLimit == null
-      ? 'has not reported its current power limit'
-      : `currently limits LED output to ${currentPowerLimit} mA`}. Starting counting installs a temporary `
-      + `dim setup capped at ${BENCH_MAX_MILLIAMPS} mA. Set your supply rating before installing your project.`
-    : '';
+  useEffect(() => {
+    if (maxMilliampsSource !== 'default') { dismissNoticeKey('discovery-power-warning'); return; }
+    publishNotice({
+      key: 'discovery-power-warning',
+      testId: 'discovery-power-warning',
+      tone: 'info',
+      body: `The card ${currentPowerLimit == null
+        ? 'has not reported its current power limit'
+        : `currently limits LED output to ${currentPowerLimit} mA`}. Starting counting installs a temporary `
+        + `dim setup capped at ${BENCH_MAX_MILLIAMPS} mA. Set your supply rating before installing your project.`,
+      source: 'strip-discovery',
+    });
+  }, [maxMilliampsSource, currentPowerLimit]);
 
   // The final install onto the card, including its recovery actions.
   useEffect(() => {
@@ -1478,6 +1482,25 @@ export function StripDiscoveryPanel({
     });
   }, [interruptedRun, phase]);
 
+  useEffect(() => {
+    const showing = phase === 'probe'
+      && (channelProof.stage === 'first' || channelProof.stage === 'second');
+    if (!showing) { dismissNoticeKey('discovery-color-proof'); return; }
+    publishNotice({
+      key: 'discovery-color-proof',
+      testId: 'discovery-color-proof',
+      tone: channelProof.retry ? 'warning' : 'info',
+      title: channelProof.stage === 'first'
+        ? 'Look at the strip and choose its color.'
+        : 'And now?',
+      source: 'strip-discovery',
+      actions: [
+        { label: 'Red', onSelect: () => answerChannelProof('red'), testId: 'discovery-color-red', disabled: cardRestartedDuringLook },
+        { label: 'Green', onSelect: () => answerChannelProof('green'), testId: 'discovery-color-green', disabled: cardRestartedDuringLook },
+        { label: 'Blue', onSelect: () => answerChannelProof('blue'), testId: 'discovery-color-blue', disabled: cardRestartedDuringLook },
+      ],
+    });
+  }, [phase, channelProof.stage, channelProof.retry, cardRestartedDuringLook]);
 
   // This screen's own notices must not outlive it — a floating "output limit"
   // or "card restarted" verdict would otherwise still be on screen after the
@@ -1496,9 +1519,12 @@ export function StripDiscoveryPanel({
       <details className="strip-discovery-details">
         <summary>Details</summary>
         <p>{host || 'No card connected'} · Ports use the GPIO labels printed on the card.</p>
+        {/* Moved to the notice layer (discovery-power-warning) — it is about
+            the card's own power ceiling, not this Details row, and living
+            inside a collapsed disclosure meant an owner who never opened it
+            never saw it. */}
         <p>Up to {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs. Ports used by controls are unavailable.</p>
       </details>
-      {powerWarning && <p role="note" className="strip-discovery-power" data-testid="discovery-power-warning">{powerWarning}</p>}
 
       {/* Whether Studio is actually driving the strip right now. Without this a
           strip receiving nothing looks exactly like a strip that ends where the
@@ -1635,19 +1661,6 @@ export function StripDiscoveryPanel({
               Those two answers were the same colour, which cannot happen — one of them was a
               slip. The check starts over: look again.
             </p>
-          )}
-          {/* A question the owner must answer lives in the page. As a
-              dismissible notice its answers vanished when it was closed,
-              leaving only "skip". */}
-          {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
-            <div role="group" aria-label="Strip color" data-testid="discovery-color-proof" className="strip-discovery-color-proof">
-              <p><strong>{channelProof.stage === 'first' ? 'Look at the strip and choose its color.' : 'And now?'}</strong></p>
-              <div className="strip-discovery-actions">
-                {['Red', 'Green', 'Blue'].map(label => (
-                  <button key={label} type="button" className="btn" data-testid={`discovery-color-${label.toLowerCase()}`} disabled={cardRestartedDuringLook} onClick={() => answerChannelProof(label.toLowerCase())}>{label}</button>
-                ))}
-              </div>
-            </div>
           )}
           {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
             <div className="strip-discovery-actions">

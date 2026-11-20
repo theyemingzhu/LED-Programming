@@ -1507,7 +1507,7 @@ export async function readyInstallProject(page: Page, edit?: (project: Record<st
   led.colorOrderConfirmed = true;
   led.confirmedColorOrder = led.colorOrder;
   edit?.(project);
-  await page.addInitScript(value => { if (window === window.top) localStorage.setItem('lw_autosave_v3', value); }, JSON.stringify(project));
+  await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
@@ -1537,7 +1537,6 @@ export async function seedWiringDivergedProject(page: Page, stateId = 'installed
     ));
   });
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
-    if (window !== window.top) return;
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
     localStorage.setItem('lw_card_host', 'lightweaver.local');
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
