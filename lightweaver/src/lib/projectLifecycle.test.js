@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createProjectLifecycle,
+  currentInstallation,
+  installedByThisBrowser,
   hasUnsavedChanges,
   lifecycleForRestoredProject,
   lifecycleLabel,
@@ -599,6 +601,41 @@ test('a restored installation re-verifies only on an exact three-way match with 
     ).installation.verified,
     false,
   );
-  // Nothing installed ⇒ nothing to re-verify.
-  assert.equal(reverifyInstallation(createProjectLifecycle(), evidence).installation, null);
+  // No record, but the card holds exactly this project (same id and the open
+  // project's own fingerprint): the card is the witness. See the mid-install
+  // reload test below. Without that exact match, still nothing binds.
+  assert.equal(reverifyInstallation(createProjectLifecycle(), evidence).installation?.verified, true);
+  assert.equal(reverifyInstallation(createProjectLifecycle(), { ...evidence, studioProjectFingerprint: 'ffffffffffffffff' }).installation, null);
+});
+
+test('a reload mid-install is recognised once the card holds exactly the open project', () => {
+  // The install reply never arrived (the owner reloaded), so no record exists.
+  // The card now reports the open project's id and its exact fingerprint:
+  // that is the same proof an install reply would have carried.
+  const fp = 'ab12cd34ef56ab12cd34ef56ab12cd34';
+  const state = createProjectLifecycle();
+  const evidence = { cardId: 'lw-one', projectId: 'art', projectRevision: 3, projectFingerprint: fp, studioProjectId: 'art', studioProjectFingerprint: fp };
+  const next = reverifyInstallation(state, evidence);
+  assert.equal(next.installation?.verified, true);
+  assert.equal(next.installation.cardId, 'lw-one');
+  assert.equal(lifecycleLabel(next), 'Installed on card');
+  // Anything short of an exact match binds nothing.
+  assert.equal(reverifyInstallation(state, { ...evidence, studioProjectFingerprint: 'ff' + fp.slice(2) }).installation, state.installation);
+  assert.equal(reverifyInstallation(state, { ...evidence, studioProjectId: 'other' }).installation, state.installation);
+  assert.equal(reverifyInstallation(state, { ...evidence, projectFingerprint: '' }).installation, state.installation);
+});
+
+test('a card-witnessed install is not this browser\'s own install', () => {
+  // A second tab (or a reload) binds the card's exact project from evidence.
+  // Pressing Install there must be treated as redundant ("already current"),
+  // not as a deliberate resend of this browser's own install (J08).
+  const fp = 'ab12cd34ef56ab12cd34ef56ab12cd34';
+  const evidence = { cardId: 'lw-one', projectId: 'art', projectRevision: 3, projectFingerprint: fp, studioProjectId: 'art', studioProjectFingerprint: fp };
+  const witnessed = reverifyInstallation(createProjectLifecycle(), evidence);
+  assert.ok(currentInstallation(witnessed));
+  assert.equal(installedByThisBrowser(witnessed), null);
+  // An install this browser performed still counts as its own.
+  const fresh = createProjectLifecycle();
+  const own = markInstalled(fresh, { generation: fresh.generation, revision: fresh.editedRevision, cardId: 'lw-one', projectRevision: 3, projectFingerprint: fp, verified: true });
+  assert.ok(installedByThisBrowser(own));
 });

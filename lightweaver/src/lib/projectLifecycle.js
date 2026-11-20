@@ -111,7 +111,8 @@ export function markInstalled(state, revision = state.editedRevision) {
 // verification through a real install.
 export function reverifyInstallation(state, evidence = {}) {
   const installation = state.installation;
-  if (!installation || installation.verified === true) return state;
+  if (!installation) return bindUnrecordedInstall(state, evidence);
+  if (installation.verified === true) return state;
   // A record that survived edits can only re-verify structurally: it must name
   // the structure it was bound to (`studioFingerprint`), and the equality
   // check against the live `studioProjectFingerprint` below proves the edits
@@ -157,6 +158,30 @@ export function reverifyInstallation(state, evidence = {}) {
   return { ...state, installation: { ...installation, verified: true } };
 }
 
+// No record exists when the install reply never reached this page (the owner
+// reloaded or left mid-install). The card itself is then the only witness, and
+// it is enough on an exact match: the connected card names the open project's
+// id and reports a well-formed fingerprint equal to the open project's own.
+// That is the same proof an install reply carries. Anything less binds nothing.
+function bindUnrecordedInstall(state, evidence) {
+  const cardId = String(evidence.cardId || '').trim();
+  const projectRevision = Number(evidence.projectRevision);
+  const cardFingerprint = String(evidence.projectFingerprint || '').trim().toLowerCase();
+  const studioFingerprint = String(evidence.studioProjectFingerprint || '').trim().toLowerCase();
+  const cardProjectId = sanitizeProjectId(evidence.projectId);
+  const studioProjectId = sanitizeProjectId(evidence.studioProjectId);
+  if (!cardId || !Number.isSafeInteger(projectRevision) || projectRevision < 0) return state;
+  if (!/^[a-f0-9]{16,64}$/.test(cardFingerprint) || cardFingerprint !== studioFingerprint) return state;
+  if (!cardProjectId || cardProjectId !== studioProjectId) return state;
+  return {
+    ...state,
+    installedRevision: state.editedRevision,
+    // witnessedByCard: this browser did not perform the install, the card only
+    // proves it holds the project. See installedByThisBrowser.
+    installation: { cardId, projectRevision, projectFingerprint: cardFingerprint, studioFingerprint, verified: true, witnessedByCard: true },
+  };
+}
+
 // The installation record ONLY while it still describes the project as it
 // stands. One edit since the install and the card holds something else, so the
 // record stops speaking for the open project.
@@ -164,6 +189,15 @@ export function currentInstallation(state) {
   return state?.installedRevision === state?.editedRevision && state?.installation
     ? state.installation
     : null;
+}
+
+// The current installation only when THIS browser performed it. A record bound
+// from the card's own evidence (a reload mid-install, a second tab) proves the
+// card holds the project, but pressing Install again from here is a redundant
+// write, not this browser's deliberate resend of its own install.
+export function installedByThisBrowser(state) {
+  const installation = currentInstallation(state);
+  return installation && installation.witnessedByCard !== true ? installation : null;
 }
 
 // The verified installation record for a project whose STRUCTURE is still the
