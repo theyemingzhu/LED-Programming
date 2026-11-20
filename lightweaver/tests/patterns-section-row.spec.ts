@@ -166,7 +166,7 @@ test('dropping a pattern previews only the receiving strip on the verified card'
 test('a card still holding one section says so and points at Install', async ({ page }) => {
   const project = sectionProject('section-row-single');
   await mockReadyCard(page, project, [{ id: 'all', label: 'All' }]);
-  await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Install to send yours');
+  await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Save to card to send yours');
 });
 
 test('unequal GPIO sections keep their layout preview and same or separate patterns across screens', async ({ page }, testInfo) => {
@@ -246,7 +246,7 @@ test('a reused section ID with stale ranges cannot change the whole installed st
   const total = project.layout.strips.reduce((sum, strip) => sum + strip.pixelCount, 0);
   const cardZones = [{ ...zones[0], ranges: [{ start: 0, count: total }], brightness: 1 }];
   await mockReadyCard(page, project, cardZones);
-  await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Install to send yours');
+  await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Save to card to send yours');
   await page.getByTestId('section-target-patch-default-outer-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(page.getByText(/The card still has a different section layout/)).toBeVisible();
