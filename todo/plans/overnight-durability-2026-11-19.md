@@ -176,3 +176,6 @@ Not done on the real card: the stale-save write itself (it writes the card twice
 | Output pick and back | 20/20 | 6/6 | pins agree | 2.1 s | "Unsaved changes" stays (earlier edits) |
 
 Open: transient "Not verified" after save; saved look sends the previewed pattern, not the look's name; real-card looks/playlist rows not yet run.
+
+- Decided overnight D6: a saved look sent alone reaches the card as its base pattern. By design: looks travel to the card only inside a playlist (lightweaver/src/lib/cardRuntimeProject.js:76 normalizes them, :143 resolves playlist lookIds). The card page names the pattern actually playing, so no owner sees a wrong name. No fix.
+- Fixed: "Not verified on this card" flash after a save is now "Checking card…" (5c65d3ba).
