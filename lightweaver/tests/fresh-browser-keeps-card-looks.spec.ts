@@ -23,8 +23,8 @@ async function seed(page: Page) {
   }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
 }
 
-for (const variant of ['patterns', 'patterns-fails-once', 'patterns-slow-4s'] as const) {
-  test(`fresh browser keeps the card's six looks through a save (${variant})`, async ({ page }) => {
+for (const landing of ['pattern', 'card'] as const) for (const variant of ['patterns', 'patterns-fails-once', 'patterns-slow-4s'] as const) {
+  test(`fresh browser keeps the card's six looks through a save (lands on ${landing}, ${variant})`, async ({ page }) => {
     const base = cardState('playing') as any;
     const card = createCardSimulator({ ...base, patterns: SIX.map(p => ({ id: p.id, label: p.label })) });
     card.state.installedLooks = SIX.map(p => ({ ...p }));
@@ -41,7 +41,12 @@ for (const variant of ['patterns', 'patterns-fails-once', 'patterns-slow-4s'] as
       });
     }
     await seed(page);
-    await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+    await page.goto('/#screen=' + landing, { waitUntil: 'domcontentloaded' });
+    if (landing === 'card') {
+      // Card Home picks the card's project up on its own; then the owner saves from Patterns.
+      await page.waitForTimeout(10000);
+      await page.evaluate(() => { window.location.hash = '#screen=pattern'; });
+    }
     const save = page.getByTestId('pattern-install-on-card');
     await page.waitForTimeout(6000);
     await page.locator('[data-pattern-id="ocean"]').first().click();
