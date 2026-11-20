@@ -1,8 +1,9 @@
 import { deriveCardLifecycle } from './cardLifecycle.js';
 import { sanitizeProjectId } from './projectIdentity.js';
+import { lifecycleLabel } from './projectLifecycle.js';
 
 // A presentation of existing evidence, never a new transport or write gate.
-export function deriveCardSessionView({ link = {}, project = null, lifecycle = null, status = null } = {}) {
+export function deriveCardSessionView({ link = {}, project = null, lifecycle = null, status = null, projectLifecycle = null } = {}) {
   const life = lifecycle || deriveCardLifecycle({ link, project });
   const r = link.readiness || {};
   const current = ['connected-direct', 'connected-bridge'].includes(link.state)
@@ -15,7 +16,10 @@ export function deriveCardSessionView({ link = {}, project = null, lifecycle = n
   const fp = String(project?.fingerprint || project?.projectFingerprint || '').toLowerCase();
   const cardFp = String(r.projectFingerprint || '').toLowerCase();
   // A starter nobody has touched is not a draft: it holds no owner work.
-  const untouchedStarter = project?.layout?.starterPending === true;
+  // starterPending survives a rename or a saved look, so the project
+  // lifecycle must also still read 'New project' (no edits, nothing restored).
+  const untouchedStarter = project?.layout?.starterPending === true
+    && (!projectLifecycle || lifecycleLabel(projectLifecycle) === 'New project');
   let relationship = !project || untouchedStarter ? 'none' : 'unknown';
   if (untouchedStarter) { /* nothing to compare */ }
   else if (life.exactProject) relationship = 'matches';
