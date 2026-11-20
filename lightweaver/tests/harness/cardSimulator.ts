@@ -155,12 +155,6 @@ export type CardSimulator = {
    * click-actionability delay against the fixed mock latency.
    */
   holdNextReply(path: string): () => void;
-  /** Stress knobs (all inert when unset): delay every reply by `ms`. */
-  setReplyDelay(ms: number): void;
-  /** Answer the next `times` requests to `path` with a cut-off JSON body. */
-  truncateNext(path: string, times?: number): void;
-  /** Answer the next reply normally, then cut the connection on the `after`th following request. */
-  cutAfterNextReply(): void;
 
   // ── Timed playlist (F2/F26 contract) ─────────────────────────────────────
   /**
@@ -672,10 +666,6 @@ export function createCardSimulator(
   const frames: string[][] = [];
   let dropped = 0;
   let offline = false;
-  let stressDelayMs = 0;
-  const truncations = new Map<string, number>();
-  let cutAfterReply = false;
-  let cutNextRequest = false;
   const refusals = new Map<string, { status: number; body: unknown; times: number }>();
   // Requests whose mutation is applied for real, but whose HTTP reply is
   // withheld — a lost reply after a successful write, not a refusal.
@@ -1232,10 +1222,6 @@ export function createCardSimulator(
     const method = request.method();
 
     if (offline) return route.abort('connectionrefused');
-    if (cutNextRequest && method !== 'OPTIONS') {
-      cutNextRequest = false;
-      return route.abort('connectionreset');
-    }
     if (dropped < state.dropFirstRequests) {
       dropped += 1;
       return route.abort('connectionrefused');
@@ -1259,7 +1245,7 @@ export function createCardSimulator(
     }
     requests.push({ method, path, body, at: Date.now() });
 
-    await new Promise(resolve => setTimeout(resolve, (method === 'GET' ? latency.read : latency.write) + stressDelayMs));
+    await new Promise(resolve => setTimeout(resolve, method === 'GET' ? latency.read : latency.write));
 
     const answer = respond(method, path, body);
 
@@ -1284,19 +1270,6 @@ export function createCardSimulator(
       await heldGate;
     }
 
-    const cutLeft = truncations.get(path);
-    if (cutLeft && cutLeft > 0) {
-      if (cutLeft > 1) truncations.set(path, cutLeft - 1); else truncations.delete(path);
-      const full = JSON.stringify(answer.body);
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: full.slice(0, Math.max(1, Math.floor(full.length / 2))),
-      });
-    }
-
-    if (cutAfterReply) { cutAfterReply = false; cutNextRequest = true; }
     return route.fulfill({
       status: answer.status,
       contentType: 'application/json',
@@ -1333,9 +1306,6 @@ export function createCardSimulator(
       state.currentIndex = -1;
       state.currentId = 'blackout';
     },
-    setReplyDelay(ms) { stressDelayMs = ms; },
-    truncateNext(path, times = 1) { truncations.set(path, times); },
-    cutAfterNextReply() { cutAfterReply = true; },
     goOffline() { offline = true; },
     goOnline() { offline = false; },
     outOfBandBlackout(on) {

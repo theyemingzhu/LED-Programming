@@ -111,8 +111,7 @@ export function markInstalled(state, revision = state.editedRevision) {
 // verification through a real install.
 export function reverifyInstallation(state, evidence = {}) {
   const installation = state.installation;
-  if (!installation) return bindUnrecordedInstall(state, evidence);
-  if (installation.verified === true) return state;
+  if (!installation || installation.verified === true) return state;
   // A record that survived edits can only re-verify structurally: it must name
   // the structure it was bound to (`studioFingerprint`), and the equality
   // check against the live `studioProjectFingerprint` below proves the edits
@@ -156,28 +155,6 @@ export function reverifyInstallation(state, evidence = {}) {
     && recordedStudioFingerprint !== String(evidence.studioProjectFingerprint || '').trim().toLowerCase()) return state;
 
   return { ...state, installation: { ...installation, verified: true } };
-}
-
-// No record exists when the install reply never reached this page (the owner
-// reloaded or left mid-install). The card itself is then the only witness, and
-// it is enough on an exact match: the connected card names the open project's
-// id and reports a well-formed fingerprint equal to the open project's own.
-// That is the same proof an install reply carries. Anything less binds nothing.
-function bindUnrecordedInstall(state, evidence) {
-  const cardId = String(evidence.cardId || '').trim();
-  const projectRevision = Number(evidence.projectRevision);
-  const cardFingerprint = String(evidence.projectFingerprint || '').trim().toLowerCase();
-  const studioFingerprint = String(evidence.studioProjectFingerprint || '').trim().toLowerCase();
-  const cardProjectId = sanitizeProjectId(evidence.projectId);
-  const studioProjectId = sanitizeProjectId(evidence.studioProjectId);
-  if (!cardId || !Number.isSafeInteger(projectRevision) || projectRevision < 0) return state;
-  if (!/^[a-f0-9]{16,64}$/.test(cardFingerprint) || cardFingerprint !== studioFingerprint) return state;
-  if (!cardProjectId || cardProjectId !== studioProjectId) return state;
-  return {
-    ...state,
-    installedRevision: state.editedRevision,
-    installation: { cardId, projectRevision, projectFingerprint: cardFingerprint, studioFingerprint, verified: true },
-  };
 }
 
 // The installation record ONLY while it still describes the project as it

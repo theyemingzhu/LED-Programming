@@ -6,7 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure } from '../lib/patternGate.js';
+import { shouldClearRecoveryGate } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
@@ -667,10 +667,6 @@ function writeSectionDisplayOrder(projectId, ids) {
     const browsePreviewSeq = useRef(0);
     const cardReturnConsumed = useRef(false);
     const latestPreviewIntent = useRef(null);
-    const cardReadingRef = useRef(null);
-    const failedReadingRef = useRef(null);
-    const transientRetriedRef = useRef(false);
-    const failedAtRef = useRef(null);
     // The preview currently on its way to the card, by intent. A second tap on
     // the same tile while the first is in flight is one owner intent, not two
     // commands: it joins the pending send instead of issuing another.
@@ -746,7 +742,6 @@ function writeSectionDisplayOrder(projectId, ids) {
     );
     const patternAccessRef = useRef(patternCardAccess);
     patternAccessRef.current = patternCardAccess;
-    cardReadingRef.current = cardLink?.readiness || null;
     const previousPatternAccessRef = useRef(patternCardAccess);
     const patternPreviewAuthorityKey = [
       patternCardAccess,
@@ -1571,9 +1566,6 @@ function writeSectionDisplayOrder(projectId, ids) {
           if (sequence === livePreviewSeq.current) {
             const failure = classifyCardActionFailure(error);
             dispatchPreviewAction({ type: 'fail', revision: sequence, error: failure.message });
-            failedReadingRef.current = cardReadingRef.current;
-            failedAtRef.current = Date.now();
-            transientRetriedRef.current = false;
             setPreviewFailure(failure);
             setStatusKind('err');
             if (error?.reason === 'mixed-content') {
@@ -1590,23 +1582,6 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (!latest) return;
       scheduleLivePreview(latest.look, latest.target, 0, { expectedControlPatch: latest.expectedControlPatch });
     }, [scheduleLivePreview]);
-
-    // A slow reply, a restart or a busy card is not a fault once the card
-    // answers again. The next fresh reading that shows it ready resends the
-    // owner's last tap once; success clears the message by itself.
-    useEffect(() => {
-      if (!shouldRetryAfterTransientFailure({
-        access: patternCardAccess,
-        failure: previewAction.status === 'failed' ? previewFailure : null,
-        failedReading: failedReadingRef.current,
-        reading: cardLink?.readiness,
-        alreadyRetried: transientRetriedRef.current,
-        failedAt: failedAtRef.current,
-        now: Date.now(),
-      })) return;
-      transientRetriedRef.current = true;
-      retryLatestPreview();
-    }, [cardLink?.readiness, patternCardAccess, previewAction.status, previewFailure, retryLatestPreview]);
 
     const openConnectionCenter = useCallback(() => {
       // Reached only from reconnect/pairing failure paths, where the card is
