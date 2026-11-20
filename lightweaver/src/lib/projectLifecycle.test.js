@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createProjectLifecycle,
+  currentInstallation,
+  installedByThisBrowser,
   hasUnsavedChanges,
   lifecycleForRestoredProject,
   lifecycleLabel,
@@ -621,4 +623,19 @@ test('a reload mid-install is recognised once the card holds exactly the open pr
   assert.equal(reverifyInstallation(state, { ...evidence, studioProjectFingerprint: 'ff' + fp.slice(2) }).installation, state.installation);
   assert.equal(reverifyInstallation(state, { ...evidence, studioProjectId: 'other' }).installation, state.installation);
   assert.equal(reverifyInstallation(state, { ...evidence, projectFingerprint: '' }).installation, state.installation);
+});
+
+test('a card-witnessed install is not this browser\'s own install', () => {
+  // A second tab (or a reload) binds the card's exact project from evidence.
+  // Pressing Install there must be treated as redundant ("already current"),
+  // not as a deliberate resend of this browser's own install (J08).
+  const fp = 'ab12cd34ef56ab12cd34ef56ab12cd34';
+  const evidence = { cardId: 'lw-one', projectId: 'art', projectRevision: 3, projectFingerprint: fp, studioProjectId: 'art', studioProjectFingerprint: fp };
+  const witnessed = reverifyInstallation(createProjectLifecycle(), evidence);
+  assert.ok(currentInstallation(witnessed));
+  assert.equal(installedByThisBrowser(witnessed), null);
+  // An install this browser performed still counts as its own.
+  const fresh = createProjectLifecycle();
+  const own = markInstalled(fresh, { generation: fresh.generation, revision: fresh.editedRevision, cardId: 'lw-one', projectRevision: 3, projectFingerprint: fp, verified: true });
+  assert.ok(installedByThisBrowser(own));
 });

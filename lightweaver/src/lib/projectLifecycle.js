@@ -176,7 +176,9 @@ function bindUnrecordedInstall(state, evidence) {
   return {
     ...state,
     installedRevision: state.editedRevision,
-    installation: { cardId, projectRevision, projectFingerprint: cardFingerprint, studioFingerprint, verified: true },
+    // witnessedByCard: this browser did not perform the install, the card only
+    // proves it holds the project. See installedByThisBrowser.
+    installation: { cardId, projectRevision, projectFingerprint: cardFingerprint, studioFingerprint, verified: true, witnessedByCard: true },
   };
 }
 
@@ -187,6 +189,15 @@ export function currentInstallation(state) {
   return state?.installedRevision === state?.editedRevision && state?.installation
     ? state.installation
     : null;
+}
+
+// The current installation only when THIS browser performed it. A record bound
+// from the card's own evidence (a reload mid-install, a second tab) proves the
+// card holds the project, but pressing Install again from here is a redundant
+// write, not this browser's deliberate resend of its own install.
+export function installedByThisBrowser(state) {
+  const installation = currentInstallation(state);
+  return installation && installation.witnessedByCard !== true ? installation : null;
 }
 
 // The verified installation record for a project whose STRUCTURE is still the

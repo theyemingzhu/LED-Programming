@@ -34,7 +34,7 @@ import {
 import { openLocalCardPage } from '../../../lib/cardBridge.js';
 import { isUncertainCardWriteFailure } from '../../../lib/cardTransientFailure.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
-import { currentInstallation } from '../../../lib/projectLifecycle.js';
+import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
@@ -304,7 +304,7 @@ export function CardPushControl({
         // decision (resume-activation / resume-confirmation), not a
         // redundant write.
         //
-        // `!currentInstallation(...)` scopes this to a caller who does not
+        // `!installedByThisBrowser(...)` scopes this to a caller who does not
         // already locally know it just installed this exact revision — the
         // "second tab, after the first finished" shape this exists for. A
         // caller whose OWN lifecycle already records this revision as
@@ -314,7 +314,7 @@ export function CardPushControl({
         // does exactly this to exercise its own retry path) is a deliberate
         // explicit resend and must still reach the card.
         const alreadyCurrent = !readOnlyCandidate && !handoffOnly
-          && !currentInstallation(readProjectLifecycle())
+          && !installedByThisBrowser(readProjectLifecycle())
           && isCardAlreadyCurrent(prepared, status)
           && !wiringStatus?.hasCandidate
           && !prepared.runtimePackage?.mediaAssets?.length;
