@@ -30,7 +30,7 @@ import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
-import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
@@ -886,7 +886,13 @@ export function SetupScreen({
   // itself, once per card boot, the same way "Open installed project" would.
   // Open work (starterPending false) is never replaced here.
   const autoPickupKeyRef = useRef('');
-  const untouchedStarter = currentProject?.layout?.starterPending === true;
+  // starterPending clears only on a physical (layout) edit, so it alone does
+  // not prove the starter is untouched: saved looks, a playlist or a rename
+  // leave it set. The lifecycle label is "New project" only while nothing was
+  // ever edited, saved or restored here, including across a reload, so that
+  // is the proof that there is no owner work to replace.
+  const untouchedStarter = currentProject?.layout?.starterPending === true
+    && lifecycleLabel(readProjectLifecycle?.() || projectLifecycle || {}) === 'New project';
   const autoPickupKey = installedHome && untouchedStarter && session.capabilities.installedControl
     && session.draft.relationship === 'none'
     // Only a card that proves exactly what it holds: a legacy card (no
