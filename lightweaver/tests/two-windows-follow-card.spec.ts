@@ -31,3 +31,17 @@ test('window A follows the card after window B taps', async ({ browser }) => {
   await test.info().attach('follow', { contentType: 'application/json', body: JSON.stringify({ ms: Date.now() - t0, seen }) });
   await A.ctx.close(); await B.ctx.close();
 });
+
+test('window A follows the card even after it tapped something itself', async ({ browser }) => {
+  const card = createCardSimulator(cardState('playing'));
+  const A = await open(browser, card);
+  const B = await open(browser, card);
+  await A.page.locator('[data-pattern-id="plasma"]').first().click();
+  await expect.poll(() => card.state.currentId, { timeout: 10000 }).toBe('plasma');
+  await A.page.waitForTimeout(2000);
+  await B.page.locator('[data-pattern-id="aurora"]').first().click();
+  await expect.poll(() => card.state.currentId, { timeout: 10000 }).toBe('aurora');
+  await expect.poll(() => pressed(A.page), { timeout: 15000 }).toEqual(['aurora']);
+  await expect(A.page.getByTestId('physical-preview-status')).not.toHaveText('Preview sent to card');
+  await A.ctx.close(); await B.ctx.close();
+});
