@@ -6,7 +6,8 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION } from './harness/cardStates';
 
 const SIX = [
-  { id: 'fire', label: 'Fire' },
+  // Fire is the card's procedural base pattern, as on the real card.
+  { id: 'fire', label: 'Fire', mode: 'procedural', preset: 'fire' },
   { id: 'sparkle', label: 'Sparkle' },
   { id: 'combo-combo-1780274480570-1', label: 'Outer circle Aurora + Inner circle Aurora', mode: 'combo', preset: 'aurora', zones: [{ id: 'zone-all', label: 'All lights', patternId: 'aurora' }] },
   { id: 'aurora', label: 'Aurora' },
@@ -57,6 +58,8 @@ for (const landing of ['pattern', 'card'] as const) for (const variant of ['patt
     await save.click();
     await expect(save).not.toHaveAttribute('aria-busy', 'true', { timeout: 40000 });
     await page.waitForTimeout(3000);
+    const labels = (card.state.installedLooks || card.state.patterns).map((p: any) => p.label);
+    expect(labels.filter((l: string) => l === 'Fire').length, `Fire listed twice: ${cardLooks(card).join(', ')}`).toBe(1);
     expect(cardLooks(card), 'the save dropped looks the card held').toEqual(before);
   });
 }
