@@ -539,8 +539,12 @@ test('Pattern confirms the exact draft revision installed on the card', async ({
   await page.getByRole('button', { name: 'All sections' }).click();
   await page.locator('[data-pattern-id="ocean"]').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
+  // The card already holds this project before Save, so "installation is
+  // recorded" is true from the start. Wait for the save itself: the posted
+  // project and the installation moving to the new fingerprint.
   await page.getByTitle('Install the current look on the card').click();
-  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
+  await expect.poll(() => installedConfig?.projectFingerprint || null).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation?.projectFingerprint || null)).toBe(installedConfig.projectFingerprint);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   expect(installedConfig?.startupPatternId).toBe('ocean');
   // The storage compactor omits a redundant preset when it equals the look id;
