@@ -6,6 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { useOpenCardProject } from './CardPickup.jsx';
 import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure, cardChangedSinceSeen } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
@@ -2306,11 +2307,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
     const saveAnywayRef = useRef(false);
+    const openCardProject = useOpenCardProject();
     const savePreviewToCard = async () => {
       if (installPreparing) return;
       if (staleCardConflict) setStaleCardConflict(false);
       setInstallPreparing(true);
-      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); }
+      // The owner's "Save mine anyway" covers exactly one attempt, however it ends.
+      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); saveAnywayRef.current = false; }
     };
     const savePreviewToCardRun = async () => {
       if (editingProjectOnly) {
@@ -3763,7 +3766,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                   <div className="pattern-gate-inline lw-field" data-testid="stale-card-conflict" role="status">
                     <p className="pattern-gate-inline-title">This card was changed from another window.</p>
                     <div className="lw-setup-banner-actions">
-                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); window.location.hash = '#screen=card'; }}>Open the card&rsquo;s version</button>
+                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); void openCardProject(); }}>Open the card&rsquo;s version</button>
                       <button type="button" className="btn" onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); savePreviewToCard(); }}>Save mine anyway</button>
                     </div>
                   </div>
