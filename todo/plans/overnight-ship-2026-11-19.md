@@ -126,3 +126,6 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 14:12 Re-run of the failed source job on 13837174: success. Main green.
 - 15:35 Live: studio-release.json buildNumber 2535, sourceRevision 13837174 (the revert; identical content to 2515). Live matches main.
 - Day closed. Next window, first ship: `claude/overnight-durability-v3-on-447` (pre-checked locally: ci:source-build, test:core:source, unit 3163, ci:browser-smoke; matrix 130 from the identical tree). Add `npm run test:core:source` to every pre-merge check from now on. Batch worktree removed.
+
+## 2026-11-21
+- 05:41 Adrian: "ship the last batch now". Main unchanged (13837174); batch branch unchanged since the pre-check (1ca14c28: ci:source-build 0, unit 3163, ci:browser-smoke all pass). Pushed as claude/day-batch-9 → PR #448 merged → main 41ddea53 (build 2554). Branch gone on remote. Watching Tests.
