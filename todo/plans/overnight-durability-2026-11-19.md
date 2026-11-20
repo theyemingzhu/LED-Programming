@@ -179,3 +179,7 @@ Open: transient "Not verified" after save; saved look sends the previewed patter
 
 - Decided overnight D6: a saved look sent alone reaches the card as its base pattern. By design: looks travel to the card only inside a playlist (lightweaver/src/lib/cardRuntimeProject.js:76 normalizes them, :143 resolves playlist lookIds). The card page names the pattern actually playing, so no owner sees a wrong name. No fix.
 - Fixed: "Not verified on this card" flash after a save is now "Checking card…" (5c65d3ba).
+
+## Real card, looks and playlist (1440 only, stopped)
+- Pattern taps work. Every Save to card (look, playlist, restore) ended "Not saved to the card: it did not answer" while /api/status kept answering. The card rebooted at least once during the saves (reset reason 3, new boot boot-bedf2c92). The playlist never reached the card (configured:false).
+- Card left on fire, settings unchanged, stable on the new boot. The 390 width pass was not run, to avoid further reboots. Saves still pass on the simulator, so the cause is on the card side or in the real write path, not found yet.
