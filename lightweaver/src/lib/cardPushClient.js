@@ -152,12 +152,6 @@ export function cardConfigRefusalMessage(status, text = '') {
   return `The card did not accept this project (code ${status}). Nothing on the card was changed by Studio; try again.`;
 }
 
-// A server error is ambiguous: the save may or may not have been kept. The
-// raw reply ("card returned 503: {\"ok\":false}") used to reach the owner.
-export function cardConfigServerErrorMessage(status) {
-  return `The card could not confirm the save (code ${status}). Check what the card shows, then try saving again.`;
-}
-
 export const CARD_DID_NOT_ANSWER_MESSAGE = 'The card did not answer. Check it has power and is on this Wi-Fi, then try again.';
 
 async function postConfigToHost(host, runtimePackage, options = {}) {
@@ -176,7 +170,7 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
     if (!r.ok) {
       const text = await r.text().catch(() => '');
       const refused = r.status >= 400 && r.status < 500 && r.status !== 423;
-      const error = new CardPushError('http', refused ? cardConfigRefusalMessage(r.status, text) : cardConfigServerErrorMessage(r.status), null, r.status);
+      const error = new CardPushError('http', refused ? cardConfigRefusalMessage(r.status, text) : `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
       error.detail = `card returned ${r.status}: ${text || 'no body'}`;
       // A received client-error response is a refusal, not a lost save reply.
       // Server errors stay ambiguous: persistence may already have occurred.

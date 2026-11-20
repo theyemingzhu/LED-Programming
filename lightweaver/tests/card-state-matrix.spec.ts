@@ -16,15 +16,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
-import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
-
-// Patterns renders authored patterns in opaque sandboxed frames (no same
-// origin). Playwright's serviceWorkers=block getter and any fixture touching
-// localStorage throw inside those frames, and the matrix counted that as the
-// screen crashing. Block registration in the main frame only, as screen-smoke
-// does since 718d33b5, and keep every seed script out of child frames.
-test.use({ serviceWorkers: 'allow' });
-test.beforeEach(async ({ page }) => { await blockMainFrameServiceWorkers(page); });
 import {
   CARD_STATES,
   cardState,
@@ -47,7 +38,6 @@ type BrowserState = { id: string; describe: string; seed: (page: Page) => Promis
 
 async function seedKnownCard(page: Page) {
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
-    if (window !== window.top) return;
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
     localStorage.setItem('lw_card_host', 'lightweaver.local');
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
@@ -71,7 +61,6 @@ export const BROWSER_STATES: BrowserState[] = [
     seed: async (page: Page) => {
       await seedKnownCard(page);
       await page.addInitScript(() => {
-    if (window !== window.top) return;
         // `version` is what makes this a project Studio will OPEN. Without it
         // migrateProject discards the payload and boots a fresh default, so the
         // "work that must not be replaced" was never actually open — the
@@ -347,19 +336,7 @@ for (const spec of CARD_STATES) {
     await remembers.seed(page);
     await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
 
-    // Since c6eb000f public Studio answers Find my card with its connection
-    // choices instead of opening the card page behind the owner's back. The
-    // card-page route is the panel's named fallback, under Connection details: no
-    // alert, no panel that opened itself, and then a live link.
-    let panelOpenedItself = false;
-    if (!(await settlesConnected(page, CONNECT_BUDGET_MS))) {
-      panelOpenedItself = await connectionPanelOpen(page);
-      await page.getByTestId('setup-connect-card').click();
-      const panel = page.locator('#card-connection-center');
-      await panel.getByText('Connection details', { exact: true }).click();
-      await panel.getByRole('button', { name: /Connect through the card.s own page/ }).click();
-      await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
-    }
+    const { panelOpenedItself } = await expectConnects(page, `${spec.id} over the bridge`);
     await expectUnaided(page, `${spec.id} over the bridge`, panelOpenedItself);
     await expectNotStuck(page, `${spec.id} over the bridge`);
     expect(crashes, 'the screen crashed').toEqual([]);
@@ -431,7 +408,6 @@ test('[T6] a card holding exactly this project finishes Setup', async ({ page })
   await card.install(page);
   await seedKnownCard(page);
   await page.addInitScript((seed) => {
-    if (window !== window.top) return;
     localStorage.setItem('lw_autosave_v3', JSON.stringify({
       id: seed.projectId,
       name: 'Matrix piece',
@@ -480,23 +456,17 @@ test('[T6] a card holding exactly this project finishes Setup', async ({ page })
   await expect(
     page.getByTestId('setup-progress'),
     'a card holding exactly this project must be able to finish Setup',
-  // Since 415368a9 a card holding exactly this project opens on its installed
-  // home, whose status reads "Installed project": that IS setup finished.
-  ).toHaveText(/Installed project/i, { timeout: 15000 });
-  // The installed home's one next step is controlling the installed project
-  // (415368a9); its Patterns door is not shown there.
+  ).toHaveText(/Setup complete/i, { timeout: 15000 });
   await expect(
-    page.getByTestId('installed-control-open'),
-    'finishing Setup must offer the way on to the installed project',
-  ).toBeEnabled();
+    page.getByTestId('setup-open-patterns'),
+    'finishing Setup must offer the way on to Patterns',
+  ).toBeVisible();
   // …exactly once. The ladder's last rung used to print the same button a
   // second time directly beneath the ready banner's copy.
-  // At most once: the installed home shows none (its next step is the
-  // installed controls), and the doubled button must never come back.
-  expect(
-    await page.getByRole('button', { name: 'Open Patterns', exact: true }).count(),
-    'a finished Setup never offers Open Patterns twice',
-  ).toBeLessThanOrEqual(1);
+  await expect(
+    page.getByRole('button', { name: 'Open Patterns', exact: true }),
+    'a finished Setup offers Open Patterns once, not twice',
+  ).toHaveCount(1);
 });
 
 test('[T5] a tap that lands while the card is still starting resolves itself', async ({ page }) => {

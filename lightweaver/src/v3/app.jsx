@@ -2,7 +2,6 @@
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
-import { cardChangedSinceSeen } from '../lib/patternGate.js';
 import { ProjectProvider, useProject } from '../state/ProjectContext.jsx';
 import { CloudLibraryProvider, useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useCardStatus } from '../hooks/useCardStatus.js';
@@ -602,7 +601,7 @@ function OfflineStatusControl({ state, onActivate }) {
   return <span className={`sb-firmware sb-offline is-${state.status}`} data-testid="offline-update-status" role="status">{label}</span>;
 }
 
-function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false, cardBlackedOut = false, cardHost = '', ownEditPending = false }) {
+function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false, cardBlackedOut = false, cardHost = '' }) {
   // F32: the chip's own recovery — the same request Card Home's banner and
   // the Patterns toolbar button already send, reused through the shell's
   // CardActionsProvider (`recoverLights` wraps
@@ -612,11 +611,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
   // StatusBar always renders inside <CardActionsProvider> (app.jsx's Shell).
   const cardActions = useCardActions();
   const session = deriveCardSessionView({ link, lifecycle });
-  // A draft this browser never saved to the card is kept separately, so the
-  // chip says Connected rather than inviting an overwrite. An edit to the
-  // project this browser DID save there (a typed LED count, a playlist
-  // change) is the owner's own pending save: the chip keeps "Save to card".
-  const displayLifecycle = session.capabilities.installedControl && !ownEditPending ? { ...lifecycle, label: 'Connected' } : lifecycle;
+  const displayLifecycle = session.capabilities.installedControl ? { ...lifecycle, label: 'Connected' } : lifecycle;
   const [recoveryPending, setRecoveryPending] = useState(false);
   const recoverLights = useCallback(async () => {
     if (recoveryPending || !cardActions) return;
@@ -1625,22 +1620,11 @@ function Shell({ offlineUpdateController = null }) {
     serializeProject,
     sectionTargets,
   ]);
-  // The card holds what this browser last saved to it, and the owner has since
-  // edited that same project. Only then does the footer offer Save to card
-  // over the installed-controls drawer.
-  const ownEditPending = (cardLifecycle.state === 'length-mismatch' || cardLifecycle.state === 'content-mismatch')
-    && Boolean(projectLifecycle.installation?.cardId)
-    && projectLifecycle.installation.cardId === (cardLink.card?.id || cardLink.readiness?.cardId)
-    // Another window changed the card since this browser saved it: that is
-    // the stale-save conflict, owned by the save banner, never a footer write.
-    && !cardChangedSinceSeen(projectLifecycle.installation, cardLink.readiness);
   const openCardControl = useCallback(() => {
     // Ready → direct card controls. Length drift → length-only write.
     // Needs attention / Needs project → guided Setup. Everything else
     // (including a confirming card still being checked) → Connection Center.
-    const surface = ownEditPending
-      ? (cardLifecycle.state === 'length-mismatch' ? 'length-save' : 'content-save')
-      : cardSurfaceForLifecycle(cardLifecycle);
+    const surface = cardSurfaceForLifecycle(cardLifecycle);
     if (surface === 'length-save') {
       if (serializeProject()?.expressionScenes?.playbackSceneId) void saveProjectToCard();
       else void saveLedCountToCard();
@@ -1659,7 +1643,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
+  }, [cardLifecycle, openSetupTask, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -2571,7 +2555,6 @@ function Shell({ offlineUpdateController = null }) {
       <NoticeLayer />
 
       <StatusBar
-        ownEditPending={ownEditPending}
         link={cardLink}
         lifecycle={cardLifecycle}
         connectionCenterOpen={connectionCenterOpen}

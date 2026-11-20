@@ -1225,31 +1225,6 @@ test.describe('the colour-proof quiz (ui-repair B-COLOUR)', () => {
     await expect(page.getByTestId('discovery-decade')).toBeVisible();
   });
 
-  // On a phone the floating notices sat over the counting controls, and the
-  // colour question could be closed, taking its answers with it.
-  test('on a phone, the colour question and power note live in the page and cover nothing', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
-    await dispatchBlankCard(page);
-    await startDiscoveryOnGpio16(page);
-    await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('.lw-notice-layer [data-testid="discovery-color-proof"]')).toHaveCount(0);
-    await expect(page.locator('.lw-notice-layer [data-testid="discovery-power-warning"]')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-probe').getByTestId('discovery-color-red')).toBeVisible();
-    await page.getByTestId('discovery-color-green').click();
-    await page.getByTestId('discovery-color-red').click();
-    await expect(page.getByTestId('discovery-decade')).toBeVisible();
-    // Nothing floating may sit over a control on the counting step.
-    const overlaps = await page.evaluate(() => {
-      const notes = [...document.querySelectorAll('.lw-notice-layer .lw-notice')].map(n => n.getBoundingClientRect());
-      const controls = [...document.querySelectorAll('[data-testid="discovery-decade"] button, [data-testid="discovery-decade"] input')]
-        .map(c => ({ name: c.textContent?.trim() || c.getAttribute('aria-label') || c.tagName, r: c.getBoundingClientRect() }))
-        .filter(c => c.r.width > 0 && c.r.bottom > 0 && c.r.top < window.innerHeight);
-      return controls.filter(c => notes.some(n => n.left < c.r.right && n.right > c.r.left && n.top < c.r.bottom && n.bottom > c.r.top)).map(c => c.name);
-    });
-    expect(overlaps).toEqual([]);
-  });
-
   test('the quiz can be skipped and never blocks the walk', async ({ page }) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);

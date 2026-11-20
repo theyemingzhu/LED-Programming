@@ -37,11 +37,7 @@ async function openSectionInLab(page: Page, selected = CENTRE) {
   // A browser-only editing test must never contact physical lights.
   await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
-  // The saved stack is named in the Sections summary; its name field lives in
-  // the stack editor, which opens only when the owner asks (since cebfa3d0).
-  await expect(page.getByText(fixture.savedLook.label, { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Project stacks (1)' })).toBeVisible();
-  await expect(page.getByTestId(`section-target-${selected}`)).toBeVisible();
+  await expect(page.getByTestId('look-name')).toHaveValue(fixture.savedLook.label);
   await page.getByTestId(`section-target-${selected}`).click();
   await page.getByTestId('open-pattern-lab').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
