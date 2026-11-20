@@ -74,3 +74,6 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 09:40 Bisected locally: J08 fails from 13abb518 onward and passes on 73a8ce42. Cause: bindUnrecordedInstall gives tab two a verified install record, and CardPushControl treats `currentInstallation` as "this browser installed it, a press is a deliberate resend", so it wrote the identical config a second time. Corrected (e9269158): bound record carries `witnessedByCard`, and the exemption reads new `installedByThisBrowser()`. J08 file 4/4, projectLifecycle unit 23/23.
 - 09:45 Rebuilt as claude/day-batch-4 on 6b552778 (all of #441's commits + e9269158). This time running the full `npm run ci:browser-smoke` locally before shipping.
 - 09:45 Two-browser recorder run stopped: I had switched branches in its worktree mid-run, so its results are not trustworthy. Re-run after this ship, in its own checkout.
+- 09:46 Day batch 4 local: test:unit 3155/3155; workflow tests 23/23; full `npm run ci:browser-smoke` all pass (14+1+32+7+4+120); layout-send-to-card + new specs 32/32; preflight Studio-only.
+- 09:58 Main 6b552778 (revert + #442): Tests, Deploy site, Build firmware: success.
+- 10:00 SHIP day 3 of 4: PR #444 merged → main 25e3a147 (build 2501). Branch gone on remote. Watching Tests.
