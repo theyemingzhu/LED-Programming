@@ -957,3 +957,11 @@ test('explicit config refusal stays a refusal while a lost accepted-write reboot
     else globalThis.window = previousWindow;
   }
 });
+
+test('a card server error reads as an unconfirmed save, never as the raw reply', async () => {
+  const { cardConfigServerErrorMessage } = await import('./cardPushClient.js');
+  const message = cardConfigServerErrorMessage(503);
+  assert.match(message, /could not confirm the save/);
+  assert.match(message, /503/);
+  assert.doesNotMatch(message, /card returned|\{/);
+});
