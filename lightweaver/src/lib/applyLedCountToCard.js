@@ -3,6 +3,7 @@ import { BENCH_DEFAULT_PORT_PIXELS, BENCH_MAX_MILLIAMPS, BENCH_PROJECT_ID, BENCH
 import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import {
   pushConfigToCard,
+  withCardReadRetry,
   readCardFirmwareInfoEnvelope,
   readCardStatusEnvelope,
   shouldDirectApplyLedCountChange,
@@ -209,12 +210,13 @@ export async function applyTypedLedCountToCard({
   expectedEvidence,
   pushConfig = pushConfigToCard,
   readEvidence = readCardStatusEnvelope,
+  retry = {},
 } = {}) {
   if (!host) return { applied: false, reason: 'disconnected' };
   const runtimePackage = suppliedRuntimePackage || buildCardRuntimePackageFromProject(projectForTypedLedCount(project));
   let evidence;
   try {
-    evidence = await readEvidence({ host });
+    evidence = await withCardReadRetry(() => readEvidence({ host }), retry);
   } catch {
     return { applied: false, reason: 'unreachable' };
   }
@@ -247,12 +249,15 @@ export async function applyLedCountOnCard({
   readStatus = readCardStatusEnvelope,
   readFirmwareInfo = readCardFirmwareInfoEnvelope,
   readWiring = getCardWiringStatus,
+  // A quiet card is asked again (3 tries, 3 s apart) before Studio says it
+  // did not take the count. todo/plans/false-failures.md, sweep item S2.
+  retry = {},
   ...rest
 } = {}) {
   if (!host) return { applied: false, reason: 'disconnected' };
   let wiring;
   try {
-    wiring = await readWiring({ host, transport: 'direct' });
+    wiring = await withCardReadRetry(() => readWiring({ host, transport: 'direct' }), retry);
   } catch {
     return { applied: false, reason: 'wiring-unreachable' };
   }
@@ -261,7 +266,7 @@ export async function applyLedCountOnCard({
   }
   let status;
   try {
-    status = await readStatus({ host, transport: 'direct' });
+    status = await withCardReadRetry(() => readStatus({ host, transport: 'direct' }), retry);
   } catch {
     return { applied: false, reason: 'unreachable' };
   }
@@ -272,7 +277,7 @@ export async function applyLedCountOnCard({
     && (status.provisionalSetup === true || isLiveBenchHeadroom(status))) {
     let firmware;
     try {
-      firmware = await readFirmwareInfo({ host, transport: 'direct' });
+      firmware = await withCardReadRetry(() => readFirmwareInfo({ host, transport: 'direct' }), retry);
     } catch {
       return { applied: false, reason: 'firmware-unreachable' };
     }
@@ -280,8 +285,8 @@ export async function applyLedCountOnCard({
     if (!exact) return { applied: false, reason: 'firmware-evidence-mismatch' };
     const runtimePackage = countedBenchPackage(exact, { pixels, pin });
     if (!runtimePackage) return { applied: false, reason: 'bench-evidence-incomplete' };
-    return applyTypedLedCountToCard({ host, runtimePackage, expectedEvidence: exact, ...rest });
+    return applyTypedLedCountToCard({ host, runtimePackage, expectedEvidence: exact, retry, ...rest });
   }
   const project = projectFromCountedCardStatus(status, { pixels, pin });
-  return applyTypedLedCountToCard({ host, project, ...rest });
+  return applyTypedLedCountToCard({ host, project, retry, ...rest });
 }

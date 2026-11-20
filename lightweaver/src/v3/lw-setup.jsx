@@ -20,7 +20,8 @@ import { readCardFirmwareInfoEnvelope, readCardProjectEvidence, readCardStatusEn
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
 import { canPushDirectlyToCard, cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
-import { getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
+import { getCardLinkState, isCardLinkConnected, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
+import { waitForCardRestart } from '../lib/cardDeployment.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { readCardCommissioningVerification } from '../lib/cardInstallGate.js';
@@ -686,6 +687,25 @@ export function SetupScreen({
           });
           setRecheckTick(tick => tick + 1);
           return;
+        }
+        // The length save restarts the card (about 14 s). Lighting it before it
+        // is back failed every time and said "Recover lights if the strip
+        // stays dark" about a count that had landed.
+        if (written.result?.rebooting) {
+          setLedCountState({ busy: true, message: 'Restarting the card…' });
+          noteCardRestartPlanned();
+          try {
+            await waitForCardRestart({
+              readStatus: () => readCardStatusEnvelope({ host, transport: 'direct' }),
+              fromBootId: cardLink?.validatedBootId || cardLink?.readiness?.bootId || '',
+            });
+          } catch (restartError) {
+            setLedCountState({ busy: false, message: `${pixels} lights are saved on the card. ${restartError.message}` });
+            setRecheckTick(tick => tick + 1);
+            return;
+          } finally {
+            noteCardRestartSettled();
+          }
         }
         try {
           await recoverCardLights({ patternId: 'warm-white', brightness: 0.55 }, cardConnectionOptionsFor(cardLink, host));

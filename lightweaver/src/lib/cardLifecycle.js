@@ -60,6 +60,9 @@ const SETUP_TASKS = Object.freeze({
   ready: 'open-patterns',
 });
 
+/** How long after boot a not-yet-ready card is "starting", not "needs attention". */
+export const CARD_STARTING_GRACE_MS = 20000;
+
 function normalized(value) {
   return String(value || '').trim();
 }
@@ -82,6 +85,15 @@ const CONNECTION_LABELS = Object.freeze({
   'setup-required': 'Connected',
   'discovery-setup': 'Connected',
 });
+
+// 'verifying' covers three different moments. Only one of them is a restart
+// the owner did not ask for; the other two must not say "restarted".
+function verifyingLabel(state, reason) {
+  if (state !== 'verifying') return '';
+  if (reason === 'card-restarting') return 'Restarting card';
+  if (reason === 'card-restarted') return 'Card restarted — verifying';
+  return 'Checking card';
+}
 
 function lifecycleLabel(state) {
   return LABELS[state] || LABELS.disconnected;
@@ -250,9 +262,17 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   // recover, and "read this card again" can only re-read the same flag. That
   // is history. A rollback Studio is party to (`update`), or one that left the
   // card unwell, is still a failure and still stops here.
+  // A card that has only just booted (a save restarts it on purpose, every
+  // time) answers with commandReady still false for a moment while its
+  // transitions settle. That is a card starting, not a card refusing — on
+  // the real card it read as "Update rolled back" or "Needs attention" right
+  // after every successful save (todo/plans/false-failures.md).
+  const uptimeMs = Number(readiness.uptimeMs);
+  const justBooted = Number.isFinite(uptimeMs) && uptimeMs >= 0 && uptimeMs < CARD_STARTING_GRACE_MS;
+  const stillStarting = !commandReady && (link.state === 'revalidating' || justBooted || evidenceIncomplete);
   const pastUpdateRolledBack = !update
     && readiness.firmwareUpdate?.phase === 'rolled-back'
-    && commandReady;
+    && (commandReady || stillStarting || !verifiedTransport);
 
   let state = 'disconnected';
   if (updateEvidence?.phase === 'rolled-back' && !pastUpdateRolledBack) state = 'update-rolled-back';
@@ -296,7 +316,7 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   // complete-but-false evidence is a genuinely not-ready card and stays
   // `attention-required`. A ready→ready poll never lands here: its evidence
   // is complete and true, so the commandReady branches above take it.
-  else if (verifiedTransport && evidenceIncomplete) state = 'confirming';
+  else if (verifiedTransport && (evidenceIncomplete || justBooted)) state = 'confirming';
   else if (verifiedTransport) state = 'attention-required';
   else if (link.state === 'connecting') state = 'connecting';
 
@@ -312,8 +332,8 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     safeControlAccess: state === 'ready' ? 'ready' : state,
     label: state === 'discovery-setup' && hasCountedLights(project, readiness)
       ? 'Lights counted'
-      : lifecycleLabel(state),
-    connectionLabel: lifecycleConnectionLabel(state),
+      : verifyingLabel(state, link.reason) || lifecycleLabel(state),
+    connectionLabel: verifyingLabel(state, link.reason) || lifecycleConnectionLabel(state),
     setupTaskId: lifecycleSetupTask(state),
     pastUpdateRolledBack,
     reason: normalized(pastUpdateRolledBack

@@ -615,7 +615,12 @@ const oldBootAfterTakeover = reduceCardLink(secondRestartRepeated, {
 });
 assert.equal(oldBootAfterTakeover.candidateBootId, 'boot-3', 'the validated old boot still cannot disturb the candidate');
 
-const directMiss = reduceCardLink(direct, { type: 'direct-ping-missed' });
+// One miss is a slow card (todo/plans/false-failures.md, same rule as the
+// bridge's F26); two consecutive misses demote the link.
+const directOneMiss = reduceCardLink(direct, { type: 'direct-ping-missed' });
+assert.equal(directOneMiss.state, 'connected-direct', 'one missed direct keepalive is a slow card, not a gone one');
+const directMiss = reduceCardLink(directOneMiss, { type: 'direct-ping-missed' });
+assert.equal(directMiss.state, 'reconnecting');
 const directRecoveryCandidate = reduceCardLink(directMiss, {
   type: 'direct-ping-ok', host: direct.host, card: direct.card,
   expectedCard: direct.card, readiness: readyEnvelope(direct.card.id),

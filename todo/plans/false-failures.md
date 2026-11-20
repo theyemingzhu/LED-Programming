@@ -1,0 +1,101 @@
+# False failures on a slow, healthy card
+
+Branch `claude/false-failures-e2a7fd`. Studio only; nothing under `firmware/`, no `VERSION` bump. Simulator only — nothing was sent to the real card.
+
+Adrian, 2026-11-21: "The places where it reports failed when it actually passes and the unresponsiveness and the delays … will lead to confusion and frustration."
+
+## What the real card does (firmware 1.2.4), and what the simulator now models
+
+| Real behaviour | Source | Simulator option |
+|---|---|---|
+| Every accepted `POST /api/config` answers `requiresReboot: true` and restarts within 5 s (on `/api/reboot`, or its own fallback) | `LightweaverWeb.cpp handleConfigPost`, `kConfigRestartFallbackMs` | `createCardSimulator(spec, { restartAfterSaveMs: 14000 })` |
+| Silent ~14 s, then a new `bootId`, saved project intact | traced saves | same |
+| ~1.5 s after it answers: `runtimePhase 'ready'`, `commandReady false`, small `uptimeMs` | `provisioningCommandReady` | same (`bootingUntil`, `bootedAt`) |
+| Goes quiet 4–12 s with no restart (Wi-Fi re-associating) | traced saves | `card.silenceFor(ms)` (HTTP and bridge) |
+| Replies up to 4 s | traced | `card.answerAfter(path, ms, times)`, `setReplyDelay(ms)` |
+| Repeats an old `firmwareUpdate.phase: 'rolled-back'` forever | durability log | `firmwareUpdateOverride` (existing) |
+| Live colour-order try changes `led.colorOrder` | `runtimeGetLedColorOrder` | `/api/control {colorOrder}` now modelled |
+
+Existing tests keep the instant card: every option is off unless a test sets it. The bridge relay (`relayBridge`) honours offline/silence; `handleBridge` stays synchronous for `live-card-states.spec.ts`.
+
+## Decisions (made without asking, per brief)
+
+- **D1. A save waits up to 45 s for the restart** (`CARD_RESTART_WAIT_MS`), showing "Restarting the card…" with a spinner, and finishes the moment an answer from a *new* boot verifies the project. Without boot ids an answer counts only after the card went quiet or 6 s passed (past the firmware's 5 s fallback). After 45 s: one line, "The card has not come back after restarting (45 s). Check it has power and is on this Wi-Fi; your work is kept in Studio."
+- **D2. An accepted save whose `/api/reboot` request gets no reply is a save, not a failure.** Firmware restarts on its own within 5 s; the read-back is the proof. This changed one unit test (`cardPushClient.test.js`, "explicit config refusal stays a refusal; an accepted save whose reboot request is lost is still a save").
+- **D3. A save whose reply is lost is read back before anything is said** (Patterns). The same rule already existed in CardPushControl (`isUncertainCardWriteFailure`).
+- **D4. Reads before a save are asked 3 times, 3 s apart** (`withCardReadRetry`), only when the card did not answer. A card that answered — wrong card, old firmware, refusal — is never retried. The button keeps saying "Checking card…".
+- **D5. The card link marks a planned restart** (`noteCardRestartPlanned` / `noteCardRestartSettled`): state `revalidating`, reason `card-restarting`, label "Restarting card". Inside the window silence, failed probes and answers from the old boot are ignored. A real verdict (wrong card) still lands.
+- **D6. One missed direct keepalive is a slow card.** Two consecutive misses (about 11 s) demote the link, the same rule the bridge already had (F26). Changed the contract in `tests/card-link-state.mjs`.
+- **D7. A card that booted less than 20 s ago and is not yet command-ready is "Checking card"**, never "Needs attention", and its stale rollback flag is never "Update rolled back". After 20 s a not-ready card is still "Needs attention".
+- **D8. "verifying" says what it is:** "Restarting card" (planned), "Card restarted — verifying" (unplanned), "Checking card" (re-check, no restart). Changed one row in `cardStatusCharacterization.test.js`.
+- **D9. F3 (durability log D3 said "F3 stays")**: the tap that was lost during a silence is resent once the card answers (b607b9ac, already on main) and with D6 no disconnect is shown; the spec now pins that the line does not stay. A silence longer than ~11 s still ends in "did not answer in time" with Retry — true by then, and it is resent on the next ready reading.
+
+- **D10. The durability run's d30e8d97 and f1d5133f (branch `claude/overnight-durability-v2`) are not cherry-picked.** This branch already does both, for Patterns, Card Home, Layout and the footer, and waits for a new boot id. Their two specs (`save-survives-slow-restart`, `save-retries-quiet-card`) were run against this branch: 2 of 2 pass. They duplicate `slow-card-save.spec.ts`, so they are not added. Their option name `setRestartSilence(ms)` is kept as the simulator's public name for the restart rule, for the practice-card session.
+
+## Before / after (simulator as slow as the real card)
+
+| Where | Before (main, measured in these specs) | After |
+|---|---|---|
+| Patterns · Save to card, 14 s restart | Stayed "Sending…" then failed | "Restarting card…" + spinner, then button "Saved", status "Saved to the card." (~16 s) |
+| Patterns · Save, card quiet 5 s at the press | "Not saved to the card: it did not answer" while the header said "Installed on card" | "Checking card…", then saved |
+| Layout · LED count save | "A Lightweaver card is not connected" the whole time, then "Card restarted — verifying…", a Retry, "Card stopped responding" | "Restarting the card…", hands off to Patterns, "Installed on card" |
+| Card Home · Save to card | No restart wording; failed verification | "Restarting the card…", "Installed revision N on card" |
+| Card Home idle, replies 4 s | "Card stopped responding" | stays Connected |
+| Card Home · colour-order try, 3 s replies | "RGB set in Studio, but the card did not answer." | "RGB is on the strip." |
+
+## Sweep (step 4)
+
+About 790 hits in `src/` read; 49 distinct card-facing messages. Columns: real condition → can a slow but healthy card raise it?
+
+| # | Where | Message | Real condition | Slow-healthy false? |
+|---|---|---|---|---|
+| 1 | lw-pattern.jsx | Not saved to the card: it did not answer | save reply lost / pre-read timeout | was yes → **fixed** (D3, D4) |
+| 2 | lw-card.jsx | A Lightweaver card is not connected | `length-/content-mismatch` fell to default | was yes → **fixed** |
+| 3 | cardLifecycle.js | Update rolled back / Needs attention | stale rollback, `commandReady` false after boot | was yes → **fixed** (D7) |
+| 4–5 | cardLink.js, lw-card.jsx | Card stopped responding | missed keepalives | was yes after 1 miss → **fixed** (D6); true after ~11 s |
+| 6 | cardLink.js | Could not reach the card | 15 s / 45 s timers | no |
+| 7 | cardLink.js via useCardStatus | No card found on this network | probes fail | was yes during a restart → **fixed** (S3); 3 × 12 s misses otherwise |
+| 8–9 | cardLink, CardFacts | Not connected | link disconnected | no (follows 6–7) |
+| 10–11, 15, 46 | cardAction.js, cardLiveControl.js, DrawModePanel | The card did not answer in time (preview) | preview 2.2 s × 3 tries ≈ 11 s | true after ~11 s; resent on next ready reading (D9) |
+| 12–13 | cardAction.js | Starting up / busy | HTTP 423 / 409 | no, correct copy |
+| 14 | cardAction.js | Preview could not be verified | fallback | maybe; not traced |
+| 16 | cardPushClient.js | Stopped before saving … Nothing was sent | identity guard one 1.5 s try | was yes → **fixed** (S1: 3 s, retried) |
+| 17–18 | cardPushClient.js | Timed out / did not answer (config POST) | 6 s POST | callers now read back (D3) |
+| 19 | cardPushClient.js | Card did not accept / could not confirm (code) | HTTP 4xx/5xx | no |
+| 20 | CardPushControl.jsx | Could not verify this install | post-save read-back | was yes → **fixed** (D1) |
+| 21 | CardPushControl.jsx | Did not answer after the light test ended | 4 × 750 ms checks | maybe (thin vs a 14 s restart) — follow-up |
+| 22–24 | CardPushControl, cardWiringSafety | Wiring test rolled back / timed out | real states, caller timeouts | no / maybe |
+| 25 | studioActionStatus.js | The card page did not answer (playlist) | bridge `config` timeout; bridge retries `config` once | maybe; retry can send `/api/config` twice — follow-up |
+| 26–27 | cardBridge.js | Card page opened but did not answer / bridge timed out | handshake / 3 s request | maybe on a cold open |
+| 28 | lw-pattern.jsx | Not connected to the card, so the lights can't follow | link not connected at tap | was yes via 4 → fixed with D6 |
+| 29–30 | lw-pattern, lw-card | LED repair could not reach / did not answer (blackout recovery) | recover-lights 3.2 s, restarts card | maybe — follow-up |
+| 31 | lw-card.jsx | Hardware readback failed / did not confirm the clear | 3 s reads | maybe, not traced |
+| 32 | CardFacts.jsx | {order} set in Studio, but the card did not answer | 2 s push + 2 s read | was yes → **fixed** (S4) |
+| 33–35 | lw-setup.jsx | Count saved here, card did not take it / Recover lights if dark | 3 s reads; recover sent into the restart | was yes → **fixed** (S2) |
+| 36 | CardControlDrawer.jsx | Could not read the card controls | 3 × 1.8 s | maybe (> ~7 s silence) |
+| 37–38 | lw-show.jsx | Couldn't check your card / lights stopped receiving the show | 2 × 2.5 s pings; stream notice at 3 s | maybe — follow-up (Show screen) |
+| 39 | cardFrameStream.js | Could not reach the card / ws | socket closed | true on a real drop |
+| 40–42 | lw-flash, app.jsx, lw-setup | Update rolled back / could not verify restarted card | update sessions only | no |
+| 43–45 | StripColorOrderCheck, StripDiscovery, WireDiscovery | could not reach / light / start | 2 s-class timeouts | maybe, not traced |
+| 47–49 | Connection Center, production, commissioning | take over / link lost / setup unreachable | user-started or long deadlines; workshop only | no |
+
+Fixed in this batch with a test each: 1, 2, 3, 4–5, 7, 16, 20, 28, 32, 33–35.
+
+## Tests
+
+- `tests/slow-card-save.spec.ts` — Patterns: 14 s restart; quiet pre-save read.
+- `tests/slow-card-save-card-layout.spec.ts` — Layout count save; Card Home save.
+- `tests/slow-card-idle.spec.ts` — 6 s silence on Card Home and Patterns; F4 (4 s replies); F3 (tap during 5 s silence).
+- `tests/slow-card-home-facts.spec.ts` — colour-order try on 3 s replies.
+- `src/lib/falseFailures.test.js` — link miss rule, planned restart, lifecycle after boot, restart wait, read retry, count retry.
+- `tests/harness/falseFailureWatch.ts` — records every moment failure wording appears, and the longest stretch with no sign of work.
+
+All in `ci:browser-smoke` and `test:release-ui`. Each browser spec except the two idle-silence guards was run red against main's `src/` first. The idle-silence guards pass on main too, because the 20 s direct keepalive rarely lands inside a 6 s silence; the deterministic proof is the unit test.
+
+## Follow-ups (not done here)
+
+- Bridge `config` is in the bridge retry set: a timeout can send `/api/config` twice, so the card restarts twice (row 25).
+- Show screen: stream-health notice after 3 s of silence (rows 37–38).
+- Recover lights / blackout recovery: 3.2 s against a card that restarts on purpose (rows 29–30).
+- Wiring-test end: 4 × 750 ms checks after a possible restart (row 21).
+- `test:core:source` flake: `tests/ai-pattern-server.mjs` failed once and passed once on the same tree.

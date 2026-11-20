@@ -271,6 +271,11 @@ function CardHomePanels({
       tone: 'connecting',
       message: 'Card restarted — verifying the exact card, firmware, and project before commands resume.',
     }),
+    // A save restarts the card on purpose; this is that restart, not a fault.
+    restartingAfterSave: () => ({
+      tone: 'connecting',
+      message: 'Restarting the card to apply the save. This takes about 15 seconds.',
+    }),
     checkingStability: () => ({
       tone: 'connecting',
       message: 'Checking card. Studio is waiting for two stable exact status checks before commands resume.',
@@ -362,7 +367,9 @@ function CardHomePanels({
     case 'verifying':
       presentation = lifecycleReason === 'card-restarted'
         ? presentations.cardRestarted()
-        : presentations.checkingStability();
+        : lifecycleReason === 'card-restarting'
+          ? presentations.restartingAfterSave()
+          : presentations.checkingStability();
       break;
     case 'reconnecting':
       presentation = presentations.stoppedResponding();
@@ -397,6 +404,11 @@ function CardHomePanels({
     case 'ready':
       presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
       break;
+    // A connected card holding this project with a different length or newer
+    // content is connected. These used to fall to the default branch and say
+    // "A Lightweaver card is not connected" beside a Save to card button.
+    case 'length-mismatch':
+    case 'content-mismatch':
     case 'project-mismatch':
       // Also a command-ready card, but saying "ready for light check" here put
       // a fourth, different account on a screen whose other three lines all

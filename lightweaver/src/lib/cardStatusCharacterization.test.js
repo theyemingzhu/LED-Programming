@@ -51,8 +51,11 @@ const ROWS = [
     { state: 'reconnecting', label: 'Card stopped responding', setupTaskId: 'reconnect-card' }],
   ['revalidating after card restart', { link: { state: 'revalidating', reason: 'card-restarted' } },
     { state: 'verifying', label: 'Card restarted — verifying', setupTaskId: 'reconnect-card' }],
+  // Re-checking a card that did not restart must not say it restarted.
   ['revalidating for stability', { link: { state: 'revalidating' } },
-    { state: 'verifying', label: 'Card restarted — verifying', setupTaskId: 'reconnect-card' }],
+    { state: 'verifying', label: 'Checking card', setupTaskId: 'reconnect-card' }],
+  ['revalidating through a planned restart', { link: { state: 'revalidating', reason: 'card-restarting' } },
+    { state: 'verifying', label: 'Restarting card', setupTaskId: 'reconnect-card' }],
   ['found but unpaired', { link: { state: 'disconnected', reason: 'found-unpaired' } },
     { state: 'found-unpaired', label: 'Found — pair', setupTaskId: 'pair-card' }],
   ['popup blocked', { link: { state: 'disconnected', reason: 'popup-blocked' } },
