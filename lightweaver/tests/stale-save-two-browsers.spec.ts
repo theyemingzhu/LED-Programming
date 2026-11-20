@@ -52,3 +52,53 @@ test('an older window does not silently overwrite a newer save', async ({ browse
   await expect.poll(() => card.state.projectFingerprint, { timeout: 30000 }).not.toBe(afterB);
   await ctxA.close(); await ctxB.close();
 });
+
+const openId = (page: Page) => page.evaluate(() => {
+  try { const p = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'); return p?.id || ''; } catch { return ''; }
+});
+
+test('"Open the card\'s version" opens the card project in the older window, in one press', async ({ browser }) => {
+  const card = createCardSimulator(cardState('playing'));
+  const ctxA = await browser.newContext(); const a = await ctxA.newPage(); await card.install(a); await seed(a);
+  await openPatterns(a);
+  const ctxB = await browser.newContext(); const b = await ctxB.newPage(); await card.install(b); await seed(b);
+  await openPatterns(b);
+  await saveLook(b, 'ocean');
+  const afterB = card.state.projectFingerprint;
+  await a.locator('[data-pattern-id="rainbow"]').first().click();
+  await a.waitForTimeout(1500);
+  await a.getByTestId('pattern-install-on-card').click();
+  const conflict = a.getByTestId('stale-card-conflict');
+  await expect(conflict).toBeVisible({ timeout: 20000 });
+  await conflict.getByRole('button', { name: /Open the card.s version/ }).click();
+  // A now holds the card's project: its next save finds nothing changed elsewhere.
+  await expect.poll(() => a.evaluate(async () => {
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project?.devices?.standaloneController?.looks?.map?.(l => l.patternId).join(',') || cardProjectFingerprint(project);
+  }), { timeout: 20000 }).not.toBe('');
+  expect(card.state.projectFingerprint).toBe(afterB);
+  await expect(conflict).toHaveCount(0);
+  await a.getByTestId('pattern-install-on-card').click();
+  await expect(a.getByTestId('stale-card-conflict')).toHaveCount(0, { timeout: 15000 });
+  await expect(a.getByRole('alert')).toHaveCount(0);
+  await ctxA.close(); await ctxB.close();
+});
+
+test('a save from Layout in the older window is guarded too', async ({ browser }) => {
+  const card = createCardSimulator(cardState('playing'));
+  const ctxA = await browser.newContext(); const a = await ctxA.newPage(); await card.install(a); await seed(a);
+  await openPatterns(a);
+  const ctxB = await browser.newContext(); const b = await ctxB.newPage(); await card.install(b); await seed(b);
+  await openPatterns(b);
+  await saveLook(b, 'ocean');
+  const afterB = card.state.projectFingerprint;
+  await a.evaluate(() => { window.location.hash = '#screen=layout'; });
+  const send = a.getByTestId('layout-check-and-install').first();
+  await expect(send).toBeVisible({ timeout: 20000 });
+  await send.click();
+  await expect(a.getByTestId('stale-card-conflict')).toBeVisible({ timeout: 20000 });
+  expect(card.state.projectFingerprint).toBe(afterB);
+  await a.screenshot({ path: test.info().outputPath('layout-conflict.png') });
+  await ctxA.close(); await ctxB.close();
+});

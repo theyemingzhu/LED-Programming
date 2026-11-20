@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
+import { useOpenCardProject } from '../../../v3/CardPickup.jsx';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { cardActionReducer, createCardActionState } from '../../../lib/cardAction.js';
 import {
@@ -159,6 +160,7 @@ export function CardPushControl({
   actionLabel = 'Save to card',
   children,
 }) {
+  const openCardProject = useOpenCardProject();
   const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed,
     wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
     gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
@@ -210,7 +212,11 @@ export function CardPushControl({
   // Serialize the current patch board into the firmware's runtime contract.
   // Direct push is only for local HTTP/file Studio sessions; hosted HTTPS
   // flows use the copy-paste fallback shown by the error state.
+  // Another window saved to this card since this window last saw it.
+  const [staleCardConflict, setStaleCardConflict] = useState(false);
+  const saveAnywayRef = useRef(false);
   const pushToCard = async (retryAttempt = null, { readOnlyCandidate = false } = {}) => {
+    setStaleCardConflict(false);
     // Auto-start and a click can land before React paints `pushing`. The
     // cross-tab lease deliberately permits nesting in this tab, so block a
     // second install synchronously at this component's entry point.
@@ -361,6 +367,8 @@ export function CardPushControl({
             readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport }),
             readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
             readWiringStatus: () => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport }),
+            lastSeen: (readProjectLifecycle?.() || projectLifecycle)?.installation || null,
+            saveAnyway: saveAnywayRef.current,
             config: async () => {
               if (readOnlyCandidate) {
                 throw new CardPushError('candidate-missing', 'No matching staged wiring remains on this card. Nothing was sent. Start a new install intentionally.');
@@ -502,6 +510,12 @@ export function CardPushControl({
       }
     } catch (err) {
       setInstallRestarting(false);
+      if (err?.reason === 'card-changed-elsewhere') {
+        dispatchAction({ type: 'reset' });
+        setPushStatus('');
+        setStaleCardConflict(true);
+        return;
+      }
       if (!failedAttemptRef.current?.awaitingCandidateReadback) failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
       dispatchAction({ type: 'fail', error: message });
@@ -518,6 +532,7 @@ export function CardPushControl({
     }));
     } finally {
       installInFlightRef.current = false;
+      saveAnywayRef.current = false;
     }
   };
 
@@ -779,6 +794,15 @@ export function CardPushControl({
         {children}
       </div>}
 
+      {staleCardConflict && (
+        <div className="la-card-push-banner is-pending" data-testid="stale-card-conflict" role="status">
+          This card was changed from another window.
+          <div className="lw-setup-banner-actions">
+            <button type="button" className="btn primary" title="Open the project now on the card. Your copy here is kept as a saved project." data-tooltip="Open the project now on the card. Your copy here is kept as a saved project." onClick={() => { setStaleCardConflict(false); void openCardProject(); }}>Open the card&rsquo;s version</button>
+            <button type="button" className="btn" title="Replace the card's project with the one open here." data-tooltip="Replace the card's project with the one open here." onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); void pushToCard(); }}>Save mine anyway</button>
+          </div>
+        </div>
+      )}
       {pushStatus && (
         <div
           className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}
