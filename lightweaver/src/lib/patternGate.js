@@ -9,18 +9,27 @@ export function shouldClearRecoveryGate({ access, gate, raisedWhileUnready }) {
 }
 
 // Failures that say nothing about the card itself: it was slow, restarting,
-// still starting up, or busy. Once the card answers again they are no longer
+// or still starting up. Once the card answers again they are no longer
 // true, so Patterns resends the owner's last tap instead of leaving the
 // message and its Retry button on screen over a healthy card.
-const TRANSIENT_PREVIEW_FAILURES = new Set(['timeout', 'card-restarted', 'not-ready', 'conflict']);
+// A 409 "busy with another change" is NOT here: it usually means another
+// browser changed the card, and resending would override that newer choice.
+const TRANSIENT_PREVIEW_FAILURES = new Set(['timeout', 'card-restarted', 'not-ready']);
+
+// A resend is the owner's tap arriving late. After this long it is no longer
+// what they meant now (they, or another browser, may have moved on), so the
+// message and its Retry button stay instead.
+export const TRANSIENT_RETRY_WINDOW_MS = 30_000;
 
 export function isTransientPreviewFailure(failure) {
   return TRANSIENT_PREVIEW_FAILURES.has(failure?.code);
 }
 
 // `failedReading` is the card reading current when the tap failed; a retry is
-// owed only once a NEWER reading shows the card ready, and only once.
-export function shouldRetryAfterTransientFailure({ access, failure, failedReading, reading, alreadyRetried }) {
+// owed only once a NEWER reading shows the card ready, only once, and only
+// within TRANSIENT_RETRY_WINDOW_MS of the failure.
+export function shouldRetryAfterTransientFailure({ access, failure, failedReading, reading, alreadyRetried, failedAt, now }) {
   if (alreadyRetried || access !== 'ready' || !isTransientPreviewFailure(failure)) return false;
+  if (!Number.isFinite(failedAt) || !Number.isFinite(now) || now - failedAt > TRANSIENT_RETRY_WINDOW_MS) return false;
   return Boolean(reading) && reading !== failedReading;
 }
