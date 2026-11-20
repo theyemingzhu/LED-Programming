@@ -1249,7 +1249,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     // preview still names the stack's previous pattern.
     const selectedTargetHasDraft = Boolean(draftLooks[selectedTarget?.id]
       || (selectedTarget?.kind === 'section' && draftLooks[ALL_SECTIONS_TARGET_ID]));
-    const selId = selectedTargetHasDraft
+    // Two windows are two remotes. When another window (or the card's own
+    // playlist) changes what the card plays, this window's highlight follows
+    // the card, unless the owner is mid-edit here.
+    const cardPlayingId = connected ? String(cardLink?.readiness?.currentPatternId || '') : '';
+    const followCard = !selectedTargetHasDraft && cardPlayingId && cardPlayingId !== 'blackout'
+      && (REAL_PATTERN_BY_ID.has(cardPlayingId) || customPatternById.has(cardPlayingId));
+    const selId = followCard ? cardPlayingId : selectedTargetHasDraft
       ? look.patternId
       : savedLooks.some(savedLook => savedLook.id === activeLookId)
         ? activeLookId
