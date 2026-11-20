@@ -108,3 +108,36 @@ No firmware fix is pending yet, so nothing has been flashed.
 - OPEN F3: after a 5 s drop, "The card did not answer in time. Reconnect if needed, then retry the preview command." stays with a Retry button (cardAction.js:30). Next to fix.
 - OPEN F4: during 4 s slow replies, the card screen says "Not connected" while the link is only revalidating. It clears afterwards.
 - Clean: HTTP 500, truncated status, connection cut, and every card-screen drop.
+- D3 (decided): F3 stays. The tap really was lost, and the message offers one action (Retry). Owners can overrule.
+2026-11-19T16:04:19.366Z boot-dff2b164-b0fe81f61b44 45min heap 46148 t 0.106893
+- REAL CARD 16:04Z: re-flashed by ANOTHER session around 15:19Z, not by me (I ran only simulator work in that window). It now runs firmware 1.2.4 built from 56c00ce8 (the PR 437 merge on main), no longer "dev". Restart reason 0 (power-on). Project, fingerprint, 41 px, 2000 mA and pattern "fire" are unchanged. phase is still "rolled-back". Free heap 46148.
+
+## Two-browser round (Sonnet driver, 21 cells, simulated)
+No error text, no reconnect fight, no alarms in either window; B connected in every cell; A reloaded and reconnected with no clicks.
+- G1 (NEEDS ADRIAN): no window ever steps back. After B takes over, A stays "Connected", says nothing, and A's next tap changes the card. With A, B and C, every window's taps all landed. The only cross-window guard is cardWriteLease.js, which covers installs (CardPushControl.jsx:197), not taps, and works only between tabs of one browser. Deciding "newest wins" across devices means the card has to know who claimed it last (a firmware field such as `controllerId` in /api/status), and that changes the product. Before: two phones are two remotes, and the last tap wins. After: the older phone shows "Another device is controlling this card · Take it back". Proposal only; nothing built.
+- G2 (NEEDS ADRIAN): a fresh browser shows its own starter ("Untitled Project · Lava Lamp", two sections), not the card's project. On Patterns this happens with no prompt at all. Opening the card's project takes "Open installed project" on Card Home. Cause: commit 415368a9 (2026-09-29 plan, "never silently overwrite the current draft") deliberately removed auto-adopt. Proposal: adopt the card's project automatically ONLY when the browser holds an untouched starter (starterPending), which loses no owner work. Not built tonight, because it reverses a recorded decision and touches the adoption machine that ships tonight.
+- G3: B opened fresh on Patterns needs 2 presses ("Found — pair", then Connect). Already decided as the pairing consent (see above).
+- G4: provisional state, fresh B at "/": "YOUR DRAFT Untitled Project … Temporary setup — not installed", with 5 buttons ("Resolve this card's project / Use this card's project / Save this project to the card"…). The step shown is right (Step 2 of 3), but it is too many choices. This matches open audit gap 3; recorded as a proposal.
+- Gap list (setup progress that lives only in the browser): colour-order confirmation (`colorOrderConfirmed`, stored in the project), light-check results (`cardVerificationRetention`), and artwork/layout drawing. The card keeps wiring, count, pin and looks.
+
+## Real-card harness (lightweaver/tests/.real, never committed, never in CI)
+- Earlier hang: my own config started Vite from the wrong folder, so the page was blank. That was the harness, not Studio.
+- 2-tap smoke at 23:34 local: link connected-direct within 3 ms of arrival (remembered browser); Aurora then Sparkle reached the card (read-back matched); only POST /api/control was sent; nothing blocked; no alarms; heap 44.6k; same boot.
+- Running: 20 taps on desktop, then 20 on phone, reloading every 4 taps.
+- REAL CARD result: desktop 20 taps and phone 20 taps, reload every 4. 0 mismatches between tile and card read-back, 0 blocked, only POST /api/control sent, status replies at most 116 ms, reconnect after reload at most 1.5 s with zero clicks, heap 44.1k–44.6k, 1 boot (no restart), no alarms.
+
+## Morning (2026-11-20), Adrian awake: "keep going on the untested list, starting with second-browser takeover"
+- FIXED F5 (13abb518, simulated): reload mid-install. Before: Studio showed "Restored from recovery copy" and offered Install again, though the card held the exact project. Cause: the install record is written only on the reply, and reverifyInstallation needs a record. Fix: with no record, a card that names the open project and reports its exact fingerprint is the witness. Unit test plus stress-hands cell 3h (now "Installed on card").
+- FIXED G2 (eca27506, simulated): a fresh browser holding only the starter now opens the card's project by itself on Card Home, desktop and phone, with no alerts. D4 (decided): this applies only to an untouched starter, a card with a well-formed fingerprint, and no production job; legacy cards keep "Open installed project". J02 updated. Still open: a fresh browser deep-linked straight to Patterns keeps the starter until it visits Card Home.
+- OPEN (pre-existing, red on origin/main 1df1020b too): matrix [T6] "a card holding exactly this project finishes Setup" expects "Setup complete" but gets "Installed project". Not caused by this branch.
+- Real card is now on the signed 1.2.4 release (build 2464, flashed by the firmware session).
+
+## Slow, and why (added by Adrian: "when it is slow, let's identify why... there can be a spinning wheel")
+Every row now records the time from press to the true result. Anything over 1 s gets a cause split: card reply, Studio wait, or timeout. Anything over 0.5 s must show it is working and must always end.
+| action | time | cause | after |
+|---|---|---|---|
+| pattern tap, real card | about 4 s read-back window in harness; card reply ≤116 ms | the 4 s is the harness pause, not Studio | measure exactly next |
+| reconnect after reload, real card | ≤1.5 s | not yet split | |
+| Install on card, slow reply (sim) | no busy label at 0.7 s with 3 s replies | Studio shows "Sending…" only once the write starts; the reads before it show nothing | open |
+| fresh browser on Patterns: pair | 2 presses | consent step | decided |
+- FIXED S1 (slow): Install on card on Patterns gave no feedback while three card checks ran before the write (lw-pattern.jsx savePreviewToCard: layout safety, project evidence, then card and wiring status). With 1.5 s replies that was about 3 s of an unchanged button. Now it reads "Checking card…" and is disabled (aria-busy) at once, then "Sending…", and always ends. Test: install-shows-busy-at-once.spec.ts (failed with the busy state off, passes on). The checks themselves are kept: they protect the card.
