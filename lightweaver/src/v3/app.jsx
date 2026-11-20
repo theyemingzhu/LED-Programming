@@ -1353,9 +1353,24 @@ function Shell({ offlineUpdateController = null }) {
   // The project lifecycle remembers a verified installation, including while
   // the card is offline. A different card's fresh status can contradict that
   // history even when the link rejects it as wrong-card and disconnects.
-  const projectHeaderLifecycleLabel = projectLifecycleLabel === 'Installed on card'
-    && (cardLink.reason === 'wrong-card' || (connected && cardLifecycle.exactProject !== true))
-    ? 'Not verified on this card' : projectLifecycleLabel;
+  // Right after a save the lifecycle already says installed while the card's
+  // next status read has not landed. Say it is checking for that short window,
+  // never a failure line. A wrong card is still named at once.
+  const [justInstalled, setJustInstalled] = useState(false);
+  const wasInstalledRef = useRef(projectLifecycleLabel === 'Installed on card');
+  useEffect(() => {
+    const now = projectLifecycleLabel === 'Installed on card';
+    const was = wasInstalledRef.current;
+    wasInstalledRef.current = now;
+    if (!now || was) { if (!now) setJustInstalled(false); return undefined; }
+    setJustInstalled(true);
+    const t = setTimeout(() => setJustInstalled(false), 6000);
+    return () => clearTimeout(t);
+  }, [projectLifecycleLabel]);
+  const unverifiedHere = projectLifecycleLabel === 'Installed on card'
+    && (cardLink.reason === 'wrong-card' || (connected && cardLifecycle.exactProject !== true));
+  const projectHeaderLifecycleLabel = !unverifiedHere ? projectLifecycleLabel
+    : (justInstalled && cardLink.reason !== 'wrong-card') ? 'Checking card…' : 'Not verified on this card';
   const expressionInstallationReceipt = useMemo(() => {
     const project = serializeProject();
     const installation = currentInstallation(projectLifecycle);
