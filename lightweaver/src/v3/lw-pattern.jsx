@@ -6,6 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { shouldClearRecoveryGate } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
@@ -899,13 +900,30 @@ function writeSectionDisplayOrder(projectId, ids) {
       setPreviewFailure(null);
     }, []);
 
+    // True only when the current refusal was raised while the card was NOT
+    // ready. A refusal raised while access reads 'ready' (stale authority,
+    // bridge not fresh) is about something else and must stay visible.
+    const gateRaisedWhileUnreadyRef = useRef(false);
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
+      gateRaisedWhileUnreadyRef.current = access !== 'ready';
       invalidatePendingPreview();
       setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
       setHandoffUrl('');
       setStatusKind('err');
       setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
     }, [invalidatePendingPreview]);
+
+    // A "not ready" refusal describes the card at the moment of the tap. When
+    // the card comes back by itself (a Wi-Fi blip, a restart), the refusal is
+    // no longer true, so it steps down without the owner pressing anything.
+    // 'blank' and 'project' refusals are about what the card holds and stay.
+    useEffect(() => {
+      if (!shouldClearRecoveryGate({ access: patternCardAccess, gate: patternCardGate, raisedWhileUnready: gateRaisedWhileUnreadyRef.current })) return;
+      gateRaisedWhileUnreadyRef.current = false;
+      setPatternCardGate('');
+      setStatusKind('');
+      setStatus('');
+    }, [patternCardAccess, patternCardGate]);
 
     // Was: a scrollIntoView effect keyed on patternCardGateSeq, bringing the
     // in-flow refusal notice back into view on a repeated tap because the
