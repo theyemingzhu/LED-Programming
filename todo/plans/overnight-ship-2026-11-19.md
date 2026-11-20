@@ -65,3 +65,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - Day batch (claude/day-batch-3, from 73a8ce42): 13abb518, d2f90653, 5bd8ec31, eca27506, journey-direct-preview fix, smoke-lane addition, b744ba5a, f7b31979, 9812a71a (starter-no-save-over-card stops asserting "Open installed project", which the pick-up removes; its no-save-over check kept).
 - Checks: test:unit 3154/3154; workflow tests 23/23; preflight Studio-only. Browser (fresh-browser, pattern-timeout, pattern-refusal, patterns-v3, journey-direct-preview, card-workspace, journey-continuity, j01, https-direct-reconnect, setup-card-reconstruction, setup-adopt-card-project, card-edit-handoff, starter-no-save, expression-scene-install): 224/225, the one red fixed by 9812a71a, then 4/4.
 - 08:59 Holding the merge until Tests for 73a8ce42 (#439 + another session's #440) finishes (~09:13), so my push does not cancel it.
+- 09:09 Tests for 73a8ce42 (#439 + #440): success. Deploy site + Build firmware binary: success; no signer commit on main.
+- 09:11 Live proof: studio-release.json buildNumber 2476, sourceRevision 73a8ce42 (= origin/main, count 2476). Served lw-pattern-COirljCj.js contains `raisedWhileUnready` in the gate check (60d314dd) and the clearing effect.
+- **Shipped — Studio build 2476**: Patterns "not sent" refusal clears once a dropped card is back, only when raised while unready (70f4a99b + 60d314dd, PR #439). Day ships used: 1 of 4.
+- 09:13 SHIP day 2 of 4: PR #441 merged → main a191d286 (build 2486). Batch branch gone on remote. Watching Tests 44651807326.
