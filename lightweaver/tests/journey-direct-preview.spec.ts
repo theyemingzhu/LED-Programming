@@ -23,12 +23,20 @@ import { createCardSimulator, type CardSimulator } from './harness/cardSimulator
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_HOST, MATRIX_PATTERNS } from './harness/cardStates';
 import { installHttpsStudio, installFakeCardBridge, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
+import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
+
+// Studio previews patterns in a hidden opaque sandbox frame. Init scripts run
+// in every frame, so anything touching storage or service workers must stay in
+// the top frame, or the browser throws there and the crash check fails.
+test.use({ serviceWorkers: 'allow' });
+test.beforeEach(async ({ page }) => { await blockMainFrameServiceWorkers(page); });
 
 /** A browser that already remembers this exact card — mirrors
  * card-state-matrix.spec.ts's `seedKnownCard`, duplicated here rather than
  * imported since that file exports no seeding helper. */
 async function seedKnownCard(page: Page) {
   await page.addInitScript(({ id, firmwareVersion, buildId, host }) => {
+    if (window !== window.top) return;
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
     localStorage.setItem('lw_card_host', host);
     localStorage.setItem('lw_chip_card_host', host);
