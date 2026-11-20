@@ -2,6 +2,7 @@
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { cardChangedSinceSeen } from '../lib/patternGate.js';
 import { ProjectProvider, useProject } from '../state/ProjectContext.jsx';
 import { CloudLibraryProvider, useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useCardStatus } from '../hooks/useCardStatus.js';
@@ -1629,7 +1630,10 @@ function Shell({ offlineUpdateController = null }) {
   // over the installed-controls drawer.
   const ownEditPending = (cardLifecycle.state === 'length-mismatch' || cardLifecycle.state === 'content-mismatch')
     && Boolean(projectLifecycle.installation?.cardId)
-    && projectLifecycle.installation.cardId === (cardLink.card?.id || cardLink.readiness?.cardId);
+    && projectLifecycle.installation.cardId === (cardLink.card?.id || cardLink.readiness?.cardId)
+    // Another window changed the card since this browser saved it: that is
+    // the stale-save conflict, owned by the save banner, never a footer write.
+    && !cardChangedSinceSeen(projectLifecycle.installation, cardLink.readiness);
   const openCardControl = useCallback(() => {
     // Ready → direct card controls. Length drift → length-only write.
     // Needs attention / Needs project → guided Setup. Everything else
