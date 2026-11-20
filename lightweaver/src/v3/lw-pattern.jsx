@@ -80,7 +80,7 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardProjectEvidenceWithRetry, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
@@ -2367,7 +2367,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           blockPatternCardEffect(currentPatternInstallAccess());
           return;
         }
-        const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
+        const before = await readCardProjectEvidenceWithRetry({ host: safety.host || cardHost, transport: cardLink?.transport });
         if (!matchesCurrentCardProjectEvidence(before) && !matchesSameProjectCardEvidence(before)) {
           blockPatternCardEffect('project');
           return;

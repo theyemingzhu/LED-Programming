@@ -7,6 +7,7 @@ import {
   setCardHostname,
   pushConfigToCard,
   readCardProjectEvidence,
+  readCardProjectEvidenceWithRetry,
   readCardStatusEnvelope,
   buildCardConfigHandoffUrl,
   CardPushError,
@@ -64,7 +65,7 @@ export function validateCardPushAttempt(attempt, projectLifecycle) {
 // still override it.
 async function readReadyDeploymentEvidence(host, transport = getCardLinkState().transport) {
   const [project, status] = await Promise.all([
-    readCardProjectEvidence({ host, transport }),
+    readCardProjectEvidenceWithRetry({ host, transport }),
     readCardStatusEnvelope({ host, transport }),
   ]);
   return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };

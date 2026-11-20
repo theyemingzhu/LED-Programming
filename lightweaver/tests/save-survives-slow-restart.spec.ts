@@ -21,6 +21,7 @@ test('a save survives a 14 s restart silence', async ({ page }) => {
   await page.waitForTimeout(1500);
   const fpBefore = card.state.projectFingerprint;
   card.setRestartSilence(14000);
+  const errs: string[] = []; page.on('console', m => { if (m.type() === 'error' || /restart|verif/i.test(m.text())) errs.push(m.text().slice(0, 200)); }); page.on('pageerror', e => errs.push('PAGEERR ' + e.message.slice(0, 200)));
   const posts: string[] = []; page.on('request', r => { if (r.method() === 'POST') posts.push(Date.now() % 100000 + ' ' + new URL(r.url()).pathname); });
   await save.click();
   const seen = new Set<string>();
@@ -33,7 +34,7 @@ test('a save survives a 14 s restart silence', async ({ page }) => {
     await page.waitForTimeout(200);
   }
   await test.info().attach('lines', { body: [...seen].join('\n') });
-  console.log('SEEN', JSON.stringify([...seen])); console.log('POSTS', JSON.stringify(posts));
+  console.log('SEEN', JSON.stringify([...seen])); console.log('POSTS', JSON.stringify(posts)); console.log('ERRS', JSON.stringify(errs.slice(0, 8))); console.log('BTN', await save.textContent());
   expect([...seen].filter(l => /Update rolled back|Open Card and check|did not answer|Not saved/.test(l))).toEqual([]);
   expect([...seen].some(l => /Restarting the card/.test(l))).toBe(true);
   await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Installed on card', { timeout: 15000 });

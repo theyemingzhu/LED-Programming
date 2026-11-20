@@ -1107,7 +1107,7 @@ export function createCardSimulator(
       case '/api/reboot':
         state.bootId = `${state.bootId}-r`;
         // A real card is silent for ~14 s while it restarts and rejoins Wi-Fi.
-        if (restartSilenceMs > 0) { setTimeout(() => { offline = true; setTimeout(() => { offline = false; }, restartSilenceMs); }, 50); }
+        if (restartSilenceMs > 0) { offline = true; setTimeout(() => { offline = false; }, restartSilenceMs); }
         return ok({ ok: true, message: 'rebooting' });
       case '/api/config': {
         // The firmware's actual rule (LightweaverStorage.cpp

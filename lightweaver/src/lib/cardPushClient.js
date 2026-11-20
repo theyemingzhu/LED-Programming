@@ -384,6 +384,17 @@ export async function readCardProjectEvidence({ host, timeoutMs = 3000, transpor
   return normalizeCardProjectEvidence(result);
 }
 
+// The pre-save read. A real card on busy Wi-Fi can miss one 3 s read; try
+// twice more, 3 s apart, before the save reports that the card did not answer.
+export async function readCardProjectEvidenceWithRetry(options = {}, { tries = 3, gapMs = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    if (attempt > 0) await sleep(gapMs);
+    try { return await readCardProjectEvidence(options); } catch (error) { lastError = error; }
+  }
+  throw lastError;
+}
+
 // Count preparation needs the full live firmware-info envelope, including
 // controls and output colour fields that project-identity normalization omits.
 export async function readCardFirmwareInfoEnvelope({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
