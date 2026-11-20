@@ -5,9 +5,9 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 ## Summary (final, 06:45)
 
-**Live (2 fixes, 1 of 4 ships):** Studio build 2471 (PR #438): Card Home no longer calls an untouched starter "a draft that differs", and no longer offers to save that empty starter over a working card.
+**Live:** Studio build 2501. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501). One revert (#441 → #443), corrected and re-shipped as #444.
 **Rejected:** 70f4a99b (Patterns refusal clears on reconnect) — also wiped refusals raised while the card was ready, so an unsent tap showed nothing.
-**Needs Adrian:** 70f4a99b + 60d314dd together are now correct (reviewed) but held because 70f4a99b was rejected tonight; ship them as one change if you agree. The replacement durability run (v3) never pushed a branch, so anything it fixed is not on GitHub.
+**Needs Adrian:** nothing blocking. Open (with the durability run): a fresh browser opened straight on Patterns keeps the starter until Card Home is visited (safe: its Install is disabled and writes nothing).
 
 ## Log
 
@@ -78,3 +78,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 09:58 Main 6b552778 (revert + #442): Tests, Deploy site, Build firmware: success.
 - 10:00 SHIP day 3 of 4: PR #444 merged → main 25e3a147 (build 2501). Branch gone on remote. Watching Tests.
 - 10:05 Two-browser recorder re-run on main 25e3a147, own checkout (overnight-ship-rec): 21 cells + three-contexts. Zero alarms in every cell; B's and A's taps all reach the card; A shows B's change within 10 s; no stale writes (each A tap = 1 write). Only gap: B deep-linked to #screen=pattern keeps the starter ("Untitled Project · New project · Draft kept separately"), "Install on card" disabled. Probed: pressing it writes nothing. So it is safe, but it is the known open G2. Fix needs the pick-up lifted out of SetupScreen. Sent to the durability run (owner of this area) with a suggested shape; will ship when it lands on v2.
+- 10:10 Tests for 25e3a147 (#444): success. Build firmware binary: success (no signer commit). Deploy site: success.
+- 10:16 Live proof: studio-release.json buildNumber 2501, sourceRevision 25e3a147 (= origin/main, count 2501). Served code contains `witnessedByCard:!0` and the `witnessedByCard!==!0` check (13abb518 + e9269158), `new Set(["timeout","card-restarted","not-ready"]),oc=3e4` (5bd8ec31 + b744ba5a), and `starterPending)===!0&&…==="New project"` in lw-card (eca27506 + f7b31979).
+- **Shipped — Studio build 2501**: reload-safe install recognition (second tab no longer rewrites), fresh browser picks up the card's project on Card Home (never over owner work), timed-out tap resent once within 30 s (never after a 409), journey-direct-preview fixed and in the PR smoke lane, stress recorders. Day ships used: 3 of 4. Real failures today: 1 of 2.
+- 10:16 A guard held `rm -rf` on a scratch download folder of my own; nothing deleted, not retried. The folder stays in $TMPDIR.
