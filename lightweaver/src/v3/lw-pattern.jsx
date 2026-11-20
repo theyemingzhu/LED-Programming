@@ -3766,7 +3766,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                   <div className="pattern-gate-inline lw-field" data-testid="stale-card-conflict" role="status">
                     <p className="pattern-gate-inline-title">This card was changed from another window.</p>
                     <div className="lw-setup-banner-actions">
-                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); void openCardProject(); }}>Open the card&rsquo;s version</button>
+                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); void openCardProject({ keepCopy: true }); }}>Open the card&rsquo;s version</button>
                       <button type="button" className="btn" onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); savePreviewToCard(); }}>Save mine anyway</button>
                     </div>
                   </div>

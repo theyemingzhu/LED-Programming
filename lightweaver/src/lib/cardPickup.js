@@ -75,5 +75,17 @@ export function projectFromCardParts(currentProject, parts, status = null) {
       ...(currentProject?.devices || {}),
       standaloneController: controllerFromCardParts(currentProject, parts),
     },
+    // What the card is playing, not this window's last pick. Without this a
+    // window that opens the card's version keeps showing its own look.
+    ...(status?.currentPatternId && status.currentPatternId !== 'blackout' ? {
+      pattern: patternFromCard(currentProject?.pattern, status.currentPatternId),
+    } : {}),
   };
+}
+
+function patternFromCard(previous = {}, patternId) {
+  if (previous?.activePatternId === patternId) return previous;
+  // The palette belonged to the previous pick; the pattern's own default applies.
+  const { palette, ...rest } = previous || {};
+  return { ...rest, activePatternId: patternId };
 }

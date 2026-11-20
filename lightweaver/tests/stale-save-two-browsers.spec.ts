@@ -71,12 +71,14 @@ test('"Open the card\'s version" opens the card project in the older window, in 
   const conflict = a.getByTestId('stale-card-conflict');
   await expect(conflict).toBeVisible({ timeout: 20000 });
   await conflict.getByRole('button', { name: /Open the card.s version/ }).click();
-  // A now holds the card's project: its next save finds nothing changed elsewhere.
-  await expect.poll(() => a.evaluate(async () => {
-    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
-    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
-    return project?.devices?.standaloneController?.looks?.map?.(l => l.patternId).join(',') || cardProjectFingerprint(project);
-  }), { timeout: 20000 }).not.toBe('');
+  // A now holds the card's project (B's look), not its own pick.
+  const looksIn = (text: string) => ({ ocean: /"ocean"/.test(text), rainbow: /"rainbow"/.test(text) });
+  await expect.poll(async () => looksIn(await a.evaluate(() => localStorage.getItem('lw_autosave_v3') || '')), { timeout: 20000 })
+    .toEqual({ ocean: true, rainbow: false });
+  // A's own copy (with its rainbow pick) survives as a saved project.
+  const saved = await a.evaluate(() => localStorage.getItem('lw_project_library_v1') || '');
+  await test.info().attach('saved-projects', { contentType: 'application/json', body: saved || '[]' });
+  expect(saved, "A's own work was lost when it opened the card's version").toMatch(/"rainbow"/);
   expect(card.state.projectFingerprint).toBe(afterB);
   await expect(conflict).toHaveCount(0);
   await a.getByTestId('pattern-install-on-card').click();

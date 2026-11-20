@@ -798,7 +798,7 @@ export function CardPushControl({
         <div className="la-card-push-banner is-pending" data-testid="stale-card-conflict" role="status">
           This card was changed from another window.
           <div className="lw-setup-banner-actions">
-            <button type="button" className="btn primary" title="Open the project now on the card. Your copy here is kept as a saved project." data-tooltip="Open the project now on the card. Your copy here is kept as a saved project." onClick={() => { setStaleCardConflict(false); void openCardProject(); }}>Open the card&rsquo;s version</button>
+            <button type="button" className="btn primary" title="Open the project now on the card. Your copy here is kept as a saved project." data-tooltip="Open the project now on the card. Your copy here is kept as a saved project." onClick={() => { setStaleCardConflict(false); void openCardProject({ keepCopy: true }); }}>Open the card&rsquo;s version</button>
             <button type="button" className="btn" title="Replace the card's project with the one open here." data-tooltip="Replace the card's project with the one open here." onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); void pushToCard(); }}>Save mine anyway</button>
           </div>
         </div>

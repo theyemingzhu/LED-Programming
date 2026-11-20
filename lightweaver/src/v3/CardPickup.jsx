@@ -13,12 +13,30 @@ import { useCardActions } from './CardActionsProvider.jsx';
 import { getCardLinkState } from '../lib/cardLink.js';
 import { cardPickupKey, projectFromCardParts } from '../lib/cardPickup.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
+import { createProjectLibraryRecord, saveProjectLibraryRecord } from '../lib/projectStorage.js';
+import { createProjectId } from '../lib/projectModel.js';
 
 export function useOpenCardProject() {
   const { serializeProject, replaceProject, markProjectInstalled } = useProject();
   const cardActions = useCardActions();
-  return useCallback(async ({ report = () => {} } = {}) => {
+  return useCallback(async ({ report = () => {}, keepCopy = false } = {}) => {
     if (!cardActions?.adoptCardProject) return { ok: false, reason: 'unavailable' };
+    if (keepCopy) {
+      // This window's work shares the card project's id, so the save barrier
+      // alone would store it under the record the card's version replaces.
+      // Keep it as its own saved project before anything is replaced.
+      try {
+        const mine = serializeProject();
+        saveProjectLibraryRecord(createProjectLibraryRecord({
+          ...mine,
+          id: createProjectId(),
+          name: `Copy of ${String(mine?.name || 'Untitled Project').trim() || 'Untitled Project'}`,
+        }));
+      } catch (error) {
+        report({ status: 'error', message: 'Studio could not keep a copy of this window\'s project, so nothing was replaced.' });
+        return { ok: false, reason: 'copy-failed', error };
+      }
+    }
     const applyCardParts = async (parts, status = null) => {
       if (!Array.isArray(parts?.strips) || !parts.strips.length) return { ok: false, reason: 'no-strips' };
       const readiness = getCardLinkState()?.readiness || {};

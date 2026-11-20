@@ -25,3 +25,10 @@ test('the rebuilt project takes the card id and its strips, and is no longer a s
   assert.equal(p.layout.starterPending, false);
   assert.equal(p.devices.standaloneController.led.pixels, 41);
 });
+
+test("the rebuilt project shows what the card plays, not this window's last pick", () => {
+  const mine = { id: 'art', layout: { starterPending: false }, pattern: { activePatternId: 'rainbow', palette: ['#f00'] } };
+  const p = projectFromCardParts(mine, { strips: [{ id: 's', pixels: 41, pin: 18 }] }, { projectId: 'art', currentPatternId: 'ocean' });
+  assert.equal(p.pattern.activePatternId, 'ocean');
+  assert.equal(p.pattern.palette, undefined);
+});
