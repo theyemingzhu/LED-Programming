@@ -5,9 +5,9 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 ## Summary (final, 06:45)
 
-**Live:** Studio build 2501. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501). One revert (#441 → #443), corrected and re-shipped as #444.
+**Live:** Studio build 2515. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501); second-browser takeover: pick-up on any screen, stale-save guard with "Copy of", highlight follows the card, "Save to card" wording (2515). One revert (#441 → #443), corrected and re-shipped as #444.
 **Rejected:** nothing outright. 70f4a99b was rejected overnight (it wiped refusals from a connected card) and shipped in the morning only together with its correction 60d314dd, on the coordinator's decision. Corrected before shipping: 5bd8ec31 (no resend after a 409, 30 s limit), eca27506 (never replaces owner work), 13abb518 (a second tab no longer rewrites the card).
-**Needs Adrian:** nothing blocking. Open (with the durability run): a fresh browser opened straight on Patterns keeps the starter until Card Home is visited (safe: its Install is disabled and writes nothing).
+**Needs Adrian:** nothing blocking. Follow-ups, all red before tonight and outside CI lanes: layout-led-count-save + pattern-lab-targets (9 of 10 fail since at least 1ecb9ab1), patterns-playlist-compact:154 ("Preview sent to card" is not a shared send-status label), matrix T1/T6.
 
 ## Log
 
@@ -101,3 +101,6 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 11:43 Final batch checks: unit 3161/3161, workflow 23/23, full ci:browser-smoke all pass; 20 related specs 272/273. The red `patterns-playlist-compact.spec.ts:154` ("Preview sent to card" is not a shared send-status label) fails 2/2 on the batch and also on origin/main 25e3a147 (measured once; repeat runs killed from outside with exit 144) → already red, not a CI lane. → Needs Adrian (follow-up).
 - 11:46 Adrian: "ship it when green". SHIP day 4 of 4: PR #445 merged → main 6e1cc2a4 (build 2515). Branch gone on remote. Watching Tests 44669822488. Day budget now used.
 - Note: twice today my local test runs were stopped from outside (exit 144), probably another session clearing stray test servers.
+- 12:04 Tests for 6e1cc2a4 (#445): success. Deploy site: success. Build firmware binary: success, no signer commit.
+- 12:12 Live proof: studio-release.json buildNumber 2515, sourceRevision 6e1cc2a4 (= origin/main, count 2515). Served code contains "This card was changed from another window.", "card-changed-elsewhere" (shared preflight, 3d35d196), "Copy of " (237c9090), "Checking card…" (fcca7132), "Save to card to send yours" (00e4dc62), "Open the card’s version", and "Lightweaver card pick-up did not complete" in main (CardPickup, cbc85951).
+- **Shipped — Studio build 2515**: second-browser takeover — pick-up of the card's project on any screen; an older window cannot overwrite another window's save (Patterns, Card Home, Layout) and "Open the card's version" keeps this window's work as a copy; the highlight follows what the card plays; Save button busy from the first press; "Save to card" wording. Day ships used: 4 of 4. Real failures today: 1 of 2.
