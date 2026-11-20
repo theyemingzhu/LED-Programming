@@ -29,3 +29,6 @@ All 16 requests answered. Timing within tolerance except `/api/zones` (card 40 m
 - Studio keeps only the hostname of a card address (`cardIdentity.js` normalizeHost); keeping the port would let a normal tab use `?cardHost=127.0.0.1:7101`. lightweaver-app agent's call.
 - Make `LW_PRACTICE_TIMING=real` apply to direct `createCardSimulator` callers permanently (the D10 hook), after false-failures merges.
 - Bridge lane under Real-timing: `createPracticeCard` times the bridge relay, the D10 hook does not.
+
+## False-failures options (reported 2026-11-21, branch claude/false-failures @ 742ee685, not merged)
+setRestartSilence(ms) / restartAfterSaveMs, silenceFor(ms), answerAfter(path, ms, times), isRestarting(), setReplyDelay(ms), card.relayBridge. Plan once it is on main: the `real` profile drives these (restartAfterSaveMs = REAL_PROFILE.restartSilenceMs, spontaneous silences via silenceFor, per-path latency via answerAfter) instead of the route layer duplicating them; `createPracticeCard` times the bridge through relayBridge. Until then the layer stays as built, so this branch does not depend on an unmerged one.
