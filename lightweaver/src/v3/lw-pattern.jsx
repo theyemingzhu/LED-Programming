@@ -3225,7 +3225,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                     : 'Install the current look on the card'}
                   onClick={savePreviewToCard}
                   disabled={handoffInvalid || editingProjectOnly || !installGate.allowed}
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Try saving again' : 'Save to card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner

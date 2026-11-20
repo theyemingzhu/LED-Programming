@@ -1295,7 +1295,7 @@ test('a rejected Install preserves canonical Studio state and the current draft'
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await page.getByTitle('Install the current look on the card').click();
 
-  await expect(page.getByTitle('Install the current look on the card')).toHaveText(/Retry install/);
+  await expect(page.getByTitle('Install the current look on the card')).toHaveText(/Try saving again/);
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Plasma');
   await page.waitForTimeout(650);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
@@ -1397,7 +1397,7 @@ test('a duplicate encoder press is resolved before Patterns renders', async ({ p
 
   await expect(page.locator('.pm')).toBeVisible();
   await expect(page.getByTestId('hardware-configuration-warning')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Card tools' })).toBeEnabled();
 });
 
@@ -1653,7 +1653,7 @@ test('blank and checking Pattern tools cannot acquire a card page or mutate hard
     knownGoodProject: false, commandReady: false,
   });
 
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeDisabled();
 
   await page.getByRole('button', { name: 'Open card page' }).click();
   // U2-build item 5: "Repair LED" is gone from Card tools — Recover lights
@@ -1679,7 +1679,7 @@ test('checking evidence keeps a pattern tap local with no late card-page acquisi
     }) as typeof window.open;
   });
   await gotoFreshPatterns(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeDisabled();
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.waitForTimeout(250);
   expect(await page.evaluate(() => (window as any).__checkingOpenCalls)).toHaveLength(0);
@@ -1874,7 +1874,7 @@ test('production bridge transport does not replay queued selections across bridg
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
   await expect(page.getByTestId('card-link-status')).toContainText('Connected');
 
   await page.evaluate(async () => {
@@ -2006,7 +2006,7 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
       },
     });
   });
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeDisabled();
   await page.evaluate(() => {
     const popup = (window as any).__identityBridgePopup;
     const held = (window as any).__heldFirmwareInfo;
@@ -2053,7 +2053,7 @@ test('an always-on pattern tap sends once after bridge readiness without replayi
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.evaluate(() => {
@@ -2092,7 +2092,7 @@ test('leaving Patterns invalidates a pending bridge selection', async ({ page })
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
   await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
@@ -2167,7 +2167,7 @@ test('an older card bridge points to the single Flash recovery action', async ({
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
   await useReadyBridgeTransport(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.evaluate(() => {
@@ -2244,7 +2244,7 @@ test('a legacy bridge lifecycle change blocks the next pattern before sending it
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
   await expect(page.getByTestId('card-link-status')).toContainText('Connected');
 
   await page.evaluate(async () => {

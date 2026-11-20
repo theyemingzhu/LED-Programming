@@ -11,7 +11,7 @@ async function openOneStrip(page: any) {
 test('Layout chrome uses compact UI type and keeps explanations out of the working surface', async ({ page }) => {
   await openOneStrip(page);
 
-  await expect(page.getByTestId('layout-check-and-install')).toHaveText('Install on card');
+  await expect(page.getByTestId('layout-check-and-install')).toHaveText('Save to card');
   await expect(page.locator('.la-strip-caption')).toHaveCount(0);
 
   const digitWidths = await page.getByRole('spinbutton', { name: 'Line LED count', exact: true }).evaluate(element => {

@@ -206,7 +206,7 @@ test('Patterns Install on card preserves exact capacity feedback', async ({ page
   await gotoSavedProject(page, project, 'patterns');
   await bindCardToOpenProject();
 
-  await page.getByRole('button', { name: 'Install on card', exact: true }).click();
+  await page.getByRole('button', { name: 'Save to card', exact: true }).click();
   await expect(page.getByText(
     /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
   )).toBeVisible();
