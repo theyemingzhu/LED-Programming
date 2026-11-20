@@ -107,6 +107,8 @@ export type CardSimulator = {
   reboot(): void;
   /** Stop answering entirely — a Wi-Fi drop, a pulled plug, a sleeping router. */
   goOffline(): void;
+  /** Stay unreachable this long after /api/reboot, as a real card does. */
+  setRestartSilence(ms: number): void;
   /** Answer again. Pass a new host to model the card returning on a new address. */
   goOnline(): void;
   /**
@@ -672,6 +674,7 @@ export function createCardSimulator(
   const frames: string[][] = [];
   let dropped = 0;
   let offline = false;
+  let restartSilenceMs = 0;
   let stressDelayMs = 0;
   const truncations = new Map<string, number>();
   let cutAfterReply = false;
@@ -1103,6 +1106,8 @@ export function createCardSimulator(
       }
       case '/api/reboot':
         state.bootId = `${state.bootId}-r`;
+        // A real card is silent for ~14 s while it restarts and rejoins Wi-Fi.
+        if (restartSilenceMs > 0) { setTimeout(() => { offline = true; setTimeout(() => { offline = false; }, restartSilenceMs); }, 50); }
         return ok({ ok: true, message: 'rebooting' });
       case '/api/config': {
         // The firmware's actual rule (LightweaverStorage.cpp
@@ -1166,7 +1171,8 @@ export function createCardSimulator(
           dropRepliesAfterApply.set('/api/config', (dropRepliesAfterApply.get('/api/config') || 0) + 1);
         }
 
-        return ok({ ok: true, message: 'applied', requiresReboot: pixelCountChanged });
+        // A card with restart silence set also asks for the restart, as the real card did for a plain project save.
+        return ok({ ok: true, message: 'applied', requiresReboot: pixelCountChanged || restartSilenceMs > 0 });
       }
       case '/api/beacon/port': {
         // Field-for-field against LightweaverWeb.cpp's factory beacon probe
@@ -1337,6 +1343,7 @@ export function createCardSimulator(
     truncateNext(path, times = 1) { truncations.set(path, times); },
     cutAfterNextReply() { cutAfterReply = true; },
     goOffline() { offline = true; },
+    setRestartSilence(ms: number) { restartSilenceMs = ms; },
     goOnline() { offline = false; },
     outOfBandBlackout(on) {
       state.stateRevision += 1;

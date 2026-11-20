@@ -2303,6 +2303,8 @@ function writeSectionDisplayOrder(projectId, ids) {
     // (layout safety, project evidence, card and wiring status) are three card
     // reads, and on a slow card the button sat unchanged for seconds.
     const [installPreparing, setInstallPreparing] = useState(false);
+    // A save that restarts the card leaves it silent ~14 s on real Wi-Fi.
+    const [cardRestarting, setCardRestarting] = useState(false);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
@@ -2313,7 +2315,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (staleCardConflict) setStaleCardConflict(false);
       setInstallPreparing(true);
       // The owner's "Save mine anyway" covers exactly one attempt, however it ends.
-      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); saveAnywayRef.current = false; }
+      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); setCardRestarting(false); saveAnywayRef.current = false; }
     };
     const savePreviewToCardRun = async () => {
       if (editingProjectOnly) {
@@ -2420,9 +2422,14 @@ function writeSectionDisplayOrder(projectId, ids) {
           window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
           return;
         }
+        // After a planned restart, wait up to 45 s for the new boot to report
+        // the saved project before judging the save.
+        if (response?.rebooting) setCardRestarting(true);
         const verification = await waitForCardDeploymentVerification(exactPrepared, {
           readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          ...(response?.rebooting ? { attempts: 45, intervalMs: 1000 } : {}),
         });
+        setCardRestarting(false);
         dispatchCardSave({ type: 'confirm' });
         const commitBoard = JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
           && JSON.stringify(latestBoardRef.current) !== JSON.stringify(nextBoard);
@@ -3274,9 +3281,9 @@ function writeSectionDisplayOrder(projectId, ids) {
                     : 'Install the current look on the card'}
                   onClick={savePreviewToCard}
                   disabled={handoffInvalid || editingProjectOnly || !installGate.allowed || installPreparing}
-                  aria-busy={installPreparing || cardSave.status === 'pending' ? 'true' : undefined}
+                  aria-busy={installPreparing || cardRestarting || cardSave.status === 'pending' ? 'true' : undefined}
                   data-testid="pattern-install-on-card"
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Save to card'}</button>
+                >{cardRestarting ? <span className="lw-notice-spinner" aria-hidden="true" /> : I.bolt}{editingProjectOnly ? 'Studio only' : cardRestarting ? 'Restarting the card…' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Save to card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner
