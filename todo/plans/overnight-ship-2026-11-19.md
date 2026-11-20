@@ -6,7 +6,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 ## Summary (final, 06:45)
 
 **Live:** Studio build 2501. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501). One revert (#441 → #443), corrected and re-shipped as #444.
-**Rejected:** 70f4a99b (Patterns refusal clears on reconnect) — also wiped refusals raised while the card was ready, so an unsent tap showed nothing.
+**Rejected:** nothing outright. 70f4a99b was rejected overnight (it wiped refusals from a connected card) and shipped in the morning only together with its correction 60d314dd, on the coordinator's decision. Corrected before shipping: 5bd8ec31 (no resend after a 409, 30 s limit), eca27506 (never replaces owner work), 13abb518 (a second tab no longer rewrites the card).
 **Needs Adrian:** nothing blocking. Open (with the durability run): a fresh browser opened straight on Patterns keeps the starter until Card Home is visited (safe: its Install is disabled and writes nothing).
 
 ## Log
