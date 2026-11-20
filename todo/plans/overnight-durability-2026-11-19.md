@@ -127,3 +127,7 @@ No firmware fix is pending yet, so nothing has been flashed.
 - ALREADY BROKEN before my changes (checked with my changes removed): multiple-output-journey (no "The lights look correct" button) and 5 studio-hardening Pattern tests.
 - Decided: the colour question and the power note are page content, not notices. Reason: an answer the owner must give cannot be closable, and a note read once must not cover the next button.
 - Needs Adrian (proposal, not done): first setup still needs separate saves for the light test and the project. Fewer saves would mean merging "Test and save" into the final save, which reorders steps.
+- RED ON MAIN (checked in a clean origin/main worktree): multiple-output-journey and 5 studio-hardening tests. None run on pull requests, so nobody saw them.
+  - FIXED 720795a8: a 5xx reply to Save to card showed the owner raw text `card returned 503: {"ok":false}`. Now "The card could not confirm the save (code 503)…". studio-hardening :514 passes.
+  - OPEN :533 "Pattern confirms the exact draft revision": pressing Save to card after picking Ocean sends only /api/control and no /api/config, yet the browser records an installation. Either the test is stale or Save does not save. Not settled in my 20-minute limit.
+  - OPEN :570, :608, :863 and multiple-output-journey (no "The lights look correct" button): not looked at.
