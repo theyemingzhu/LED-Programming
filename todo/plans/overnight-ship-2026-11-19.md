@@ -129,3 +129,4 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 ## 2026-11-21
 - 05:41 Adrian: "ship the last batch now". Main unchanged (13837174); batch branch unchanged since the pre-check (1ca14c28: ci:source-build 0, unit 3163, ci:browser-smoke all pass). Pushed as claude/day-batch-9 → PR #448 merged → main 41ddea53 (build 2554). Branch gone on remote. Watching Tests.
+- 06:00 New on v3-on-447 after #448 was cut: studio-hardening's three stale tests fixed (31/31, 62/62 repeat, author) and studio-hardening added to ci:browser-smoke ahead of strip-discovery. Not in #448; queued for the next ship, to be reviewed then.
