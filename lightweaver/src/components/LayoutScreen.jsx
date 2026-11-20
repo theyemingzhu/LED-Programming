@@ -597,7 +597,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               data-tooltip="Check the lights and install this project on the connected card."
               onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
             >
-              Install on card
+              Save to card
             </button>
             {layoutChangeKind && (
               <details className="la-change-help" data-testid="layout-change-help">

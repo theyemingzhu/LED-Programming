@@ -1542,7 +1542,7 @@ test('Hardware loads the verified production project that matches the paired car
     projectFingerprint: job.project.fingerprint,
   });
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
-  await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
   const savedProjects = await page.evaluate(() => {
     const envelope = JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}');
     return envelope.records?.map(record => record.project) || [];
