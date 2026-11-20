@@ -98,7 +98,7 @@ function readProject(page: Page) {
 // [J06] — a lost /api/config reply after a real write, and an edit made while
 // the install is still settling.
 //
-// src/v3/lw-pattern.jsx's "Install on card" control carries no data-testid —
+// src/v3/lw-pattern.jsx's "Save to card" control carries no data-testid —
 // title="Install the current look on the card" is the only stable locator,
 // and every existing spec that drives it (tests/patterns-v3.spec.ts,
 // tests/studio-hardening.spec.ts) already locates it the same way.

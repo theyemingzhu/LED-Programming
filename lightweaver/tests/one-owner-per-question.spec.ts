@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 // Card Home is the install. Hardware fold keeps recovery and calibration —
 // card address and the strip colour check (the order itself is set on Card
 // Home's Color order row). It must not offer a second
-// "Install on card" primary. Deleting that row used to be withdrawn; this
+// "Save to card" primary. Deleting that row used to be withdrawn; this
 // plan deletes it because Home now *is* that install.
 
 const HARDWARE_ROUTE = '/#screen=card&section=settings';
@@ -20,12 +20,12 @@ async function openHardware(page: Page) {
   await expect(page.getByTestId('card-address-summary')).toBeVisible({ timeout: 20_000 });
 }
 
-test('Hardware fold has no primary Install on card row', async ({ page }) => {
+test('Hardware fold has no primary Save to card row', async ({ page }) => {
   await openHardware(page);
 
   const fold = page.getByTestId('card-hardware-fold');
-  await expect(fold.locator('.set-row', { hasText: 'Install on card' })).toHaveCount(0);
-  await expect(fold.getByRole('button', { name: 'Install on card', exact: true })).toHaveCount(0);
+  await expect(fold.locator('.set-row', { hasText: 'Save to card' })).toHaveCount(0);
+  await expect(fold.getByRole('button', { name: 'Save to card', exact: true })).toHaveCount(0);
   await expect(fold.getByRole('button', { name: 'Open card installer' })).toHaveCount(0);
   await expect(fold.getByRole('button', { name: 'Flash chip' })).toHaveCount(0);
   await expect(fold.getByRole('button', { name: 'Installer guide' })).toHaveCount(0);

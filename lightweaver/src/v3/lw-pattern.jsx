@@ -3240,7 +3240,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                   disabled={handoffInvalid || editingProjectOnly || !installGate.allowed || installPreparing}
                   aria-busy={installPreparing || cardSave.status === 'pending' ? 'true' : undefined}
                   data-testid="pattern-install-on-card"
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Save to card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner

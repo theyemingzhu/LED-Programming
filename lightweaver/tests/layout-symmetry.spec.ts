@@ -102,7 +102,7 @@ test('two sides in one click from the offer, drawn and listed by side, and Undo 
   await expect(offer).toContainText('This piece has two matching sides.');
   await expect(offer).toContainText('the right side plays whatever the left side plays');
   await expect(offer).toContainText('Centre ring keeps its own pattern.');
-  // Mirroring stays secondary so Install on card remains the sole filled primary.
+  // Mirroring stays secondary so Save to card remains the sole filled primary.
   await expect(offer.getByTestId('symmetry-offer-mirror')).not.toHaveClass(/primary/);
   const install = page.getByTestId('layout-check-and-install');
   await expect(install).toHaveClass(/primary/);

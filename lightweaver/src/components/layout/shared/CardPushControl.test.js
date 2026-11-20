@@ -84,7 +84,7 @@ test('verified reboot readback remains installed when Studio changes, and Retry 
 
   const retryDeps = {
     ...deps,
-    actionLabel: 'Install on card',
+    actionLabel: 'Save to card',
     pushToCard: async () => { postCount += 1; },
     readReadyDeploymentEvidence: readEvidence,
     waitForCardDeploymentVerification,
@@ -114,5 +114,5 @@ test('verified reboot readback remains installed when Studio changes, and Retry 
   failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true, cardVerified: false };
   await offlineRetry();
   assert.equal(postCount, 1);
-  assert.match(statuses.at(-1), /use Install on card to start a new send/);
+  assert.match(statuses.at(-1), /use Save to card to start a new send/);
 });

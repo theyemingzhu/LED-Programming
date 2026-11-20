@@ -709,7 +709,7 @@ export function SetupScreen({
       await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
       if (!cardTakesCount) {
         setLedCountDraft('');
-        setLedCountState({ busy: false, message: `${pixels} lights set in the project. Install on card to apply it.` });
+        setLedCountState({ busy: false, message: `${pixels} lights set in the project. Save to card to apply it.` });
         setRecheckTick(tick => tick + 1);
         return;
       }
@@ -1128,7 +1128,7 @@ export function SetupScreen({
           // a paragraph describing an install that had already happened.
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Install and open Patterns</button>
+            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
           </>
         ) : null}
       </div>
