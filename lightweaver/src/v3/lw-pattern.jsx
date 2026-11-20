@@ -1253,8 +1253,23 @@ function writeSectionDisplayOrder(projectId, ids) {
     // playlist) changes what the card plays, this window's highlight follows
     // the card, unless the owner is mid-edit here.
     const cardPlayingId = connected ? String(cardLink?.readiness?.currentPatternId || '') : '';
-    const followCard = !selectedTargetHasDraft && cardPlayingId && cardPlayingId !== 'blackout'
-      && (REAL_PATTERN_BY_ID.has(cardPlayingId) || customPatternById.has(cardPlayingId));
+    const knownCardPattern = Boolean(cardPlayingId && cardPlayingId !== 'blackout'
+      && (REAL_PATTERN_BY_ID.has(cardPlayingId) || customPatternById.has(cardPlayingId)));
+    // The card moved to something this window did not send (another window,
+    // the playlist). Until the owner picks again here, show the card's choice
+    // and drop the "Preview sent to card" claim, which is no longer true.
+    const [cardMovedTo, setCardMovedTo] = useState('');
+    const lastCardPlayingRef = useRef(cardPlayingId);
+    useEffect(() => {
+      const previous = lastCardPlayingRef.current;
+      lastCardPlayingRef.current = cardPlayingId;
+      if (!knownCardPattern || !previous || previous === cardPlayingId) return;
+      if (cardPlayingId === look.patternId) { setCardMovedTo(''); return; }
+      setCardMovedTo(cardPlayingId);
+      dispatchPreviewAction({ type: 'reset' });
+    }, [cardPlayingId]);
+    useEffect(() => { setCardMovedTo(''); }, [look.patternId]);
+    const followCard = knownCardPattern && (!selectedTargetHasDraft || cardMovedTo === cardPlayingId);
     const selId = followCard ? cardPlayingId : selectedTargetHasDraft
       ? look.patternId
       : savedLooks.some(savedLook => savedLook.id === activeLookId)

@@ -147,3 +147,17 @@ Every row now records the time from press to the true result. Anything over 1 s 
 - MAIN IS RED (measured on a clean origin/main 25e3a147 worktree): matrix T1 has 11 failures, and layout-led-count-save plus pattern-lab-targets have 10. The same set fails on this branch with the pick-up switched off, so it is not from this branch. Told the shipper.
 - FIXED G5, stale save (simulated): browser A opened the card's project, browser B saved a newer look, then A pressed Save to card. Before: A silently overwrote B's save. Steps: A and B both on Patterns; B taps Ocean and saves; A taps Rainbow and saves; the card holds A's version. Now: A compares the card's fingerprint with the one it last saw (lib/patternGate.js cardChangedSinceSeen) and stops with "This card was changed from another window." plus "Open the card's version" / "Save mine anyway". Nothing is written until the owner chooses. Test: stale-save-two-browsers.spec.ts (overwrote silently before, passes now).
 - FIXED G6 (simulated): after window B tapped Aurora, window A highlighted no tile at all, though the card played Aurora. This is likely the same cause as the earlier "no highlight after reload". Cause: lw-pattern.jsx selId comes only from this window's own look and active look, never from the card. Fix: when connected and this window has no draft in progress, the highlight follows the card's currentPatternId. Test: two-windows-follow-card.spec.ts (empty before, Aurora within one poll now). Decided: taps from two windows stay last-tap-wins.
+- FIXED G7 (real card and simulator): once window A had tapped anything, it stopped following the card. After B switched the card to Twinkle, A still showed Sparkle and "Preview sent to card", which was false. Fix: when the card moves to something this window did not send, A's highlight follows it and the stale preview claim is reset until the owner taps again here. Test: two-windows-follow-card.spec.ts case 2 (failed with the fix off). Real card, two contexts: desktop 4 of 4 and phone 4 of 4 taps followed by the other window, 0 alarms, 0 blocked, same boot, heap 44.6k. The card was left playing Fire, its baseline look.
+
+## Second-browser table (finished 2026-11-20)
+| setup point | B picks up the card? | A stays calm? | stale save safe? | presses for B | seconds to ready | where |
+|---|---|---|---|---|---|---|
+| connected, installed project | pass (eca27506, cbc85951) | pass | fixed (68658d1c) | 1 at Home, 2 on Patterns (pair) | ~2–3 real / <1 sim | sim + real |
+| look playing | pass | pass, A follows the card (d5c85503, this commit) | fixed | 0 with remembered card | 1.9–2.9 s real | sim + real (desktop and 390) |
+| mid-playlist | pass | pass | fixed | same | — | sim |
+| wiring change open | pass | pass | not tested | same | — | sim |
+| temporary setup / lights counted | nothing to pick up; B shows the true step | pass | n/a | 1 / 2 | — | sim |
+| blank card | nothing to pick up | pass | n/a | 1 / 2 | — | sim |
+| mid-save (reload) | pass, the save is recognised (13abb518) | pass | — | 0 | 0.5 s sim | sim |
+| three windows | pass | pass, last tap wins (decided) | fixed | 2 each | — | sim |
+Not done on the real card: the stale-save write itself (it writes the card twice); simulated only. Output-picked and wiring-confirmed points: simulator only.
