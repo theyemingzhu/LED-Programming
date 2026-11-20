@@ -1,0 +1,79 @@
+// The card is where browsers meet, on every screen. Card Home runs its own
+// pick-up (lw-setup.jsx); this covers a fresh browser that opens straight onto
+// any other screen, such as a #screen=pattern link. Same guard, same
+// adoption machine, once per card boot. It renders nothing.
+//
+// useOpenCardProject is the same adoption, run on the owner's request:
+// "Open the card's version" after another window changed the card. The
+// adoption machine saves this window's own work first (the project-switch
+// save barrier), so nothing open here is lost.
+import { useCallback, useEffect, useRef } from 'react';
+import { useProject } from '../state/ProjectContext.jsx';
+import { useCardActions } from './CardActionsProvider.jsx';
+import { getCardLinkState } from '../lib/cardLink.js';
+import { cardPickupKey, projectFromCardParts } from '../lib/cardPickup.js';
+import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
+import { createProjectLibraryRecord, saveProjectLibraryRecord } from '../lib/projectStorage.js';
+import { createProjectId } from '../lib/projectModel.js';
+
+export function useOpenCardProject() {
+  const { serializeProject, replaceProject, markProjectInstalled } = useProject();
+  const cardActions = useCardActions();
+  return useCallback(async ({ report = () => {}, keepCopy = false } = {}) => {
+    if (!cardActions?.adoptCardProject) return { ok: false, reason: 'unavailable' };
+    if (keepCopy) {
+      // This window's work shares the card project's id, so the save barrier
+      // alone would store it under the record the card's version replaces.
+      // Keep it as its own saved project before anything is replaced.
+      try {
+        const mine = serializeProject();
+        saveProjectLibraryRecord(createProjectLibraryRecord({
+          ...mine,
+          id: createProjectId(),
+          name: `Copy of ${String(mine?.name || 'Untitled Project').trim() || 'Untitled Project'}`,
+        }));
+      } catch (error) {
+        report({ status: 'error', message: 'Studio could not keep a copy of this window\'s project, so nothing was replaced.' });
+        return { ok: false, reason: 'copy-failed', error };
+      }
+    }
+    const applyCardParts = async (parts, status = null) => {
+      if (!Array.isArray(parts?.strips) || !parts.strips.length) return { ok: false, reason: 'no-strips' };
+      const readiness = getCardLinkState()?.readiness || {};
+      const replacement = await replaceProject(projectFromCardParts(serializeProject(), parts, status), { confirmDiscard: () => true });
+      if (!replacement?.ok) return { ok: false, reason: replacement?.reason || 'replace-failed' };
+      const marker = replacement.marker || {};
+      markProjectInstalled?.({
+        generation: marker.generation,
+        revision: marker.revision,
+        cardId: status?.cardId || readiness.cardId || '',
+        projectRevision: Number(status?.projectRevision ?? readiness.projectRevision),
+        projectFingerprint: status?.projectFingerprint || readiness.projectFingerprint || '',
+        studioFingerprint: cardProjectFingerprint(replacement.project),
+        verified: true,
+      });
+      return { ok: true };
+    };
+    return cardActions.adoptCardProject({ strategy: 'reconstruct', applyCardParts, openPatterns: () => {}, report });
+  }, [cardActions, serializeProject, replaceProject, markProjectInstalled]);
+}
+
+export function CardPickup({ cardLink, active }) {
+  const { serializeProject, projectLifecycle } = useProject();
+  const openCardProject = useOpenCardProject();
+  const doneRef = useRef('');
+  const connected = ['connected-direct', 'connected-bridge'].includes(cardLink?.state);
+  const readiness = cardLink?.readiness || {};
+  const key = active ? cardPickupKey({
+    project: serializeProject(), projectLifecycle, connected, readiness, cardId: cardLink?.card?.id,
+  }) : '';
+
+  useEffect(() => {
+    if (!key || doneRef.current === key) return;
+    doneRef.current = key;
+    // Quiet by design: the owner did nothing, so a failure raises no alert;
+    // Card Home still offers "Open installed project".
+    openCardProject().catch(error => console.warn('Lightweaver card pick-up did not complete', error));
+  }, [key]);
+  return null;
+}

@@ -1,3 +1,4 @@
+import { cardChangedSinceSeen } from './patternGate.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
 import { normalizeCardKaleidoscopeMappings } from './cardRuntimeContract.js';
@@ -87,6 +88,15 @@ export async function orchestrateCardDeploymentStart(prepared, operations = {}) 
   ]);
   assertCardDeploymentPreflightIdentity(prepared, firmwareInfo);
   assertCardDeploymentPreflightIdentity(firmwareInfo, status);
+  // Another window saved to this card since this window last saw it. Writing
+  // now would replace that work without anyone knowing, so nothing is sent
+  // until the owner chooses (open the card's version, or save anyway).
+  if (operations.lastSeen && operations.saveAnyway !== true
+    && cardChangedSinceSeen(operations.lastSeen, firmwareInfo)) {
+    const error = new Error('This card was changed from another window.');
+    error.reason = 'card-changed-elsewhere';
+    throw error;
+  }
   const action = classifyCardDeploymentResume(prepared, wiringStatus);
   if (action !== 'stage-new') return { action, status: wiringStatus, response: null };
   if (typeof operations.config !== 'function') {

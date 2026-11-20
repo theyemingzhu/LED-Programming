@@ -22,3 +22,12 @@ test('an untouched starter draft is not "a draft that differs"', () => {
   assert.equal(v.draft.relationship, 'none');
   assert.equal(v.differenceCopy, '');
 });
+test('a renamed or edited starter is owner work, not an untouched starter', async () => {
+  const { createProjectLifecycle, markEdited } = await import('./projectLifecycle.js');
+  const project = { id: 'starter', fingerprint: 'bbb', layout: { starterPending: true } };
+  const fresh = deriveCardSessionView({ link, project, projectLifecycle: createProjectLifecycle() });
+  assert.equal(fresh.draft.relationship, 'none');
+  const edited = deriveCardSessionView({ link, project, projectLifecycle: markEdited(createProjectLifecycle()) });
+  assert.equal(edited.draft.relationship, 'differs');
+  assert.notEqual(edited.differenceCopy, '');
+});

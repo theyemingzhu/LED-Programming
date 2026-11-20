@@ -6,7 +6,8 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure } from '../lib/patternGate.js';
+import { useOpenCardProject } from './CardPickup.jsx';
+import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure, cardChangedSinceSeen } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
@@ -1249,7 +1250,28 @@ function writeSectionDisplayOrder(projectId, ids) {
     // preview still names the stack's previous pattern.
     const selectedTargetHasDraft = Boolean(draftLooks[selectedTarget?.id]
       || (selectedTarget?.kind === 'section' && draftLooks[ALL_SECTIONS_TARGET_ID]));
-    const selId = selectedTargetHasDraft
+    // Two windows are two remotes. When another window (or the card's own
+    // playlist) changes what the card plays, this window's highlight follows
+    // the card, unless the owner is mid-edit here.
+    const cardPlayingId = connected ? String(cardLink?.readiness?.currentPatternId || '') : '';
+    const knownCardPattern = Boolean(cardPlayingId && cardPlayingId !== 'blackout'
+      && (REAL_PATTERN_BY_ID.has(cardPlayingId) || customPatternById.has(cardPlayingId)));
+    // The card moved to something this window did not send (another window,
+    // the playlist). Until the owner picks again here, show the card's choice
+    // and drop the "Preview sent to card" claim, which is no longer true.
+    const [cardMovedTo, setCardMovedTo] = useState('');
+    const lastCardPlayingRef = useRef(cardPlayingId);
+    useEffect(() => {
+      const previous = lastCardPlayingRef.current;
+      lastCardPlayingRef.current = cardPlayingId;
+      if (!knownCardPattern || !previous || previous === cardPlayingId) return;
+      if (cardPlayingId === look.patternId) { setCardMovedTo(''); return; }
+      setCardMovedTo(cardPlayingId);
+      dispatchPreviewAction({ type: 'reset' });
+    }, [cardPlayingId]);
+    useEffect(() => { setCardMovedTo(''); }, [look.patternId]);
+    const followCard = knownCardPattern && (!selectedTargetHasDraft || cardMovedTo === cardPlayingId);
+    const selId = followCard ? cardPlayingId : selectedTargetHasDraft
       ? look.patternId
       : savedLooks.some(savedLook => savedLook.id === activeLookId)
         ? activeLookId
@@ -2277,7 +2299,23 @@ function writeSectionDisplayOrder(projectId, ids) {
       return { ok: false, host: discovered.host || cardHost };
     };
 
+    // The press shows at once that it is working. The checks before the write
+    // (layout safety, project evidence, card and wiring status) are three card
+    // reads, and on a slow card the button sat unchanged for seconds.
+    const [installPreparing, setInstallPreparing] = useState(false);
+    // Another window saved to this card since this window last saw it. Held
+    // until the owner chooses: open the card's version, or save this one anyway.
+    const [staleCardConflict, setStaleCardConflict] = useState(false);
+    const saveAnywayRef = useRef(false);
+    const openCardProject = useOpenCardProject();
     const savePreviewToCard = async () => {
+      if (installPreparing) return;
+      if (staleCardConflict) setStaleCardConflict(false);
+      setInstallPreparing(true);
+      // The owner's "Save mine anyway" covers exactly one attempt, however it ends.
+      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); saveAnywayRef.current = false; }
+    };
+    const savePreviewToCardRun = async () => {
       if (editingProjectOnly) {
         setStatusKind('info');
         setStatus('This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
@@ -2332,6 +2370,13 @@ function writeSectionDisplayOrder(projectId, ids) {
           blockPatternCardEffect('project');
           return;
         }
+        const seenRecord = structurallyInstalledRecord(projectLifecycle, cardProjectFingerprint(serializeProject()))
+          || currentInstallation(projectLifecycle) || projectLifecycle?.installation;
+        if (!saveAnywayRef.current && cardChangedSinceSeen(seenRecord, before)) {
+          setStaleCardConflict(true);
+          return;
+        }
+        saveAnywayRef.current = false;
         const [cardStatus, wiringStatus] = await Promise.all([
           readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
           getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
@@ -3228,8 +3273,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                     ? 'This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.'
                     : 'Install the current look on the card'}
                   onClick={savePreviewToCard}
-                  disabled={handoffInvalid || editingProjectOnly || !installGate.allowed}
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
+                  disabled={handoffInvalid || editingProjectOnly || !installGate.allowed || installPreparing}
+                  aria-busy={installPreparing || cardSave.status === 'pending' ? 'true' : undefined}
+                  data-testid="pattern-install-on-card"
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Save to card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner
@@ -3715,6 +3762,15 @@ function writeSectionDisplayOrder(projectId, ids) {
                     hide Pixels driven and the Save look row underneath it.
                     Content and single action are unchanged; it now pushes the
                     card down instead of covering it. */}
+                {staleCardConflict &&
+                  <div className="pattern-gate-inline lw-field" data-testid="stale-card-conflict" role="status">
+                    <p className="pattern-gate-inline-title">This card was changed from another window.</p>
+                    <div className="lw-setup-banner-actions">
+                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); void openCardProject({ keepCopy: true }); }}>Open the card&rsquo;s version</button>
+                      <button type="button" className="btn" onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); savePreviewToCard(); }}>Save mine anyway</button>
+                    </div>
+                  </div>
+                }
                 {patternCardGate &&
                   <div className="pattern-gate-inline lw-field" data-testid="pattern-gate-notice" role="alert" aria-live="assertive">
                     <p className="pattern-gate-inline-title">That tap was not sent to the card.</p>

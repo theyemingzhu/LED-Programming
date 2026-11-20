@@ -222,7 +222,7 @@ export function CardInstallAction({
             <CardPushControl
               connected={connected}
               yieldPrimary={yieldPrimary || demote}
-              actionLabel={compact ? 'Save to card' : 'Install on card'}
+              actionLabel="Save to card"
               board={cardTransportBoard}
               compiledWiring={compiledWiring}
               strips={strips}

@@ -63,3 +63,46 @@ test('a starter holding unsaved owner work is not replaced by the card project',
   expect(after?.id, 'the card project replaced unsaved owner work').toBe(starterId);
   expect(after?.name).toBe('My looks');
 });
+
+for (const vp of [{ id: 'desktop', width: 1440, height: 900 }, { id: 'phone', width: 390, height: 844 }]) {
+  test(`a fresh browser opened straight onto Patterns shows the card's project · ${vp.id}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const card = createCardSimulator(cardState('playing'));
+    await card.install(page);
+    await page.addInitScript(({ id, firmwareVersion, buildId }) => {
+      localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+      localStorage.setItem('lw_card_host', 'lightweaver.local');
+      localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
+    await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || ''; } catch { return ''; }
+    }), { timeout: 25000 }).toBe('lwproj-matrix-piece');
+    await expect(page.locator('body')).toContainText('Matrix piece', { timeout: 10000 });
+    await expect(page).toHaveURL(/screen=pattern/);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+}
+
+test('with browser A open, a fresh browser B on Patterns shows the card project', async ({ browser }) => {
+  const card = createCardSimulator(cardState('playing'));
+  const seed = async (page) => page.addInitScript(({ id, firmwareVersion, buildId }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+  }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
+  const ctxA = await browser.newContext(); const a = await ctxA.newPage();
+  await card.install(a); await seed(a);
+  await a.goto('/#screen=card', { waitUntil: 'domcontentloaded' });
+  await expect(a.locator('body')).toContainText('Matrix piece', { timeout: 25000 });
+  const ctxB = await browser.newContext(); const b = await ctxB.newPage();
+  await card.install(b); await seed(b);
+  await b.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => b.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || ''; } catch { return ''; }
+  }), { timeout: 25000 }).toBe('lwproj-matrix-piece');
+  await expect(b.locator('body')).toContainText('Matrix piece');
+  await expect(a.getByRole('alert')).toHaveCount(0);
+  await expect(b.getByRole('alert')).toHaveCount(0);
+  await ctxA.close(); await ctxB.close();
+});

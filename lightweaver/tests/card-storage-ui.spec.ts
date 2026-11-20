@@ -198,7 +198,7 @@ async function pairReadyCard(page, cardId: string) {
   };
 }
 
-test('Patterns Install on card preserves exact capacity feedback', async ({ page }) => {
+test('Patterns Save to card preserves exact capacity feedback', async ({ page }) => {
   const project = makeOversizedProject();
   capacityErrorForProject(project);
   const bindCardToOpenProject = await pairReadyCard(page, 'lw-card-storage-ui');
@@ -206,7 +206,7 @@ test('Patterns Install on card preserves exact capacity feedback', async ({ page
   await gotoSavedProject(page, project, 'patterns');
   await bindCardToOpenProject();
 
-  await page.getByRole('button', { name: 'Install on card', exact: true }).click();
+  await page.getByRole('button', { name: 'Save to card', exact: true }).click();
   await expect(page.getByText(
     /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
   )).toBeVisible();

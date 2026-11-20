@@ -255,7 +255,7 @@ test('Test & Install shows a compact count line and one next-action CTA instead 
   // The retired guided check never mounts beside the consolidated action.
   await expect(page.getByTestId('wiring-bench-test')).toHaveCount(0);
   // install-project on Card Home mounts the compact status-row door (Save to
-  // card), not the full Check-and-install headline (Install on card).
+  // card), not the full Check-and-install headline (Save to card).
   await expect(step.getByTestId('layout-send-to-card')).toContainText('Save to card');
 
   await gotoLayoutTools(page);

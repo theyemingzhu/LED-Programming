@@ -63,6 +63,7 @@ import {
 } from '../lib/projectAssociation.js';
 import { runProjectSwitchSaveBarrier } from '../lib/projectSwitchSaveBarrier.js';
 import { CardActionsProvider, useCardActions } from './CardActionsProvider.jsx';
+import { CardPickup } from './CardPickup.jsx';
 import { formatBrowserProjectSaveLabel } from '../lib/studioActionStatus.js';
 import {
   CARD_COMMISSIONING_CHANGED_EVENT,
@@ -2473,6 +2474,7 @@ function Shell({ offlineUpdateController = null }) {
         onPreferences={() => openCardSection('preferences')}
       />
       <Rail view={underlyingView} navigate={navigateStudio} openCard={openCardSection} />
+      <CardPickup cardLink={cardLink} active={underlyingView !== 'card'} />
 
       <ScreenErrorBoundary key={underlyingView} onBeforeReload={flushProjectAutosave} onRecover={() => navigateStudio('layout')}>
         <Suspense fallback={<div className="screen route-loading" role="status" aria-live="polite">Loading Studio screen…</div>}>

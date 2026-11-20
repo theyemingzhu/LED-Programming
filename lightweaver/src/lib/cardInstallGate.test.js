@@ -9,7 +9,7 @@ import {
 } from './cardInstallGate.js';
 import { BENCH_PROJECT_ID } from './benchConfig.js';
 
-// The three "Install on card" buttons (Layout -> Test & Install, Playlist,
+// The three "Save to card" buttons (Layout -> Test & Install, Playlist,
 // Patterns) all end at pushConfigToCard -> POST /api/config. These fact sets
 // are the exact inputs each screen supplies, so the assertions below are what
 // each button does.

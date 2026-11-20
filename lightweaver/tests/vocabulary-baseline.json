@@ -38,12 +38,6 @@
     "src/v3/lw-settings.jsx": 1,
     "src/v3/lw-setup.jsx": 1
   },
-  "Install on card": {
-    "src/components/card/CardInstallAction.jsx": 1,
-    "src/components/layout/shared/CardPushControl.jsx": 1,
-    "src/v3/lw-pattern.jsx": 1,
-    "src/v3/lw-setup.jsx": 1
-  },
   "Pair": {
     "src/components/layout/shared/CardPushControl.jsx": 1,
     "src/lib/cardConnectionFlow.js": 2,

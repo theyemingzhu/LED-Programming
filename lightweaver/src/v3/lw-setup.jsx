@@ -31,6 +31,7 @@ import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { projectFromCardParts } from '../lib/cardPickup.js';
 import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
@@ -241,53 +242,8 @@ export function SetupScreen({
 
   const applyCardParts = async (parts, status = null) => {
     const nextOutputs = Array.isArray(parts?.outputs) ? parts.outputs : null;
-    const installedController = parts?.devices?.standaloneController || parts?.standaloneController || {};
-    const nextController = {
-      ...(currentProject?.devices?.standaloneController || {}),
-      ...installedController,
-      ...(installedController.controls ? {
-        controls: {
-          ...(currentProject?.devices?.standaloneController?.controls || {}),
-          ...installedController.controls,
-          encoder: {
-            ...(currentProject?.devices?.standaloneController?.controls?.encoder || {}),
-            ...(installedController.controls.encoder || {}),
-          },
-        },
-      } : {}),
-      ...(nextOutputs ? { outputs: nextOutputs } : {}),
-      led: {
-        ...(currentProject?.devices?.standaloneController?.led || {}),
-        ...(installedController.led || {}),
-        ...(parts?.led || {}),
-        // A card read reports its configured byte order, not a human color
-        // observation. Keep any earlier proof only if it still matches.
-        ...(parts?.colorOrder ? { colorOrder: parts.colorOrder } : {}),
-        ...(nextOutputs ? {
-          outputs: nextOutputs,
-          pixels: nextOutputs.reduce((sum, output) => sum + Number(output.pixels || 0), 0),
-        } : {}),
-      },
-    };
     if (replaceProject && Array.isArray(parts?.strips) && parts.strips.length) {
-      const replacement = await replaceProject({
-        ...currentProject,
-        ...(status?.projectId ? { id: status.projectId } : {}),
-        name: adoptedProjectName(currentProject?.name, status),
-        ...(parts?.origin ? { origin: parts.origin } : {}),
-        ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
-        layout: {
-          ...(currentProject?.layout || {}),
-          strips: parts.strips,
-          starterPending: false,
-          patchBoard: parts.patchBoard,
-          wiring: parts.wiring,
-        },
-        devices: {
-          ...(currentProject?.devices || {}),
-          standaloneController: nextController,
-        },
-      }, { confirmDiscard: () => true });
+      const replacement = await replaceProject(projectFromCardParts(currentProject, parts, status), { confirmDiscard: () => true });
       // An installation record must never outlive the replacement that earned
       // it. Recording unconditionally marked the card's project as installed
       // against a project that was never adopted — a lie that then failed
@@ -709,7 +665,7 @@ export function SetupScreen({
       await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
       if (!cardTakesCount) {
         setLedCountDraft('');
-        setLedCountState({ busy: false, message: `${pixels} lights set in the project. Install on card to apply it.` });
+        setLedCountState({ busy: false, message: `${pixels} lights set in the project. Save to card to apply it.` });
         setRecheckTick(tick => tick + 1);
         return;
       }
@@ -860,7 +816,7 @@ export function SetupScreen({
   // connectionLabel, not label: `label` is the footer chip's errand text. See
   // CONNECTION_LABELS in cardLifecycle.js.
   const identityLifecycle = cardLifecycle || deriveCardLifecycle({ link: cardLink || {} });
-  const session = deriveCardSessionView({ link: cardLink || {}, lifecycle: identityLifecycle, project: currentProject, status: cardState.status });
+  const session = deriveCardSessionView({ link: cardLink || {}, lifecycle: identityLifecycle, project: currentProject, status: cardState.status, projectLifecycle });
   const lastInstalledSession = useRef(null);
   if (session.capabilities.installedControl) lastInstalledSession.current = session;
   const rememberedInstalled = Boolean(lastInstalledSession.current?.identity.cardId) && !session.capabilities.installedControl && ['DISCONNECTED', 'CHECKING'].includes(session.summaryCode)
@@ -1128,7 +1084,7 @@ export function SetupScreen({
           // a paragraph describing an install that had already happened.
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Install and open Patterns</button>
+            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
           </>
         ) : null}
       </div>
@@ -1176,7 +1132,7 @@ export function SetupScreen({
           <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
           {displaySession.differenceCopy && <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>}
           {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
-            {currentProject?.layout?.starterPending !== true && <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>}
+            {session.draft.relationship !== 'none' && <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>}
             <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
           </div>}
           <p>The recoverable card copy may not include original artwork or editor assets.</p>
