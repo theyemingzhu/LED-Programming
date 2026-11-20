@@ -1,0 +1,124 @@
+diff --git a/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.cpp b/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.cpp
+index 0e3aa436..1f948e28 100644
+--- a/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.cpp
++++ b/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.cpp
+@@ -27,7 +27,7 @@ struct BootHandoffRecord {
+   uint32_t magic;
+   uint16_t version;
+   uint8_t outcome;
+-  uint8_t reserved;
++  uint8_t rollbackReportedByTag;  // was reserved; 0 = rollback not reported yet
+   char expectedBuildId[41];
+   char expectedProjectHead[65];
+   char rebootCorrelation[48];
+@@ -132,6 +132,15 @@ bool beginLightweaverFirmwareBootHealth() {
+   const auto evidence = lightweaver::evaluateFirmwareBootHandoffEvidence(
+       handoffValid, handoffOutcome,
+       handoffValid && strcmp(g_bootHandoff.expectedBuildId, LW_BUILD_ID) == 0);
++  const uint8_t runningTag = lightweaver::firmwareBuildTag(LW_BUILD_ID);
++  if (evidence == lightweaver::FirmwareBootEvidenceDecision::RolledBack &&
++      lightweaver::firmwareRollbackRecordIsStale(
++          g_bootHandoff.rollbackReportedByTag, runningTag)) {
++    // The image was replaced after this rollback was reported. Nothing about
++    // the running build rolled back, so the record is dropped, not restamped.
++    cancelLightweaverFirmwareBootHealthHandoff();
++    return false;
++  }
+   if (evidence == lightweaver::FirmwareBootEvidenceDecision::RolledBack) {
+     const esp_partition_t* invalid = esp_ota_get_last_invalid_partition();
+     if (handoffOutcome == lightweaver::FirmwareBootHandoffOutcome::Armed) {
+@@ -141,6 +150,10 @@ bool beginLightweaverFirmwareBootHealth() {
+           lightweaver::FirmwareBootHandoffOutcome::RollbackRequested);
+       setReason(reason);
+     }
++    if (g_bootHandoff.rollbackReportedByTag == 0) {
++      g_bootHandoff.rollbackReportedByTag = runningTag;
++      sealHandoff();
++    }
+     const String restoredFirmwareVersion = LW_FIRMWARE_VERSION;
+     lightweaverFirmwareUpdateSetBootEvidence(FirmwareUpdatePhase::RolledBack,
+         String(g_bootHandoff.reason), String(g_bootHandoff.rebootCorrelation),
+diff --git a/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.h b/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.h
+index be3e19a0..dfc4ebe4 100644
+--- a/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.h
++++ b/firmware/lightweaver-controller/src/LightweaverFirmwareBootHealth.h
+@@ -40,6 +40,34 @@ inline FirmwareBootEvidenceDecision evaluateFirmwareBootHandoffEvidence(
+   return FirmwareBootEvidenceDecision::None;
+ }
+ 
++// A rollback record lives in RTC memory, which survives every restart and
++// every USB flash. Without a note of which build it was first reported on, the
++// card repeats it forever and restamps it with whatever build is running: a
++// card flashed to build B over USB went on saying an update had rolled back
++// and "restored" build B (measured on lw-b0fe81f61b44, 2026-11-19).
++//
++// The record has one spare byte, so it holds a one-byte tag of the build that
++// first reported the rollback. The layout is unchanged on purpose: an older
++// build arms the record and a newer one reads it during an update, and a
++// record the new build could not read would fail its own health check.
++// Zero means "not reported yet", so a tag is never zero.
++inline uint8_t firmwareBuildTag(const char* buildId) {
++  uint32_t hash = 2166136261U;
++  for (const char* cursor = buildId ? buildId : ""; *cursor; cursor++) {
++    hash ^= static_cast<uint8_t>(*cursor);
++    hash *= 16777619U;
++  }
++  const uint8_t tag = static_cast<uint8_t>(hash ^ (hash >> 8) ^ (hash >> 16) ^ (hash >> 24));
++  return tag ? tag : 1;
++}
++
++// True when the rollback was first reported by a different build than the one
++// running now: the image has been replaced since, so the record describes a
++// card that no longer exists.
++inline bool firmwareRollbackRecordIsStale(uint8_t reportedByTag, uint8_t runningTag) {
++  return reportedByTag != 0 && reportedByTag != runningTag;
++}
++
+ struct FirmwareBootHealthFacts {
+   bool pendingVerification = false;
+   bool compiledIdentityMatches = false;
+diff --git a/firmware/lightweaver-controller/tests/firmware-boot-health.cpp b/firmware/lightweaver-controller/tests/firmware-boot-health.cpp
+index 91ce1d46..8f3d44e4 100644
+--- a/firmware/lightweaver-controller/tests/firmware-boot-health.cpp
++++ b/firmware/lightweaver-controller/tests/firmware-boot-health.cpp
+@@ -70,5 +70,20 @@ int main() {
+   assert(evaluateFirmwareBootHandoffEvidence(
+       false, FirmwareBootHandoffOutcome::RollbackRequested, false) ==
+       FirmwareBootEvidenceDecision::None);
++
++  // A rollback is reported by the build it restored. Zero means not reported.
++  using lightweaver::firmwareBuildTag;
++  using lightweaver::firmwareRollbackRecordIsStale;
++  const uint8_t restored = firmwareBuildTag("1111111111111111111111111111111111111111");
++  const uint8_t flashedLater = firmwareBuildTag("56c00ce80e638b779e94653be5bd9700e8339070");
++  assert(restored != 0 && flashedLater != 0 && firmwareBuildTag("") != 0 &&
++         firmwareBuildTag(nullptr) != 0 && firmwareBuildTag("dev") != 0);
++  assert(restored != flashedLater);
++  // First boot after the rollback: nothing recorded yet, so it is reported.
++  assert(!firmwareRollbackRecordIsStale(0, restored));
++  // The same build restarting keeps the diagnosis.
++  assert(!firmwareRollbackRecordIsStale(restored, restored));
++  // A different image flashed afterwards did not roll back.
++  assert(firmwareRollbackRecordIsStale(restored, flashedLater));
+   return 0;
+ }
+diff --git a/firmware/lightweaver-controller/tests/firmware-boot-health.mjs b/firmware/lightweaver-controller/tests/firmware-boot-health.mjs
+index 5ee8ad4d..a4bd130b 100644
+--- a/firmware/lightweaver-controller/tests/firmware-boot-health.mjs
++++ b/firmware/lightweaver-controller/tests/firmware-boot-health.mjs
+@@ -36,6 +36,15 @@ assert.match(source, /FirmwareBootEvidenceDecision::RolledBack[\s\S]*restoredFir
+   'the old slot publishes its restored firmware identity for a valid rollback record');
+ assert.match(source, /total power loss|power loss clears/i,
+   'RTC-only rollback diagnostics document that total power loss clears correlation without touching data storage');
++assert.match(source,
++  /firmwareRollbackRecordIsStale\(\s*g_bootHandoff\.rollbackReportedByTag, runningTag\)\) \{[\s\S]*?cancelLightweaverFirmwareBootHealthHandoff\(\);\s*return false;/,
++  'a rollback record first reported by a different build is dropped, not restamped with the running build');
++assert.match(source, /g_bootHandoff\.rollbackReportedByTag = runningTag;\s*sealHandoff\(\);/,
++  'the build that first reports a rollback tags the record');
++assert.match(source, /uint16_t version;\s*uint8_t outcome;\s*uint8_t rollbackReportedByTag;[^\n]*\n\s*char expectedBuildId\[41\];/,
++  'the tag reuses the spare byte: the record layout an older build arms must not change');
++assert.match(source, /LW_BOOT_HANDOFF_VERSION = 1;/,
++  'the handoff record version an older build writes must stay readable');
+ assert.match(main, /beginLightweaverFirmwareBootHealth\(\)/,
+   'pending OTA state is detected before application storage initialization');
+ assert.match(main, /confirmLightweaverFirmwareBootHealth/,
