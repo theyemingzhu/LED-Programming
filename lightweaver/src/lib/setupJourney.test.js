@@ -481,7 +481,8 @@ test('a connected exact card holding an unmatched project gets a load action, no
   // The connect phase stays ACTIVE so Setup renders a real task for it. Held as
   // a blocker it produced a "Find my card" button that reopened the connection
   // center, whose only exit routed back to this same step.
-  assert.equal(journey.currentPhaseId, 'connect');
+  // Connected means connecting is done; the open question is the project.
+  assert.notEqual(journey.currentPhaseId, 'connect');
   assert.equal(journey.taskId, 'load-matching-project');
   assert.deepEqual(journey.blockers, []);
   assert.notEqual(journey.taskId, 'connect-card');
@@ -559,7 +560,7 @@ test('same project id with an unresolved installed revision asks which copy to u
   });
 
   assert.equal(journey.setupComplete, false);
-  assert.equal(journey.currentPhaseId, 'connect');
+  assert.notEqual(journey.currentPhaseId, 'connect');
   assert.equal(journey.taskId, 'load-matching-project');
 });
 
@@ -591,4 +592,23 @@ test('a disconnected card with a project-mismatch lifecycle still blocks on conn
 
   assert.equal(journey.currentPhaseId, 'connect');
   assert.equal(journey.blockers[0].id, 'load-matching-project');
+});
+
+test('a connected card holding a working project is not told to connect', () => {
+  const journey = setupJourney.deriveSetupJourney({
+    cardLink: {
+      state: 'connected-direct',
+      card: { id: 'lw-a' },
+      readiness: { cardId: 'lw-a', projectId: 'piece-on-card', knownGoodProject: true, led: { pixels: 41 } },
+    },
+    cardLifecycle: { state: 'project-mismatch', commandReady: true, setupTaskId: 'load-matching-project' },
+    project: { id: 'other-draft' },
+    resolution: {},
+  });
+  assert.equal(journey.taskId, 'load-matching-project');
+  assert.equal(journey.currentPhaseId, 'verify');
+  const status = Object.fromEntries(journey.phases.map(phase => [phase.id, phase.status]));
+  assert.equal(status.connect, 'done');
+  assert.equal(status.lights, 'done');
+  assert.equal(setupJourney.missingPhases(journey).length, 1);
 });
