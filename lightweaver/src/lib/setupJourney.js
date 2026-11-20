@@ -433,12 +433,20 @@ export function deriveSetupJourney({
     && cardLifecycle?.setupTaskId === 'load-matching-project'
     && resolution?.provisionalSetup !== true;
   if (cardProjectUnresolved) {
+    // The card is connected, so connecting is done. If it already holds a
+    // working project with counted lights, the lights are done too: what the
+    // card has counts. The only open question is which project to keep, and
+    // that is the save step. It used to read "Step 1 of 3 · 0 of 3 done ·
+    // Connect to your card" over a connected, working card.
+    const cardHasLights = cardLink?.readiness?.knownGoodProject === true
+      && Number(cardLink?.readiness?.led?.pixels) > 0;
+    const unresolvedPhaseId = cardHasLights || lightsComplete(progress, resolution) ? 'verify' : 'lights';
     return withTask({
       diagnosis: { state: 'card-project-unresolved' },
-      phases: phasesFor('connect', progress, currentLayoutProgress),
+      phases: phasesFor(unresolvedPhaseId, progress, currentLayoutProgress),
       blockers: [],
-      currentPhaseId: 'connect',
-      nextAction: { id: 'load-matching-project', phaseId: 'connect' },
+      currentPhaseId: unresolvedPhaseId,
+      nextAction: { id: 'load-matching-project', phaseId: unresolvedPhaseId },
       resumeDestination: null,
       setupComplete: false,
     });
