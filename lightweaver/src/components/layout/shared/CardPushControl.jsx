@@ -156,7 +156,7 @@ export function CardPushControl({
   // working wiring and will put it back unless a human answers, so at that
   // moment they ARE the page's next step and nothing outranks them.
   yieldPrimary = false,
-  actionLabel = 'Install on card',
+  actionLabel = 'Save to card',
   children,
 }) {
   const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed,

@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION } from './harness/cardStates';
 
-test('Install on card shows it is working at once on a slow card, and ends', async ({ page }) => {
+test('Save to card shows it is working at once on a slow card, and ends', async ({ page }) => {
   const card = createCardSimulator(cardState('playing'));
   await card.install(page);
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
