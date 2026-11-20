@@ -13,3 +13,20 @@ test('nothing clears while the card is still not ready, or for blank/project ref
   assert.equal(shouldClearRecoveryGate({ access: 'ready', gate: 'project', raisedWhileUnready: true }), false);
   assert.equal(shouldClearRecoveryGate({ access: 'ready', gate: 'blank', raisedWhileUnready: true }), false);
 });
+
+import { shouldRetryAfterTransientFailure as retryOwed, isTransientPreviewFailure } from './patternGate.js';
+
+test('a timed-out tap is resent once when a newer reading shows the card ready', () => {
+  const failed = { at: 1 };
+  const fresh = { at: 2 };
+  const timeout = { code: 'timeout' };
+  assert.equal(retryOwed({ access: 'ready', failure: timeout, failedReading: failed, reading: failed, alreadyRetried: false }), false);
+  assert.equal(retryOwed({ access: 'offline', failure: timeout, failedReading: failed, reading: fresh, alreadyRetried: false }), false);
+  assert.equal(retryOwed({ access: 'ready', failure: timeout, failedReading: failed, reading: fresh, alreadyRetried: false }), true);
+  assert.equal(retryOwed({ access: 'ready', failure: timeout, failedReading: failed, reading: fresh, alreadyRetried: true }), false);
+});
+
+test('only failures about timing are resent by themselves', () => {
+  for (const code of ['timeout', 'card-restarted', 'not-ready', 'conflict']) assert.equal(isTransientPreviewFailure({ code }), true);
+  for (const code of ['wrong-card', 'card-rejected', 'refused', 'section-layout-mismatch', 'unknown']) assert.equal(isTransientPreviewFailure({ code }), false);
+});
