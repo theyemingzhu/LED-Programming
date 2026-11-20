@@ -2277,7 +2277,16 @@ function writeSectionDisplayOrder(projectId, ids) {
       return { ok: false, host: discovered.host || cardHost };
     };
 
+    // The press shows at once that it is working. The checks before the write
+    // (layout safety, project evidence, card and wiring status) are three card
+    // reads, and on a slow card the button sat unchanged for seconds.
+    const [installPreparing, setInstallPreparing] = useState(false);
     const savePreviewToCard = async () => {
+      if (installPreparing) return;
+      setInstallPreparing(true);
+      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); }
+    };
+    const savePreviewToCardRun = async () => {
       if (editingProjectOnly) {
         setStatusKind('info');
         setStatus('This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
@@ -3228,8 +3237,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                     ? 'This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.'
                     : 'Install the current look on the card'}
                   onClick={savePreviewToCard}
-                  disabled={handoffInvalid || editingProjectOnly || !installGate.allowed}
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
+                  disabled={handoffInvalid || editingProjectOnly || !installGate.allowed || installPreparing}
+                  aria-busy={installPreparing || cardSave.status === 'pending' ? 'true' : undefined}
+                  data-testid="pattern-install-on-card"
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner
