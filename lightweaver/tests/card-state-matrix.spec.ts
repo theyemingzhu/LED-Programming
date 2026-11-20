@@ -347,7 +347,19 @@ for (const spec of CARD_STATES) {
     await remembers.seed(page);
     await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
 
-    const { panelOpenedItself } = await expectConnects(page, `${spec.id} over the bridge`);
+    // Since c6eb000f public Studio answers Find my card with its connection
+    // choices instead of opening the card page behind the owner's back. The
+    // card-page route is the panel's named fallback, under Connection details: no
+    // alert, no panel that opened itself, and then a live link.
+    let panelOpenedItself = false;
+    if (!(await settlesConnected(page, CONNECT_BUDGET_MS))) {
+      panelOpenedItself = await connectionPanelOpen(page);
+      await page.getByTestId('setup-connect-card').click();
+      const panel = page.locator('#card-connection-center');
+      await panel.getByText('Connection details', { exact: true }).click();
+      await panel.getByRole('button', { name: /Connect through the card.s own page/ }).click();
+      await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
+    }
     await expectUnaided(page, `${spec.id} over the bridge`, panelOpenedItself);
     await expectNotStuck(page, `${spec.id} over the bridge`);
     expect(crashes, 'the screen crashed').toEqual([]);
