@@ -42,3 +42,13 @@ test('a 409 from a card busy with another change is never resent by itself', () 
   // Another browser usually caused it; a resend would override its newer choice.
   assert.equal(retryOwed({ access: 'ready', failure: { code: 'conflict' }, failedReading: { at: 1 }, reading: { at: 2 }, alreadyRetried: false, failedAt: 0, now: 1 }), false);
 });
+
+import { cardChangedSinceSeen } from './patternGate.js';
+test('a save notices when another window changed the card first', () => {
+  const seen = { cardId: 'lw-one', projectFingerprint: 'aaaaaaaaaaaaaaaa' };
+  assert.equal(cardChangedSinceSeen(seen, { cardId: 'lw-one', projectFingerprint: 'bbbbbbbbbbbbbbbb' }), true);
+  assert.equal(cardChangedSinceSeen(seen, { cardId: 'lw-one', projectFingerprint: 'aaaaaaaaaaaaaaaa' }), false);
+  // Nothing seen yet, or a card that reports no fingerprint: no claim either way.
+  assert.equal(cardChangedSinceSeen(null, { projectFingerprint: 'bbbbbbbbbbbbbbbb' }), false);
+  assert.equal(cardChangedSinceSeen(seen, { projectFingerprint: '' }), false);
+});

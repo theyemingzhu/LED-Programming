@@ -6,7 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure } from '../lib/patternGate.js';
+import { shouldClearRecoveryGate, shouldRetryAfterTransientFailure, cardChangedSinceSeen } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
@@ -2281,8 +2281,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     // (layout safety, project evidence, card and wiring status) are three card
     // reads, and on a slow card the button sat unchanged for seconds.
     const [installPreparing, setInstallPreparing] = useState(false);
+    // Another window saved to this card since this window last saw it. Held
+    // until the owner chooses: open the card's version, or save this one anyway.
+    const [staleCardConflict, setStaleCardConflict] = useState(false);
+    const saveAnywayRef = useRef(false);
     const savePreviewToCard = async () => {
       if (installPreparing) return;
+      if (staleCardConflict) setStaleCardConflict(false);
       setInstallPreparing(true);
       try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); }
     };
@@ -2341,6 +2346,13 @@ function writeSectionDisplayOrder(projectId, ids) {
           blockPatternCardEffect('project');
           return;
         }
+        const seenRecord = structurallyInstalledRecord(projectLifecycle, cardProjectFingerprint(serializeProject()))
+          || currentInstallation(projectLifecycle) || projectLifecycle?.installation;
+        if (!saveAnywayRef.current && cardChangedSinceSeen(seenRecord, before)) {
+          setStaleCardConflict(true);
+          return;
+        }
+        saveAnywayRef.current = false;
         const [cardStatus, wiringStatus] = await Promise.all([
           readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
           getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
@@ -3726,6 +3738,15 @@ function writeSectionDisplayOrder(projectId, ids) {
                     hide Pixels driven and the Save look row underneath it.
                     Content and single action are unchanged; it now pushes the
                     card down instead of covering it. */}
+                {staleCardConflict &&
+                  <div className="pattern-gate-inline lw-field" data-testid="stale-card-conflict" role="status">
+                    <p className="pattern-gate-inline-title">This card was changed from another window.</p>
+                    <div className="lw-setup-banner-actions">
+                      <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); window.location.hash = '#screen=card'; }}>Open the card&rsquo;s version</button>
+                      <button type="button" className="btn" onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); savePreviewToCard(); }}>Save mine anyway</button>
+                    </div>
+                  </div>
+                }
                 {patternCardGate &&
                   <div className="pattern-gate-inline lw-field" data-testid="pattern-gate-notice" role="alert" aria-live="assertive">
                     <p className="pattern-gate-inline-title">That tap was not sent to the card.</p>
