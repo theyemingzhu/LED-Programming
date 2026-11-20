@@ -188,3 +188,12 @@ Not done on the real card: the stale-save write itself (it writes the card twice
   - OPEN :533 "Pattern confirms the exact draft revision": pressing Save to card after picking Ocean sends only /api/control and no /api/config, yet the browser records an installation. Either the test is stale or Save does not save. Not settled in my 20-minute limit.
   - OPEN :570, :608, :863 and multiple-output-journey (no "The lights look correct" button): not looked at.
 - Gap 2 leftovers ("Lights: Not counted yet", doubled save button): the real-card run could not reproduce them on v2 ed661fc6; guarded by tests/card-home-different-draft.spec.ts (4 pass). Source of the report: audit artifact GY7Cmo9ZdUjD12EpKcgWqn.
+
+## 2026-11-20 — Tests red on clean main that run in no lane (run 3, coordinator job)
+
+Measured by this run on v3 rebased onto origin/main 25e3a147, simulator only.
+
+- **pattern-lab-targets (6 of 7 red).** Broke at `cebfa3d0` (bisected: parent passes, commit fails). Test stale: the stack name field moved into an editor that opens on demand, so the load check timed out before any Lab assertion ran. Load check now reads the stack name and "Project stacks (1)"; nothing it protects was removed. 7/7 green.
+- **layout-led-count-save (3 of 3 red).** Three causes. (1) Test stale since `28a34380`: one "Strip LED count" box became one box per strip. (2) **App wrong**, bisected to `17ec775f` (#383) over `415368a9`: the footer relabelled itself "Connected" and opened the controls drawer whenever installed controls were live, hiding the owner's own pending save after typing an LED count or changing the playlist. Now the footer says Save to card, and saves, when the card holds what this browser saved and the owner edited that same project; a draft never saved to this card still reads Connected (card-first-resume green). (3) Test stale: the fake card reported segment `out1-full` instead of the id it was saved with. Red before the app fix (footer "Connected", 0 config posts), 9/9 green after 3 repeats.
+- Both specs added to `test:release-ui` and `ci:browser-smoke` (about 30 s extra).
+- card-state-matrix: in progress.
