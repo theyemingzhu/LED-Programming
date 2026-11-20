@@ -33,3 +33,16 @@ export function shouldRetryAfterTransientFailure({ access, failure, failedReadin
   if (!Number.isFinite(failedAt) || !Number.isFinite(now) || now - failedAt > TRANSIENT_RETRY_WINDOW_MS) return false;
   return Boolean(reading) && reading !== failedReading;
 }
+
+// Whether the card's project moved since this window last saw it. The record
+// is this window's own installation binding (from its last save or pick-up);
+// the evidence is a fresh read taken just before a save. A different
+// well-formed fingerprint means another window saved in between, and saving
+// now would overwrite that work without anyone knowing.
+export function cardChangedSinceSeen(record, evidence) {
+  const seen = String(record?.projectFingerprint || '').toLowerCase();
+  const now = String(evidence?.projectFingerprint || '').toLowerCase();
+  if (!/^[a-f0-9]{16,64}$/.test(seen) || !/^[a-f0-9]{16,64}$/.test(now)) return false;
+  if (record?.cardId && evidence?.cardId && record.cardId !== evidence.cardId) return false;
+  return seen !== now;
+}
