@@ -114,3 +114,5 @@ Studio-only fixes, batched, at most four ships. Never firmware.
   - StripDiscoveryPanel (f520f735): the colour question and the power note sit in the page, not a floating notice that covered the counting controls on a phone.
   - "Save to card" / "Try saving again" wording per GLOSSARY. Tests: the specs red before tonight corrected; layout-led-count-save + pattern-lab-targets added to ci:browser-smoke and test:release-ui; the matrix added to test:release-ui.
 - 12:47 Batch 8 = claude/day-batch-8 (from 6e1cc2a4), tree identical to v3-on-445. Preflight Studio-only. Running unit, workflow, full ci:browser-smoke, matrix and 15 related specs.
+- 13:17 Batch 8 checks: unit 3163/3163; workflow 23/23; full ci:browser-smoke all pass (incl. the two newly added specs, 10/10); card-state matrix 130 passed / 10 skipped; 15 related specs 297/301. The 4 reds (studio-hardening ×3 by name, preserving-firmware-update:772) fail on origin/main 6e1cc2a4 as well (measured); :772 passes alone on the batch.
+- 13:25 SHIP day 5 (Adrian approved a fifth): PR #446 merged → main cbf5ea43 (build 2533). Branch gone on remote. Watching Tests 44680151042.
