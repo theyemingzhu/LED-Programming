@@ -881,6 +881,26 @@ export function SetupScreen({
     && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
     && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
     && !wiringTestActive && !reviewLights && (!setupTask || setupTask === 'load-matching-project');
+  // The card is where browsers meet. A browser holding only the untouched
+  // starter has no owner work to protect, so it opens the card's project by
+  // itself, once per card boot, the same way "Open installed project" would.
+  // Open work (starterPending false) is never replaced here.
+  const autoPickupKeyRef = useRef('');
+  const untouchedStarter = currentProject?.layout?.starterPending === true;
+  const autoPickupKey = installedHome && untouchedStarter && session.capabilities.installedControl
+    && session.draft.relationship === 'none'
+    // Only a card that proves exactly what it holds: a legacy card (no
+    // fingerprint) or a production job card still asks the owner first.
+    && /^[a-f0-9]{16,64}$/.test(session.installation.fingerprint || '')
+    && !String(cardLink?.readiness?.productionJobId || '')
+    ? `${session.identity.cardId}:${session.identity.bootId}` : '';
+  useEffect(() => {
+    if (!autoPickupKey || autoPickupKeyRef.current === autoPickupKey) return;
+    autoPickupKeyRef.current = autoPickupKey;
+    ownerAskedToAdoptRef.current = false;
+    const run = resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard;
+    run().catch(error => reportAdoptionFailure('', error));
+  }, [autoPickupKey]);
   const identityStatus = wiringTestActive
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
