@@ -341,9 +341,17 @@ export function CardFacts({
               )}
             </div>
           ) : (
+            // A known card that is only slow or being re-read is not
+            // disconnected; saying so made owners reconnect a healthy card.
+            ['revalidating', 'reconnecting', 'reconnecting-bridge'].includes(cardLink?.state) && (cardLink?.card?.id || cardLink?.expectedCard?.id) ? (
+              <Row label="Health" hint={cardLink.state === 'revalidating' ? 'Studio is re-reading the card' : 'Studio is reaching the card again by itself'} testId="fact-health-checking" last>
+                <Readout dim>{cardLink.state === 'revalidating' ? 'Checking…' : 'Reconnecting…'}</Readout>
+              </Row>
+            ) : (
             <Row label="Health" hint="Connect the card to read it" testId="fact-health-offline" last>
               <Readout dim>Not connected</Readout>
             </Row>
+            )
           )}
         </div>
       </div>
