@@ -1,0 +1,54 @@
+Starting look: Fire (procedural)mDNS responder up
+[426002][E][Preferences.cpp:483] getString(): nvs_get_str lenprocedural)
+[521415][E][Preferences.cpp:483] getString(): nvs_get_strStarting look: Fire (procedural)
+[529889][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateId NOT_FOUND
+[529936][E][Preferences.cpp:96] remove(): nvs_erase_key fail: clientPlaylist NOT_FOUND
+ESP-ROM:esp32s3-20210327
+rst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c970load:0x403cc7entry 0x403c98d
+[   973][E][sd_diskio.cpp:806] sdcard_mount(): f_mount failed: (3) The physical drive cannot work
+[  1312][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateConf[  1343][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateConfig NOT_FOUND
+[  1359][E][Preferences.cpp:483] getString(): nvs_get_str len fail: confirmedId NOT_FOUND
+[  1395][E][Preferences.cpp:483] getString(): nvs_get_str len fail: clientPlaylist NOT_FOUND
+Runtime source: internal-flash / known-good config loaded
+PSRAM: found, 8386231 bytes total / 8386051 bytes freePixel buffers: 512 p[  1439][E][vfs_api.cpp:105] open(): /littlefs/lw-projects/head.tmp does not exist, no permits for creation
+mDNS responder up
+Lightweaver AP: Lightweaver-1B44 / 192.168.4.1
+WiFi station association started
+WLED realtime listening on UDP 21324
+Starting look: Fire (procedural)
+Art-Net listening on UDP 6454 /  / 41mDNS responder up
+mDNS responder up
+WLED realtime: rebound after reconnect
+mDNS responder up
+[156562][E][Preferences.cpp:483] getString(): nvs_get_str len fail: confirmedId NOT_FOUND
+[165222][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateConfig NOT_FOUN[16[165238][E][Preferences.cpp:483] getString(): nvs_get_str len fail: confirmedId NOT_FOUN[16[165333][E][Preferences.cpp:96] remove(): nvs_erase_key fail: clientPatterns NOT_FOUNESPBuild:Mar 27 2021
+Saved PC:0x420fd9ea
+mode:DIO, clock div:1
+load:0x403c9700,len:0xbd8
+entry 0x403c98d0
+[   976][E][sd_diskio.cpp:806] sdcard_mount(): f_mount failed: (3) The physical drive cannot work
+[  1290][E][sd_diskio.cpp:199] sdCommand(): Card Fail[  1326][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateId NOT_FOUND
+[  1349][E][Preferences.cpp:483] getString(): nvs_get_str len fail: candidateConfig NOT_FOUND
+[  1366][E][Preferences.cpp:483] getString(): nvs_get_str len fail: confirmedId NOT_FOUND
+[  1413][E][Preferences.cpp:483] getString(): nvs_get_str len fail: clientPatterns NOT_FOUND
+PSRAM: found, 8386051 bytes freePixel buffers: 512 px / 8192 bytes from internal RAM
+[  1449][E][vfs_api.cpp:105] open(): /littlefs/lw-projects/head.tmp does not exist, no permits for creation
+mDNS responder up
+Captive DNS up
+WLED realtime: WiFi not connected yet at setup; will bind anyway
+WLED realtime listening on UDP 21324
+LED output out1 -> GPIO 18 / 41 px
+Ready: Untitled Project / 41 pixels
+mDNS responder up
+WiFi station associated at 192.168.18.70
+WLED realtime: rebound after recArt-Net:mDNS responder up
+mDNS responder up
+mDNS responder umDNmDNS responder umDNmDNS responder up
+mDNS responder up
+mDNS responder up
+mDNS responder umDNmDNS responder umDNmDNS responder up
+mDNS responder up
+S responder up
