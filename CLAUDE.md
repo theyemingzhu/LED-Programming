@@ -130,6 +130,28 @@ Consequence to keep in mind: between releases, the signed download and any
 Wi-Fi update are older than the live site. A bench card on a dev build is
 unaffected; a customer card gets the drift at the next release.
 
+## Which card to test against
+
+Three tools, each for one kind of question. Full guide: `docs/practice-card.md`.
+
+- **Practice card, Fast** — the default. Unit-speed and bulk browser tests,
+  state logic, the card-state matrix, anything run on every change. Not for
+  any question about time: it answers instantly and never goes quiet.
+- **Practice card, Real-timing** — anything about waits, restarts, reconnects,
+  slow or silent replies, progress and failure wording, and **any fix for a
+  fault first seen on the real card**. Its numbers come from real-card traces
+  (a save restarts the card for ~14 s; silences of 4–12 s; status replies
+  ~0.06–0.1 s). Not for bulk runs on every change.
+- **Physical test card** (`lw-b0fe81f61b44`, `http://192.168.18.70`, USB
+  `/dev/cu.usbmodem1101`) — final proof of a fix, Wi-Fi, flashing, real
+  lights. One session at a time: say in the session that you hold it, and
+  when you release it. It may be reset and flashed. **Never raise brightness
+  or the power cap while the strip runs from the Mac's USB port.** Save a full
+  copy of the card's project before writing and restore it after.
+
+A green Fast run is not evidence about timing. A fix for a real-card fault is
+not done until Real-timing reproduces the fault red and then passes.
+
 ## Agent ownership boundaries
 - `led-art-mapper/app/src/` — owned by led-art-mapper agent; do not edit
 - `lightweaver/src/` — owned by lightweaver-app agent; do not edit
