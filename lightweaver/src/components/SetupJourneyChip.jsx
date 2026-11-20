@@ -1,6 +1,6 @@
 import React from 'react';
 import { deriveCardSessionView } from '../lib/cardSessionView.js';
-import { CONNECTED_CARD_LINK_STATES, SETUP_PHASE_IDS } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES, SETUP_CHAIN_IDS } from '../lib/setupJourney.js';
 import { cardTaskCopy } from '../lib/cardTaskCopy.js';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
@@ -33,7 +33,9 @@ export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
   // unfinished lights/layout/save is a real resume, and this chip is the
   // one reminder a working screen is allowed to carry.
   if (!CONNECTED_CARD_LINK_STATES.includes(cardLink?.state)) return null;
-  const phaseNumber = Math.max(1, SETUP_PHASE_IDS.indexOf(journey.currentPhaseId) + 1);
+  // The same count Card Home uses: three steps that gate the card. Placing
+  // lights in the artwork is optional and never numbered.
+  const stepNumber = Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1);
   return (
     <button
       type="button"
@@ -47,7 +49,7 @@ export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
         cardId: cardLink?.card?.id || cardLink?.readiness?.cardId || '',
       })}
     >
-      Setup: phase {phaseNumber} of {SETUP_PHASE_IDS.length} — {cardTaskCopy(journey.taskId)}
+      Setup: step {stepNumber} of {SETUP_CHAIN_IDS.length} — {cardTaskCopy(journey.taskId)}
     </button>
   );
 }
