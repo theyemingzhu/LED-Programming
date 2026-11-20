@@ -30,7 +30,7 @@ function readyStatus(pixels: number, extra = {}) {
     led: { pixels, type: 'WS2812B', colorOrder: 'RGB', maxMilliamps: 1500 },
     outputs: [{
       id: 'out1', pin: 16, gpio: 16, pixels, count: pixels,
-      segments: [{ id: 'out1-full', count: pixels, direction: 'forward' }],
+      segments: [{ id: 'run-count-strip', count: pixels, direction: 'forward' }],
     }],
     ...extra,
   };
@@ -160,8 +160,8 @@ test('typed LED count resizes the strip at reel density, disconnected footer sta
   }).toBe(true);
 
   const next = starting!.pixelCount - 2;
-  await page.getByLabel('Strip LED count', { exact: true }).fill(String(next));
-  await page.getByLabel('Strip LED count', { exact: true }).blur();
+  await strip.getByRole('spinbutton', { name: / LED count$/ }).fill(String(next));
+  await strip.getByRole('spinbutton', { name: / LED count$/ }).blur();
 
   await expect.poll(async () => {
     const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
@@ -226,8 +226,8 @@ test('connected length drift shows Save to card and click writes length only', a
   const strip = page.locator('[data-strip-id]').first();
   if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
 
-  await page.getByLabel('Strip LED count', { exact: true }).fill(String(NEXT_COUNT));
-  await page.getByLabel('Strip LED count', { exact: true }).blur();
+  await strip.getByRole('spinbutton', { name: / LED count$/ }).fill(String(NEXT_COUNT));
+  await strip.getByRole('spinbutton', { name: / LED count$/ }).blur();
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(NEXT_COUNT);
   await expect.poll(async () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
