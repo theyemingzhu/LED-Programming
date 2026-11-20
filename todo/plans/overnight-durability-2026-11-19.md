@@ -164,3 +164,15 @@ Not done on the real card: the stale-save write itself (it writes the card twice
 - Shipper's two findings on cbc85951: (1) pattern-timeout-clears-on-reconnect.spec.ts assumed the starter path. Rewritten for the project path a real owner is on, deterministic 3 of 3. (2) "No timeout message with a held reply on the project path" is correct behaviour: lw-pattern.jsx retryWhileTransient with readBack (around line 1566) reads the card after the 2.2 s send timeout. A card already playing the tap is the acknowledgement, so Studio truthfully reports success. The starter path has no read-back authority and times out. D5 (decided): keep it.
 - Coordinator review of the stale save, all three closed: (1) the check now also lives in the shared save preflight, lib/cardDeployment.js orchestrateCardDeploymentStart. Card Home and Layout ("Save to card" goes through CardPushControl) show the same line and buttons; lw-settings has no separate project write. (2) "Open the card's version" now runs the adoption in one press, through the save barrier that keeps this window's copy as a saved project, so the card's project opens here (useOpenCardProject in CardPickup.jsx). Before, it only went to #screen=card, where nothing adopted it. (3) saveAnywayRef resets in the finally of both save paths. Tests: stale-save-two-browsers.spec.ts covers Patterns, Open the card's version, and Layout (Layout fails with the guard off). 241 related browser tests pass; unit pass.
 - FIXED G8 (owner work lost, simulated), found by tightening the spec: "Open the card's version" (1) kept this window's own pick in project.pattern.activePatternId (Rainbow) instead of the card's (Ocean), and (2) lost this window's copy. The save barrier stored it under the shared project id, and the card's version then overwrote that same record. Fix: projectFromCardParts takes the card's currentPatternId (lib/cardPickup.js); useOpenCardProject({ keepCopy }) first saves this window's work as its own "Copy of <name>" project, and replaces nothing if that save fails. Spec: A shows Ocean and not Rainbow; the saved projects hold the Rainbow copy. Unit 3161; 193 related browser tests pass.
+
+## Owner-function table (simulator, 10× each, mixed order, reloads, desktop + 390 px)
+
+| Function | Works | Survives reload | Second window agrees | Slowest | Message shown |
+|---|---|---|---|---|---|
+| Save look + Save to card | 20/20 | 6/6 | unconfirmed (sim readback lossy) | 1.4 s | "Not verified on this card" 1–3 s, then settles |
+| Change look | 20/20 | 6/6 | not checked | 2.8 s | wrong-screen wording, fixed 9166b385 |
+| Delete look | 20/20 | 6/6 | not checked | 1.1 s | none |
+| Playlist add/drag/remove + Save | 20/20 | 8/8 | unconfirmed | 1.8 s | none |
+| Output pick and back | 20/20 | 6/6 | pins agree | 2.1 s | "Unsaved changes" stays (earlier edits) |
+
+Open: transient "Not verified" after save; saved look sends the previewed pattern, not the look's name; real-card looks/playlist rows not yet run.
