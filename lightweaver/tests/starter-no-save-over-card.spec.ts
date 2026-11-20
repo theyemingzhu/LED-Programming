@@ -16,8 +16,6 @@ test('an untouched starter offers no save over an installed card', async ({ page
   await page.goto('/#screen=card', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId('installed-control-open')).toBeVisible();
-  // No assertion on "Open installed project": a fresh browser now picks up
-  // the card project by itself (fresh-browser-picks-up-card.spec.ts), after
-  // which there is nothing left to open. The safety point is the line below.
+  await expect(page.getByTestId('installed-project-open')).toBeVisible();
   await expect(page.getByTestId('installed-draft-review')).toHaveCount(0);
 });

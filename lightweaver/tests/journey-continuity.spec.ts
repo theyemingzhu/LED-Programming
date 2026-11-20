@@ -141,15 +141,21 @@ test('[J02] a returning browser recognizes the installed project without re-onbo
   const card = await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'J02 initial connect');
 
-  // The returning browser remembers the card, not its project, and holds only
-  // the untouched starter. The card is where browsers meet: with no owner work
-  // to protect, Studio opens the card's project by itself, with no press.
+  // The returning browser remembers the card, not its project. The installed
+  // project is ready to control, while the untouched browser draft stays put
+  // until the owner explicitly asks to open the card's recoverable copy.
+  await expect(page.getByTestId('card-installed-home')).toContainText('Matrix piece');
+  // An untouched starter is not owner work: no "draft differs" line, and no
+  // offer to save that empty starter over the card.
+  await expect(page.getByTestId('card-draft-difference')).toHaveCount(0);
+  await expect(page.getByTestId('installed-draft-review')).toHaveCount(0);
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  await expect(journeyLocator(page)).toHaveAttribute('data-journey-task', 'load-matching-project');
+  await page.getByTestId('installed-project-open').click();
   await expect(
     journeyLocator(page),
-    'a browser holding only the starter picks up the card project unaided',
+    'explicitly opening the installed project completes the browser setup',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
-  // Never a "draft differs" line about work the owner did not make.
-  await expect(page.getByTestId('card-installed-home')).not.toContainText('differs');
 
   // The reconstructed card copy must still disclose that it lacks the
   // original artwork rather than silently appearing as a complete saved file.
