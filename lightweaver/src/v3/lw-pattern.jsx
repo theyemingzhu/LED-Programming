@@ -670,6 +670,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     const cardReadingRef = useRef(null);
     const failedReadingRef = useRef(null);
     const transientRetriedRef = useRef(false);
+    const failedAtRef = useRef(null);
     // The preview currently on its way to the card, by intent. A second tap on
     // the same tile while the first is in flight is one owner intent, not two
     // commands: it joins the pending send instead of issuing another.
@@ -1571,6 +1572,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             const failure = classifyCardActionFailure(error);
             dispatchPreviewAction({ type: 'fail', revision: sequence, error: failure.message });
             failedReadingRef.current = cardReadingRef.current;
+            failedAtRef.current = Date.now();
             transientRetriedRef.current = false;
             setPreviewFailure(failure);
             setStatusKind('err');
@@ -1599,6 +1601,8 @@ function writeSectionDisplayOrder(projectId, ids) {
         failedReading: failedReadingRef.current,
         reading: cardLink?.readiness,
         alreadyRetried: transientRetriedRef.current,
+        failedAt: failedAtRef.current,
+        now: Date.now(),
       })) return;
       transientRetriedRef.current = true;
       retryLatestPreview();
