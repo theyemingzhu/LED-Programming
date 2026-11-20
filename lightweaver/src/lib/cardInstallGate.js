@@ -29,7 +29,7 @@ export const CARD_INSTALL_BLOCK_MESSAGES = Object.freeze({
   'wiring-incomplete': 'Every strip needs a GPIO and a place in the first-to-last wiring order before this can be installed.',
   'not-commissioned': 'Run the LED check and confirm the colour order before installing a wiring change.',
   blank: 'This card has no project yet. Set up its LED strips, then install this Studio project.',
-  'project-mismatch': 'Open Hardware and verify that this exact Studio project is still installed on this card.',
+  'project-mismatch': 'Open Card and check this project is still saved on this card.',
   disconnected: 'Connect the Lightweaver card first.',
 });
 

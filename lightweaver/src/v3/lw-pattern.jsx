@@ -395,7 +395,7 @@ function writeSectionDisplayOrder(projectId, ids) {
   // notice rendered next to the pattern grid.
   function patternGateMessage(gate) {
     if (gate === 'blank') return 'This card has no project yet. Set up its LED strips, then install this Studio project.';
-    if (gate === 'project') return 'Open Hardware and verify that this exact Studio project is still installed on this card before sending lights.';
+    if (gate === 'project') return 'Open Card and check this project is still saved on this card before sending lights.';
     return 'This card is not ready for pattern commands. Recover and verify it before sending lights.';
   }
 
