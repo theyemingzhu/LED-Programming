@@ -176,7 +176,7 @@ export function CardInstallAction({
         <>
           {!compact && <p className="lww-flow-message">This card holds a different project. Save the open Studio project to replace it on this exact card.</p>}
           <button type="button" className={cta} data-testid="replace-card-project" onClick={openProjectReplacement}>
-            Save this project to the card
+            Save to card
           </button>
         </>
       ) : compact ? (

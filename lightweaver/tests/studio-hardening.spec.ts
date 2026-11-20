@@ -521,7 +521,7 @@ test('Pattern card write is pending, disables conflicts, and exposes retry after
   await save.click();
   await expect(save).toBeDisabled();
   await expect(page.getByRole('button', { name: /Card tools/ })).toBeDisabled();
-  await expect(save).toHaveText(/Retry install/);
+  await expect(save).toHaveText(/Try saving again/);
   // "would not take" is the truthful wording when the card ANSWERED and
   // refused — it used to say "could not reach the card", which was false and
   // whose suggested remedy (paste the setup on the card page) fails the same
