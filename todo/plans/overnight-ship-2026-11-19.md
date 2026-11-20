@@ -43,3 +43,12 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 05:59 Cycle: no new commits since 990b70aa (00:16). Waiting 45 min.
 - 06:44 Final cycle: no new commits since 990b70aa (00:16). Live studio-release.json still buildNumber 2471. Night ends here (~8 h). Batch worktree removed, local batch branches deleted; no batch branch left on the remote.
 - 07:35 Coordinator asked to also ship from `claude/overnight-durability-v3`. Measured: that branch does not exist on the remote (ls-remote shows only v2 at 990b70aa and this log branch). Nothing to review; the 8-hour window is over, so the night ends with Studio build 2471.
+
+## Day run — 2026-11-20 (coordinator: up to 4 more ships, until ~18:00)
+
+- 08:24 Resumed on the coordinator's message. v2 still at 990b70aa (no new commits). Coordinator decision: ship 70f4a99b + 60d314dd together if the combined result proves (a) a connected card's refusal stays and (b) a drop refusal clears.
+- 08:30 Day batch 1 = 70f4a99b, 60d314dd on f47b85b8 (claude/day-batch-1). preflight Studio-only.
+- 08:45 Proof (a): `patterns-v3.spec.ts:1813` (Connected card, tap refused, alert "This card is not ready for pattern commands.") FAILS on 70f4a99b alone, PASSES on the pair and on main. Proof (b): `pattern-refusal-clears-on-reconnect.spec.ts` PASSES on the pair; `patternGate.test.js` covers both.
+- 08:50 Same Patterns set on pair vs main: pair 75 pass / 3 fail, main 74 pass / 3 fail. The 3 are `journey-direct-preview.spec.ts` :167, :197, :250 — red on main already (Needs Adrian: pre-existing red).
+- 08:55 test:unit 3149/3149; workflow tests 23/23; https-direct-reconnect + j01 + journey-continuity 17/17.
+- 09:00 SHIP 2 (day 1 of 4): PR #439 merged → main 1df1020b (build 2474). Batch branch gone on remote. Watching Tests 44646692059.
