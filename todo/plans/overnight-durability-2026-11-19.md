@@ -131,3 +131,4 @@ No firmware fix is pending yet, so nothing has been flashed.
   - FIXED 720795a8: a 5xx reply to Save to card showed the owner raw text `card returned 503: {"ok":false}`. Now "The card could not confirm the save (code 503)…". studio-hardening :514 passes.
   - OPEN :533 "Pattern confirms the exact draft revision": pressing Save to card after picking Ocean sends only /api/control and no /api/config, yet the browser records an installation. Either the test is stale or Save does not save. Not settled in my 20-minute limit.
   - OPEN :570, :608, :863 and multiple-output-journey (no "The lights look correct" button): not looked at.
+- Gap 2 leftovers ("Lights: Not counted yet", doubled save button): the real-card run could not reproduce them on v2 ed661fc6; guarded by tests/card-home-different-draft.spec.ts (4 pass). Source of the report: audit artifact GY7Cmo9ZdUjD12EpKcgWqn.
