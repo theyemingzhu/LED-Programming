@@ -39,6 +39,17 @@ function expectOceanInStartup(config: any) {
   expect(patterns).toContain('ocean');
 }
 
+// The fixture card already holds a project, so "installation recorded" is true
+// before Save is pressed. Wait for the save itself: the card's config plays Ocean.
+async function waitForOceanOnCard(card: any) {
+  await expect.poll(() => {
+    const config = card.installedConfig();
+    const startup = config?.looks?.find((look: any) => look.id === config.startupPatternId);
+    if (!startup) return [];
+    return startup.mode === 'combo' ? startup.zones.map((zone: any) => zone.patternId) : [startup.preset || startup.id];
+  }, { timeout: 15000 }).toContain('ocean');
+}
+
 async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', options: any = {}) {
   const firmwareVersion = options.firmwareVersion || HARDENING_FIRMWARE_VERSION;
   const buildId = options.buildId || HARDENING_BUILD_ID;
@@ -582,7 +593,7 @@ test('staged light test restores the last Studio-confirmed look after a lost act
   await page.getByPlaceholder('Search chip patterns').fill('ocean');
   await page.locator('[data-pattern-id="ocean"]').press('Enter');
   await page.getByTitle('Install the current look on the card').press('Enter');
-  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
+  await waitForOceanOnCard(card);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   const confirmedConfig = card.installedConfig();
   expectOceanInStartup(confirmedConfig);
@@ -629,7 +640,7 @@ test('bounded marker failure releases the stream back to the last Studio-confirm
   await page.getByPlaceholder('Search chip patterns').fill('ocean');
   await page.locator('[data-pattern-id="ocean"]').click();
   await page.getByTitle('Install the current look on the card').click();
-  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
+  await waitForOceanOnCard({ installedConfig: () => installedConfig });
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await expect.poll(() => controls.length).toBeGreaterThan(0);
   expectOceanInStartup(installedConfig);
@@ -865,27 +876,37 @@ test('installer invalidates signoff when the edited revision changes', async ({ 
 });
 
 test('installer invalidates signoff when the installed revision changes', async ({ page }) => {
-  const { authorize } = await mockConnectedCard(page, 'lw-signoff-installed');
+  const card = await mockConnectedCard(page, 'lw-signoff-installed');
+  const { authorize } = card;
   await markInstallerReady(page);
-  // The signoff was taken against a card with NO installed revision, and it is
-  // still valid here — so the invalidation asserted below can only be the
-  // install, never the trip through the Card workspace and Patterns.
+  // The signoff is valid here, taken against whatever the card held before
+  // (the fixture card arrives already holding a project) — so the
+  // invalidation asserted below can only be the install, never the trip
+  // through the Card workspace and Patterns.
   const signedOff = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_installer_signoff_v2') || 'null'));
   expect(signedOff?.ready).toBe(true);
-  expect(signedOff?.identity?.installedRevision ?? null).toBeNull();
+  const revisionAtSignoff = signedOff?.identity?.installedRevision ?? null;
+  const fingerprintBefore = card.installedConfig()?.projectFingerprint || null;
   // Reading the guide arms the Card workspace's project probe, which clears
   // the fixture's injected card-edit grant (see `authorize`). Re-issue it so
   // the install below is a real card write and not a disabled button.
   await authorize();
   await page.locator('.rail-item', { hasText: 'Patterns' }).click();
+  // An edit, so the save installs a NEW revision: re-saving the unchanged
+  // revision the signoff was taken against rightly leaves it valid.
+  await page.getByPlaceholder('Search chip patterns').fill('ocean');
+  await page.locator('[data-pattern-id="ocean"]').click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
   await page.getByTitle('Install the current look on the card').click();
-  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
+  await expect.poll(() => card.installedConfig()?.projectFingerprint || null).not.toBe(fingerprintBefore);
+  await waitForOceanOnCard(card);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await openInstallerGuide(page);
   // The stored signoff must now name a real installed revision that differs
   // from the one it was taken against, and must no longer read as ready.
   const afterInstall = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_installer_signoff_v2') || 'null'));
   expect(Number.isInteger(afterInstall?.identity?.installedRevision)).toBe(true);
+  expect(afterInstall?.identity?.installedRevision).not.toBe(revisionAtSignoff);
   expect(afterInstall?.ready).not.toBe(true);
   await expect(page.locator('.inst-signoff input[type="checkbox"]:checked')).toHaveCount(0);
   await expect(page.getByText('Ready to ship', { exact: true })).toHaveCount(0);
