@@ -362,6 +362,7 @@ export async function waitForCardDeploymentVerification(prepared, {
   const deadline = restartWaitMs > 0 ? startedAt + restartWaitMs : 0;
   let sawSilence = false;
   let answeredAfterRestart = false;
+  let lastOldBootEvidence = null;
   // Any multi-read verification that finds the card quiet keeps reading until
   // the restart limit: a save restarts the card, and a quiet card mid-restart
   // is not a failed save (todo/plans/false-failures.md).
@@ -385,6 +386,7 @@ export async function waitForCardDeploymentVerification(prepared, {
         const fromOldBoot = previous && bootId ? bootId === previous
           : !sawSilence && now() - startedAt < 6000;
         if (fromOldBoot) {
+          lastOldBootEvidence = evidence;
           last = { ok: false, reason: 'restart-pending' };
           onWaiting({ elapsedMs: now() - startedAt, phase: 'restarting' });
           continue;
@@ -403,6 +405,17 @@ export async function waitForCardDeploymentVerification(prepared, {
       sawSilence = true;
       if (deadline) onWaiting({ elapsedMs: now() - startedAt, phase: 'restarting' });
     }
+  }
+  // The card answered all along from the same boot: it never restarted. If
+  // what it holds is the saved project, the save landed without a restart;
+  // otherwise it did not take the save. Neither is "has not come back".
+  if (deadline && !answeredAfterRestart && lastOldBootEvidence) {
+    let asIs = null;
+    try { asIs = verifyCardDeployment(prepared, lastOldBootEvidence, { requireReady }); } catch { asIs = null; }
+    if (asIs?.ok) return asIs;
+    const error = new Error('The card is answering, but it did not take this save. Nothing changed on the card; your work is kept in Studio. Try Save to card again.');
+    error.reason = 'save-not-applied';
+    throw error;
   }
   const neverCameBack = Boolean(deadline) && !answeredAfterRestart;
   const error = new Error(neverCameBack

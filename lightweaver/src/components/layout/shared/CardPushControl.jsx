@@ -492,7 +492,11 @@ export function CardPushControl({
       let verification;
       try {
         ({ verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host,
-          cardIsRestarting || response?.pendingVerification ? { fromBootId: bootBeforeSave } : null));
+          // Only a reply that said the card is restarting earns the restart
+          // wait. A lost reply proves nothing about a restart: it is read back
+          // as it is (F-D2: "has not come back after restarting" was shown
+          // about a card that never restarted).
+          cardIsRestarting ? { fromBootId: bootBeforeSave } : null));
         if (restartPlanned) { noteCardRestartSettled(); restartPlanned = false; }
       } catch (verifyError) {
         // Once a config may have reached the card, a failed read is

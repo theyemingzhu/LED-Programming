@@ -80,7 +80,7 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
 import { noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
@@ -2543,9 +2543,15 @@ function writeSectionDisplayOrder(projectId, ids) {
           // so the owner is sent to do work that cannot succeed.
           setStatusKind('err');
           setStatus(error.message);
-        } else {
+        } else if (cardGaveNoAnswer(error) || !error?.message) {
           setStatusKind('err');
           setStatus('Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.');
+        } else {
+          // The card answered, and what it said stopped the save (a different
+          // project or boot than Studio adopted, an identity change). Say that,
+          // not "it did not answer" (F-D3, todo/plans/false-failures.md).
+          setStatusKind('err');
+          setStatus(`Not saved to the card: ${String(error.message).replace(/^Stopped before saving:\s*/i, '')}`);
         }
       } finally {
         if (restartPlanned) { noteCardRestartSettled(); setSaveRestarting(false); }

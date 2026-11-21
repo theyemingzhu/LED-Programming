@@ -200,6 +200,14 @@ export function isUnresolvedMdnsFailure(host, error) {
   return isMdnsCardHost(host) && error?.name === 'TypeError';
 }
 
+/** True only when the card gave no answer at all — never for an answer that said no. */
+export function cardGaveNoAnswer(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError' || error.name === 'TypeError') return true;
+  return ['readback', 'timeout', 'offline', 'bridge-timeout', 'no-answer', 'read-back-missing', 'unreachable', 'restart-timeout']
+    .includes(String(error.reason || ''));
+}
+
 export async function withCardReadRetry(read, {
   tries = CARD_READ_RETRY.tries,
   intervalMs = CARD_READ_RETRY.intervalMs,
