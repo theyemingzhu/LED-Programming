@@ -1,0 +1,46 @@
+{
+ "app": "Lightweaver",
+ "ok": true,
+ "candidateState": "none",
+ "state": "known-good",
+ "hasKnownGood": true,
+ "hasCandidate": false,
+ "bootedCandidate": false,
+ "discoveryActive": false,
+ "probationMs": 90000,
+ "cardId": "lw-b0fe81f61b44",
+ "firmwareVersion": "1.2.4",
+ "buildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+ "buildNumber": 2464,
+ "projectRevision": 1,
+ "projectFingerprint": "d93ebe18ab7780b1",
+ "productionJobId": "",
+ "productionJobDigest": "",
+ "wiringRevision": 0,
+ "wiringDigest": "",
+ "maxMilliamps": 2000,
+ "colorOrder": "GRB",
+ "currentWiringRevision": 0,
+ "currentWiringDigest": "",
+ "currentMaxMilliamps": 2000,
+ "estimatedFullWhiteMilliamps": 15360,
+ "limitedFullWhiteMilliamps": 2000,
+ "testing": false,
+ "remainingProbationMs": 0,
+ "nextStep": "stage-candidate",
+ "outputsReady": true,
+ "currentOutputs": [
+  {
+   "id": "bench-18",
+   "pin": 18,
+   "pixels": 256,
+   "segments": [
+    {
+     "id": "bench-18-full",
+     "count": 256,
+     "direction": "forward"
+    }
+   ]
+  }
+ ]
+}
