@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 
 const stylesheets = [
   new URL('../src/v3/v3-styles.css', import.meta.url),
-  new URL('../src-v3/main.css', import.meta.url),
 ];
 
 for (const stylesheet of stylesheets) {

@@ -29,13 +29,13 @@ function probe(target, name) {
   return { timedOut: false, ...records.at(-1) };
 }
 
-for (const target of ['studio', 'mapper', 'registry', 'legacy']) {
+for (const target of ['studio', 'mapper', 'registry']) {
   test(`${target}: normal math returns the expected color`, () => {
     const result = probe(target, 'color');
     assert.deepEqual(result.pixel, { r: 255, g: 0, b: 0 });
   });
   test(`${target}: direct fetch name is unavailable`, () => {
-    assert.equal(probe(target, 'shadow').pixel.r, characterize && target === 'legacy' ? 173 : 0);
+    assert.equal(probe(target, 'shadow').pixel.r, 0);
   });
   for (const escape of ['receiver', 'computed', 'storage']) {
     test(`${target}: ${escape} cannot reach the caller realm's synthetic canary`, () => {

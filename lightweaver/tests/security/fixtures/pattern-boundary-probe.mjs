@@ -24,9 +24,8 @@ globalThis.localStorage = {
 };
 const studio = new URL('../../../src/lib/patterns.js', import.meta.url);
 const mapper = new URL('../../../../led-art-mapper/app/src/patterns.js', import.meta.url);
-const legacy = new URL('../../../src-v3/lib/patterns.js', import.meta.url);
 // Resolve paths relative to this fixture, not the invoking shell's cwd.
-const modules = { studio, mapper, registry: studio, legacy };
+const modules = { studio, mapper, registry: studio };
 if (!Object.hasOwn(modules, target)) throw new Error('Unknown compiler target');
 const moduleUrl = modules[target];
 const { compile, evalPixel } = await import(moduleUrl);

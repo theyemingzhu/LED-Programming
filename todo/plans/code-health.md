@@ -246,7 +246,7 @@ Everything deleted can be recovered from git at the commit before this one.
 | Phase | What | Before → after | Size | When |
 |---|---|---|---|---|
 | 0 | Delete the unused helpers | 282 → 273 lib modules | done | now |
-| 1 | **Retire the frozen old Studio (`src-v3/`)**. Move the one file the new Studio still needs (the legacy pattern compiler that `patternFrameIsolation.js` loads) into `src/lib/legacy/`, and point 4 tests at it. | 33,072 lines and a second set of save paths → 0 | 3-4 h | needs Adrian's yes: it removes `?v=3` from the live site |
+| 1 | **Retired the frozen old Studio (`src-v3/`), 2026-11-21.** Removed 104 files (33,072 lines), the `?v=3` switch, the `legacy-v3` pattern dialect, and the browser spec that only tested the old Studio. Three tests that also checked the old copy now check only `src`. The known-escape count in the manual pattern-boundary security probe fell from 21 to 15, because the old compiler's 6 are gone and the rest are unchanged. | done | done |
 | 2 | **One card-command module** (`src/lib/card/commands.js`): `saveProject`, `setLedCount`, `tapLook`, `recoverLights`, `setColourOrder`. Each command does the same 6 steps in one place: lease, pre-read with retry, send, wait through the restart, read back, plain words for the result. Every screen calls these. Cleanups 1 and 6. | 6 save paths, 3 count paths, 7 restart waits → 1 each | 18-22 h | after the false-failures and simpler-journeys branches merge |
 | 3 | **One card-state snapshot** (`src/lib/card/state.js`): connected, ready for looks, holds this project, update evidence and setup step, worked out once from the link and the stored records, with one word table. Screens read it and never recompute. Cleanups 2, 3 and 5. | 15 separate answers → 1 snapshot. 8 facts stored twice → 0. | 16-20 h | after phase 2 |
 | 4 | **One fake card** for every test (cleanup 4) | 31 fakes → 1 | 12-16 h | specs can move now, one at a time |
@@ -281,3 +281,7 @@ The rules below are checked by CI, so nobody has to remember them. Each check is
 6. **Re-measure once a month.** The measuring scripts from this report become `npm run health`. It prints this report's numbers, so drift shows up as a number, not a feeling.
 
 Rules 1-4 can only be switched on after phases 2 and 4 land. Until then they would fail on today's code. Rules 3 and 6 can go in now, with today's numbers as the starting line.
+
+### Found while doing this (not fixed here)
+
+Since #452, the derived Playwright configs (`tests/*-playwright.config.ts`) spread the base config, so its `globalTeardown: './tests/harness/networkGuard.ts'` resolves under `tests/tests/` and every one of those lanes fails before running a test. Running a spec through the base config works. The fix is to make the teardown path absolute in `playwright.config.ts`.
