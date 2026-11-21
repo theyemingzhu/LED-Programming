@@ -760,7 +760,11 @@ test('Show delivery failure is visible and leaves playback retryable', async ({ 
   await page.goto('/?show-failure=1#screen=show', { waitUntil: 'domcontentloaded' });
   const play = page.getByRole('button', { name: 'Play on the lights' });
   await play.click();
-  await expect(page.getByText(/lights aren't receiving|stopped receiving/i)).toBeVisible({ timeout: 6_000 });
+  // A quiet card is first a wait, not a failure (todo/plans/false-failures.md,
+  // F-B4): after 3 s Show says it is waiting, and only after 20 s of sustained
+  // failure does it pause and say the lights stopped receiving.
+  await expect(page.getByText(/Waiting for the lights to answer/i)).toBeVisible({ timeout: 6_000 });
+  await expect(page.getByText(/lights aren't receiving|stopped receiving/i)).toBeVisible({ timeout: 25_000 });
   await expect(play).toBeEnabled();
 });
 
