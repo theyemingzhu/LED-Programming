@@ -925,11 +925,35 @@ test('failed install preflight cannot masquerade as an accepted write or a card 
   }
 });
 
-test('explicit config refusal stays a refusal while a lost accepted-write reboot remains uncertain', { concurrency: false }, async () => {
+test('explicit config refusal stays a refusal; an accepted save whose reboot request is lost is still a save', { concurrency: false }, async () => {
+  // Firmware restarts by itself within 5 s of an accepted save
+  // (kConfigRestartFallbackMs), so a reboot request the restarting card never
+  // answers is not a failed save. The caller's read-back is the proof.
+  // todo/plans/false-failures.md, decision D2.
   const previousWindow = globalThis.window;
   globalThis.window = browserWithIdentity('http:');
+  const fetchFor = (accepted, count) => async (url, init = {}) => {
+    if (init.method === 'POST') count();
+    if (String(url).endsWith('/api/firmware-info')) return response({
+      app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.47', buildId: 'build-2160',
+      provisionalSetup: true, piece: { id: 'lightweaver-bench-discovery-v1' }, outputs: [{ pin: 16, pixels: 8 }],
+    });
+    if (String(url).endsWith('/api/config')) return accepted
+      ? response({ ok: true, requiresReboot: true })
+      : { ...response({ ok: false, error: 'network settings not ready' }, false), status: 400 };
+    if (String(url).endsWith('/api/reboot')) throw new TypeError('Failed to fetch');
+    throw new Error('unexpected request');
+  };
   try {
-    for (const accepted of [false, true]) {
+    let acceptedPosts = 0;
+    const saved = await pushConfigToCard(runtimePackage, {
+      host: 'lightweaver.local', transport: 'direct', autoDiscover: false,
+      fetchImpl: fetchFor(true, () => { acceptedPosts += 1; }),
+    });
+    assert.equal(saved.rebooting, true);
+    assert.equal(saved.rebootRequest, 'unconfirmed');
+    assert.equal(acceptedPosts, 2);
+    for (const accepted of [false]) {
       let posts = 0;
       await assert.rejects(pushConfigToCard(runtimePackage, {
         host: 'lightweaver.local', transport: 'direct', autoDiscover: false,
@@ -964,4 +988,37 @@ test('a card server error reads as an unconfirmed save, never as the raw reply',
   assert.match(message, /could not confirm the save/);
   assert.match(message, /503/);
   assert.doesNotMatch(message, /card returned|\{/);
+});
+
+test('a save whose identity check meets a quiet card asks again instead of "Nothing was sent"', { concurrency: false }, async () => {
+  // todo/plans/false-failures.md, sweep item S1: the guard used to give the
+  // card one 1.5 s chance before refusing the save.
+  const previousWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  let quiet = 2;
+  let posts = 0;
+  try {
+    const saved = await pushConfigToCard(runtimePackage, {
+      host: 'lightweaver.local', transport: 'direct', autoDiscover: false, readRetryMs: 1,
+      fetchImpl: async (url, init = {}) => {
+        if (init.method === 'POST') posts += 1;
+        if (String(url).endsWith('/api/firmware-info') && init.method !== 'POST' && quiet > 0) {
+          quiet -= 1;
+          throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+        }
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.47', buildId: 'build-2160',
+          piece: { id: 'commissioned-piece' }, outputs: [{ pin: 16, pixels: 8 }],
+        });
+        if (String(url).endsWith('/api/config')) return response({ ok: true, requiresReboot: false });
+        throw new Error('unexpected request ' + url);
+      },
+    });
+    assert.equal(saved.ok, true);
+    assert.equal(posts, 1, 'the save is sent exactly once');
+    assert.equal(quiet, 0, 'the quiet reads were asked again');
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });

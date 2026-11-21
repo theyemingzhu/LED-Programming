@@ -304,32 +304,111 @@ export async function verifyCardPostSaveState({
   return { ...installed, status, wiring, patterns, zones, authority };
 }
 
+/**
+ * How long a save waits for the card to come back from its planned restart.
+ * Measured on the real card: about 14 s; the limit leaves room for a slow
+ * router. Within it Studio says "Restarting the card…", never a failure.
+ */
+export const CARD_RESTART_WAIT_MS = 45000;
+
+/**
+ * Wait for a card Studio just saved to come back from its planned restart:
+ * an answer from a boot other than `fromBootId` that is taking commands
+ * again. Silence inside the limit is the restart, never a failure.
+ */
+export async function waitForCardRestart({
+  readStatus,
+  fromBootId = '',
+  restartWaitMs = CARD_RESTART_WAIT_MS,
+  intervalMs = 800,
+  now = () => Date.now(),
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  const startedAt = now();
+  let sawSilence = false;
+  for (let attempt = 0; attempt === 0 || now() - startedAt < restartWaitMs; attempt += 1) {
+    if (attempt > 0) await sleep(intervalMs);
+    try {
+      const status = await readStatus();
+      const bootId = String(status?.bootId || '');
+      const oldBoot = fromBootId && bootId ? bootId === fromBootId : !sawSilence && now() - startedAt < 6000;
+      if (!oldBoot && status?.commandReady === true) return status;
+    } catch {
+      sawSilence = true;
+    }
+  }
+  const error = new Error(`The card has not come back after restarting (${Math.round(restartWaitMs / 1000)} s). Check it has power and is on this Wi-Fi; your work is kept in Studio.`);
+  error.reason = 'restart-timeout';
+  throw error;
+}
+
 export async function waitForCardDeploymentVerification(prepared, {
   readEvidence,
   attempts = 20,
   intervalMs = 600,
   requireReady = false,
+  // A save that restarts the card: keep reading until this deadline, and only
+  // an answer from a boot other than `restartFromBootId` counts.
+  restartWaitMs = 0,
+  restartFromBootId = '',
+  onWaiting = () => {},
+  now = () => Date.now(),
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
   if (!prepared?.cardId) throw new Error('Exact card identity is required before installation.');
   if (typeof readEvidence !== 'function') throw new Error('Card read-back is required after installation.');
   let last = { ok: false, reason: 'read-back-missing' };
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  const startedAt = now();
+  const deadline = restartWaitMs > 0 ? startedAt + restartWaitMs : 0;
+  let sawSilence = false;
+  let answeredAfterRestart = false;
+  // Any multi-read verification that finds the card quiet keeps reading until
+  // the restart limit: a save restarts the card, and a quiet card mid-restart
+  // is not a failed save (todo/plans/false-failures.md).
+  const quietDeadline = startedAt + CARD_RESTART_WAIT_MS;
+  const keepGoing = attempt => {
+    if (deadline) return attempt === 0 || now() < deadline;
+    if (attempt < attempts) return true;
+    return attempts > 1 && sawSilence && now() < quietDeadline;
+  };
+  for (let attempt = 0; keepGoing(attempt); attempt += 1) {
     if (attempt > 0) await sleep(intervalMs);
     try {
       const evidence = await readEvidence();
+      if (deadline) {
+        const bootId = String(evidence?.bootId || '');
+        const previous = String(restartFromBootId || '');
+        // The answer came from the boot that is about to end (firmware
+        // restarts within 5 s of a save); it says nothing about the restart.
+        // Without boot ids, an answer only counts once the card went quiet
+        // or the firmware's own 5 s restart fallback has passed.
+        const fromOldBoot = previous && bootId ? bootId === previous
+          : !sawSilence && now() - startedAt < 6000;
+        if (fromOldBoot) {
+          last = { ok: false, reason: 'restart-pending' };
+          onWaiting({ elapsedMs: now() - startedAt, phase: 'restarting' });
+          continue;
+        }
+      }
+      if (deadline) answeredAfterRestart = true;
       last = verifyCardDeployment(prepared, evidence, { requireReady });
       if (last.ok) return last;
+      if (deadline) onWaiting({ elapsedMs: now() - startedAt, phase: 'verifying' });
       if (last.reason === 'card-mismatch') {
         throw new Error(`Wrong card answered during verification. Expected ${prepared.cardId}.`);
       }
     } catch (error) {
       if (/Wrong card answered/.test(error?.message || '')) throw error;
       last = { ok: false, reason: error?.reason || 'read-back-missing', error };
+      sawSilence = true;
+      if (deadline) onWaiting({ elapsedMs: now() - startedAt, phase: 'restarting' });
     }
   }
-  const error = new Error('The card did not verify the exact installed project. Studio still shows the previous installed state.');
-  error.reason = last.reason;
+  const neverCameBack = Boolean(deadline) && !answeredAfterRestart;
+  const error = new Error(neverCameBack
+    ? `The card has not come back after restarting (${Math.round(restartWaitMs / 1000)} s). Check it has power and is on this Wi-Fi; your work is kept in Studio.`
+    : 'The card did not verify the exact installed project. Studio still shows the previous installed state.');
+  error.reason = neverCameBack ? 'restart-timeout' : last.reason;
   throw error;
 }
 

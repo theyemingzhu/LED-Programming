@@ -25,6 +25,21 @@ import type { CardStateSpec, PatternEntry } from './cardStates.js';
 import { MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_BUILD_ID, cardState } from './cardStates.js';
 
 /** Every host Studio might reach a card on. */
+// ── Real-card timing (all OFF by default; existing tests keep the instant card) ──
+// Measured on the gallery card, firmware 1.2.4. See todo/plans/false-failures.md.
+//   setRestartSilence(ms) / options.restartAfterSaveMs
+//       Every accepted, non-staged /api/config answers requiresReboot:true and
+//       the card restarts ~300 ms later (on /api/reboot or by itself). It is
+//       silent for `ms` (real: ~14000), then answers under a NEW bootId with the
+//       saved project, commandReady false for its first 1.5 s.
+//   silenceFor(ms)
+//       Every request (HTTP and bridge) arriving in the next `ms` hangs with no
+//       answer — a Wi-Fi re-association (real: 4–12 s). No restart.
+//   answerAfter(path | null, ms, times = 1)
+//       The next `times` answers to `path` (or any path) arrive `ms` late.
+//   setReplyDelay(ms)   (existing) every reply `ms` late until set back to 0.
+// isRestarting() tells a test whether a planned restart has the card off the air.
+
 export const CARD_HOSTS = ['lightweaver.local', '192.168.4.1', '192.168.18.70'];
 
 // The approved output menu minus the GPIOs the default control assignment
@@ -95,6 +110,8 @@ export type CardSimulator = {
   waitForPlaying(id: string, timeoutMs?: number): Promise<void>;
   /** Answer one bridge-relayed request from the same state. */
   handleBridge(type: string, payload: unknown): Record<string, unknown>;
+  /** The same, as the card page relays it: honours offline, silence and delayed answers. */
+  relayBridge(type: string, payload: unknown): Promise<Record<string, unknown>>;
 
   // ── Things real cards do and a happy-path stub never will ────────────────
   /**
@@ -162,6 +179,26 @@ export type CardSimulator = {
   /** Answer the next reply normally, then cut the connection on the `after`th following request. */
   cutAfterNextReply(): void;
 
+  // ── A card as slow as the real one (false-failures, 2026-11-21) ──────────
+  /**
+   * Go silent for `ms`: every request (HTTP and bridge) that arrives in the
+   * window hangs with no answer, the way a card whose Wi-Fi is re-associating
+   * looks to the page — not refused, just quiet. Measured on the real card:
+   * 4–12 s. Requests still hanging when the window ends are dropped, so the
+   * page's own timeout is what ends them.
+   */
+  silenceFor(ms: number): void;
+  /** Answer the next `times` requests to `path` (or any path when null) after `ms` extra. */
+  answerAfter(path: string | null, ms: number, times?: number): void;
+  /** True while a planned post-save restart (`restartAfterSaveMs`) has the card off the air. */
+  isRestarting(): boolean;
+  /**
+   * The real card's save rule at runtime: every accepted save restarts the
+   * card, silent for `ms` (real: ~14000). 0 turns it off. Same as
+   * `options.restartAfterSaveMs`.
+   */
+  setRestartSilence(ms: number): void;
+
   // ── Timed playlist (F2/F26 contract) ─────────────────────────────────────
   /**
    * Advance the playlist's own virtual dwell clock by `ms`, without a real
@@ -201,8 +238,18 @@ function outputReadyOf(state: CardStateSpec) {
   return state.pixels > 0;
 }
 
-function derivedReadiness(state: CardStateSpec & { wiringTestActive?: boolean }) {
+function derivedReadiness(state: CardStateSpec & { wiringTestActive?: boolean; bootingUntil?: number }) {
   const outputReady = outputReadyOf(state);
+  // The first seconds after a planned restart: the card answers, its phase is
+  // already 'ready' (firmware provisioningPhaseLabel), but a transition is
+  // still pending, so provisioningCommandReady is false.
+  if ((state.bootingUntil || 0) > Date.now()) {
+    return {
+      runtimePhase: 'ready', knownGoodProject: hasProject(state), commandReady: false,
+      outputReady, projectOutputReady: outputReady, outputDriverReady: outputReady,
+      playbackReady: false, configValid: true, safeMode: false,
+    };
+  }
   // Explicit only where a real card genuinely varies independently of its
   // configuration; everything else stays derived so an impossible card cannot
   // be described.
@@ -312,7 +359,7 @@ function statusBody(state: CardSimulator['state']) {
     buildId: state.buildId,
     buildNumber: state.buildNumber,
     bootId: state.bootId,
-    uptimeMs: 60000,
+    uptimeMs: (state as { bootedAt?: number }).bootedAt ? Math.max(0, Date.now() - (state as { bootedAt?: number }).bootedAt!) : 60000,
     ...derivedReadiness(state),
     provisionalSetup: state.provisionalSetup,
     // A card holding nothing reports how it got there — cardReadiness.js only
@@ -385,7 +432,9 @@ function statusBody(state: CardSimulator['state']) {
     led: {
       pixels: state.pixels,
       type: 'WS2812B',
-      colorOrder: 'GRB',
+      // A live colour-order try (/api/control {colorOrder}) changes what the
+      // card reports, exactly as firmware's runtimeGetLedColorOrder does.
+      colorOrder: (state as { liveColorOrder?: string }).liveColorOrder || 'GRB',
       outputGammaEnabled: false,
       outputGammaValue: 2.2,
       // A scale factor, not a byte. The real card reports 1, and a simulator
@@ -569,7 +618,20 @@ export const CARD_LATENCY_MS = { read: 40, write: 120 };
 
 export function createCardSimulator(
   spec: CardStateSpec,
-  options: { cardId?: string; latencyMs?: { read: number; write: number }; initialOutputs?: SimulatedOutput[] } = {},
+  options: {
+    cardId?: string;
+    latencyMs?: { read: number; write: number };
+    initialOutputs?: SimulatedOutput[];
+    /**
+     * Model the real firmware's save rule (LightweaverWeb.cpp handleConfigPost):
+     * every accepted, non-staged /api/config answers `requiresReboot: true`
+     * and the card restarts within a moment (on Studio's /api/reboot, or on
+     * its own 5 s fallback). For this many ms the card is silent; it then
+     * answers under a NEW boot id with the saved project. Measured on the
+     * real card (firmware 1.2.4): about 14 s. Unset keeps today's instant card.
+     */
+    restartAfterSaveMs?: number;
+  } = {},
 ): CardSimulator {
   const latency = options.latencyMs || CARD_LATENCY_MS;
   const initialOutputs = options.initialOutputs ? configOutputs(options.initialOutputs) : null;
@@ -673,6 +735,53 @@ export function createCardSimulator(
   let dropped = 0;
   let offline = false;
   let stressDelayMs = 0;
+  // Silence: a deadline (epoch ms) until which every request hangs unanswered.
+  let silentUntil = 0;
+  const silenceWaiters = new Set<() => void>();
+  // Planned post-save restart (options.restartAfterSaveMs).
+  let restartPendingTimer: ReturnType<typeof setTimeout> | null = null;
+  let restartAfterSaveMs = Number(options.restartAfterSaveMs) || 0;
+  let restartingUntil = 0;
+  let restartGeneration = 0;
+  const delayedAnswers: { path: string | null; ms: number; times: number }[] = [];
+  function quietNow() { return Date.now() < silentUntil || Date.now() < restartingUntil; }
+  function quietEndsIn() { return Math.max(silentUntil, restartingUntil) - Date.now(); }
+  function beginPlannedRestart() {
+    if (restartPendingTimer) { clearTimeout(restartPendingTimer); restartPendingTimer = null; }
+    const ms = restartAfterSaveMs;
+    restartGeneration += 1;
+    restartingUntil = Date.now() + ms;
+    (state as { bootingUntil?: number }).bootingUntil = restartingUntil + 1500;
+    (state as { bootedAt?: number }).bootedAt = restartingUntil;
+    // The lights go dark for the restart, and the card boots under a new id.
+    state.bootId = `boot-matrix-restart-${restartGeneration}`;
+    state.stateRevision += 1;
+    setTimeout(() => { for (const wake of [...silenceWaiters]) wake(); }, ms + 5);
+  }
+  function scheduleSaveRestart() {
+    if (!restartAfterSaveMs || restartPendingTimer || quietNow()) return;
+    // Firmware: delay(250) then ESP.restart() on /api/reboot, or its own 5 s
+    // fallback. 300 ms keeps the reply to the save itself deliverable.
+    restartPendingTimer = setTimeout(() => { restartPendingTimer = null; beginPlannedRestart(); }, 300);
+  }
+  /** Hang until the quiet window ends; true when the caller should drop the request. */
+  async function waitOutQuiet(): Promise<boolean> {
+    if (!quietNow()) return false;
+    await new Promise<void>(resolve => {
+      const wake = () => { silenceWaiters.delete(wake); resolve(); };
+      silenceWaiters.add(wake);
+      setTimeout(wake, Math.max(0, quietEndsIn()) + 5);
+    });
+    return true;
+  }
+  function takeDelay(path: string) {
+    const index = delayedAnswers.findIndex(entry => entry.path === null || entry.path === path);
+    if (index < 0) return 0;
+    const entry = delayedAnswers[index];
+    entry.times -= 1;
+    if (entry.times <= 0) delayedAnswers.splice(index, 1);
+    return entry.ms;
+  }
   const truncations = new Map<string, number>();
   let cutAfterReply = false;
   let cutNextRequest = false;
@@ -936,6 +1045,10 @@ export function createCardSimulator(
             status: 423,
           };
         }
+        if (typeof payload.colorOrder === 'string' && /^[RGBW]{3,4}$/.test(payload.colorOrder)) {
+          (state as { liveColorOrder?: string }).liveColorOrder = payload.colorOrder;
+          state.stateRevision += 1;
+        }
         applyControl(payload);
         return ok(controlAcknowledgement(state, payload));
       case '/api/identify':
@@ -1102,6 +1215,11 @@ export function createCardSimulator(
         });
       }
       case '/api/reboot':
+        if (restartAfterSaveMs) {
+          // Reply first, then go off the air (firmware: delay(250); restart).
+          scheduleSaveRestart();
+          return ok({ ok: true, message: 'rebooting' });
+        }
         state.bootId = `${state.bootId}-r`;
         return ok({ ok: true, message: 'rebooting' });
       case '/api/config': {
@@ -1147,6 +1265,12 @@ export function createCardSimulator(
         }
 
         applyConfigProjectFields(payload);
+
+        if (restartAfterSaveMs) {
+          // The real card's rule: every accepted save restarts the card.
+          scheduleSaveRestart();
+          return ok({ ok: true, message: 'saved', requiresReboot: true });
+        }
 
         if (pixelCountChanged) {
           // The write above already landed for real — state was just
@@ -1232,6 +1356,9 @@ export function createCardSimulator(
     const method = request.method();
 
     if (offline) return route.abort('connectionrefused');
+    if (method !== 'OPTIONS' && await waitOutQuiet()) {
+      return route.abort('timedout').catch(() => {});
+    }
     if (cutNextRequest && method !== 'OPTIONS') {
       cutNextRequest = false;
       return route.abort('connectionreset');
@@ -1259,7 +1386,10 @@ export function createCardSimulator(
     }
     requests.push({ method, path, body, at: Date.now() });
 
-    await new Promise(resolve => setTimeout(resolve, (method === 'GET' ? latency.read : latency.write) + stressDelayMs));
+    await new Promise(resolve => setTimeout(resolve, (method === 'GET' ? latency.read : latency.write) + stressDelayMs + takeDelay(path)));
+    // A restart or silence that began while this request was in flight
+    // swallows it too: the card went away before it could answer.
+    if (await waitOutQuiet()) return route.abort('timedout').catch(() => {});
 
     const answer = respond(method, path, body);
 
@@ -1334,6 +1464,10 @@ export function createCardSimulator(
       state.currentId = 'blackout';
     },
     setReplyDelay(ms) { stressDelayMs = ms; },
+    silenceFor(ms) { silentUntil = Math.max(silentUntil, Date.now() + ms); },
+    answerAfter(path, ms, times = 1) { delayedAnswers.push({ path, ms, times }); },
+    isRestarting() { return Date.now() < restartingUntil || restartPendingTimer !== null; },
+    setRestartSilence(ms) { restartAfterSaveMs = Math.max(0, Number(ms) || 0); },
     truncateNext(path, times = 1) { truncations.set(path, times); },
     cutAfterNextReply() { cutAfterReply = true; },
     goOffline() { offline = true; },
@@ -1415,6 +1549,22 @@ export function createCardSimulator(
     },
     // The bridge relay adds a postMessage hop each way on top of the card's own
     // reply time. Callers await this, so the delay is honoured there too.
+    async relayBridge(type: string, payload: unknown) {
+      // The card page relays to the card itself. While the card is off the air
+      // the page's own fetch fails (its error reaches Studio as runtime-rejected
+      // / "Failed to fetch", LightweaverWeb.cpp bridge relay); while it is
+      // silent, nothing comes back at all and Studio's own timeout ends it.
+      if (type !== 'release-bridge' && type !== 'frame') {
+        if (offline) return { ok: false, reason: 'runtime-rejected', error: 'Failed to fetch' };
+        if (quietNow()) {
+          await waitOutQuiet();
+          return new Promise(() => {});
+        }
+        const extra = takeDelay(BRIDGE_PATHS[type]?.path || '');
+        if (extra) await new Promise(resolve => setTimeout(resolve, extra));
+      }
+      return this.handleBridge(type, payload);
+    },
     handleBridge(type: string, payload: unknown) {
       if (type === 'release-bridge') return { ok: true, response: { released: true } };
       if (type === 'frame') return { ok: true, response: { ok: true, relayed: true, wsOpen: true } };

@@ -1,6 +1,7 @@
 import { CardPushError, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
 import { cardZoneRangesMatch, readCardZonesFromCard } from './cardLiveControl.js';
-import { prepareCardDeployment, verifyCardPostSaveState } from './cardDeployment.js';
+import { prepareCardDeployment, verifyCardPostSaveState, waitForCardRestart } from './cardDeployment.js';
+import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled } from './cardLink.js';
 import { installRecordedMediaForRuntimePackage } from './cardRecordedMedia.js';
 
 function delay(ms) {
@@ -91,8 +92,10 @@ export async function syncRuntimePackageToCard({
   allowLayoutChange = false,
   allowProjectChange = false,
   mediaInstall = null,
+  awaitRestart = waitForCardRestart,
 } = {}) {
   let mediaReceipt = null;
+  const bootBeforeSave = (() => { try { return getCardLinkState().validatedBootId || ''; } catch { return ''; } })();
   if (runtimePackage?.mediaAssets?.length) {
     if (!mediaInstall) throw new CardPushError(
       'recording-media-required',
@@ -122,6 +125,16 @@ export async function syncRuntimePackageToCard({
       'wiring-test-required',
       'The card kept this wiring change staged and did not install it. Open Test & Install, run the physical light check, and confirm the wiring there.',
     );
+  }
+  if (response?.rebooting && awaitRestart) {
+    // Every accepted save restarts the card (about 14 s on the real card).
+    // Reading it back before it returns failed the save that had landed.
+    noteCardRestartPlanned();
+    try {
+      await awaitRestart({ readStatus: () => readMediaStatus({ host, transport }), fromBootId: bootBeforeSave });
+    } finally {
+      noteCardRestartSettled();
+    }
   }
   let verifiedZones = null;
   if (requiredZoneIds.length) {

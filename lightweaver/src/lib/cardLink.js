@@ -238,6 +238,14 @@ function applyStatusEnvelope(prev, event, transport, host) {
     });
   }
 
+  // The card has not gone down yet for the restart Studio asked for (firmware
+  // restarts within 5 s of a save). An answer from the boot that is about to
+  // end proves nothing about the restart; keep waiting for the new one.
+  if (prev.state === 'revalidating' && plannedRestartActive(prev, event)
+    && prev.validatedBootId && incomingBootId === prev.validatedBootId) {
+    return prev;
+  }
+
   const bootChanged = Boolean(prev.validatedBootId && incomingBootId !== prev.validatedBootId);
   const needsStablePair = prev.requiresStableRevalidation
     || prev.state === 'reconnecting'
@@ -325,6 +333,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
     candidateBootId: '',
     rivalBootId: '',
     requiresStableRevalidation: false,
+    plannedRestartUntil: 0,
     acknowledgedAt,
     bridgeLifecycle: transport === 'bridge' ? (event.bridgeLifecycle ?? prev.bridgeLifecycle ?? null) : null,
   };
@@ -343,11 +352,41 @@ function applyStatusEnvelope(prev, event, transport, host) {
 
 // Pure reducer. Returns the previous state object unchanged (same reference)
 // when an event does not alter anything, so subscribers can bail out cheaply.
+/** The longest a save's planned restart may keep the card quiet before Studio says so. */
+export const CARD_PLANNED_RESTART_MAX_MS = 45000;
+
+// Studio asked the card to restart (every accepted project save does). Until
+// the deadline, silence is the restart Studio is waiting for, not a card that
+// "stopped responding" (todo/plans/false-failures.md).
+function plannedRestartActive(prev, event) {
+  const until = Number(prev.plannedRestartUntil) || 0;
+  const now = Number(event.at) || Date.now();
+  return until > now;
+}
+
 export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
   missLimit = CARD_LINK_PING_MISS_LIMIT,
 } = {}) {
   const host = event.host || prev.host;
   switch (event.type) {
+    case 'card-restart-planned': {
+      if (!prev.card?.id && !prev.expectedCard?.id) return prev;
+      if (!['connected-direct', 'connected-bridge', 'revalidating', 'reconnecting', 'reconnecting-bridge'].includes(prev.state)) return prev;
+      const now = Number(event.at) || Date.now();
+      const waitMs = Math.min(CARD_PLANNED_RESTART_MAX_MS, Math.max(1000, Number(event.waitMs) || CARD_PLANNED_RESTART_MAX_MS));
+      return {
+        ...clearedLiveEvidence(prev, {
+          state: 'revalidating', reason: 'card-restarting',
+          transport: prev.transport, host: prev.host, missedPings: 0,
+          card: prev.card || prev.expectedCard, expectedCard: prev.expectedCard || prev.card,
+        }),
+        plannedRestartUntil: now + waitMs,
+      };
+    }
+    case 'card-restart-settled': {
+      if (!prev.plannedRestartUntil) return prev;
+      return { ...prev, plannedRestartUntil: 0 };
+    }
     case 'connecting': {
       const via = event.via === 'direct' ? 'direct' : 'bridge';
       // A direct probe starting up never demotes an established link (either
@@ -669,6 +708,9 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (prev.state === 'connected-bridge' && missedPings < missLimit && !explicitIdentityError) {
         return { ...prev, missedPings };
       }
+      if (prev.state === 'revalidating' && plannedRestartActive(prev, event) && !explicitIdentityError) {
+        return prev.missedPings === missedPings ? prev : { ...prev, missedPings };
+      }
       return clearedLiveEvidence(prev, {
         state: 'reconnecting-bridge', reason: 'card-stopped-answering',
         transport: 'bridge', host, missedPings,
@@ -690,12 +732,22 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (event.readiness) return applyStatusEnvelope(prev, event, 'direct', host);
       if (prev.state !== 'connected-direct') return prev;
       if (prev.host !== host || prev.missedPings === 0) return prev;
-      return prev;
+      return { ...prev, missedPings: 0 };
     }
     case 'direct-ping-missed': {
       // A missed keepalive on direct connection demotes to reconnecting.
       if (prev.state !== 'connected-direct' && prev.state !== 'reconnecting' && !(prev.state === 'revalidating' && prev.transport === 'direct')) return prev;
       const missedPings = prev.missedPings + 1;
+      // Same rule as the bridge (F26): one miss is a slow card, not a gone
+      // one. A real card goes quiet for 4–12 s while its Wi-Fi re-associates;
+      // demoting on the first miss told the owner a healthy card had
+      // "stopped responding". Only consecutive misses up to the limit count.
+      if (prev.state === 'connected-direct' && missedPings < missLimit) {
+        return { ...prev, missedPings };
+      }
+      if (prev.state === 'revalidating' && plannedRestartActive(prev, event)) {
+        return prev.missedPings === missedPings ? prev : { ...prev, missedPings };
+      }
       return clearedLiveEvidence(prev, {
         state: 'reconnecting', reason: 'card-stopped-answering',
         transport: 'direct', host, missedPings,
@@ -781,6 +833,10 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (prev.state === 'connected-bridge' || prev.state === 'reconnecting-bridge') return prev;
       if (prev.state === 'connecting' && prev.transport === 'bridge') return prev;
       const reason = event.reason || 'card-unreachable';
+      // A probe that found no card while the card is restarting for a save
+      // is the restart itself (sweep item S3, todo/plans/false-failures.md).
+      if (prev.state === 'revalidating' && plannedRestartActive(prev, event)
+        && ['card-unreachable', 'no-answer'].includes(reason)) return prev;
       if (prev.state === 'disconnected' && prev.reason === reason && prev.host === host) return prev;
       // 'no-answer' after an established direct link means the CARD went
       // quiet — a router hiccup, a reboot, a power blip. That is worth asking
@@ -1054,6 +1110,8 @@ export function createCardLink({
   // "reconnecting…" never actually asked again.
   const directPingDelay = (candidate = state) => {
     if (candidate.state === 'revalidating') return 0;
+    // After a tolerated miss, ask again soon: the second answer decides.
+    if (candidate.state === 'connected-direct' && candidate.missedPings > 0) return Math.min(1000, directPingIntervalMs);
     if (candidate.state === 'reconnecting' || directCardWorthAsking(candidate)) return Math.min(pingIntervalMs, directPingIntervalMs);
     return directPingIntervalMs;
   };
@@ -1700,6 +1758,20 @@ export function subscribeCardLink(listener) {
 
 export function getCardLinkState() {
   return getSharedCardLink().getState();
+}
+
+/**
+ * A save was accepted and the card is restarting on purpose. Until it answers
+ * under a new boot id (or `waitMs` passes) Studio reads its silence as the
+ * restart, and says "Restarting card", never "stopped responding".
+ */
+export function noteCardRestartPlanned({ waitMs = CARD_PLANNED_RESTART_MAX_MS, link = getSharedCardLink() } = {}) {
+  link.dispatch({ type: 'card-restart-planned', waitMs, at: Date.now() });
+}
+
+/** The save that planned a restart has finished waiting, however it ended. */
+export function noteCardRestartSettled({ link = getSharedCardLink() } = {}) {
+  link.dispatch({ type: 'card-restart-settled' });
 }
 
 // An operation timeout/failure is stronger evidence than the background

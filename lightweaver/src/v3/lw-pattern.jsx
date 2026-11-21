@@ -80,9 +80,10 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry } from '../lib/cardPushClient.js';
+import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
-import { assertCardDeploymentPreflightIdentity, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, cardZoneRangesMatch, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
@@ -2303,6 +2304,16 @@ function writeSectionDisplayOrder(projectId, ids) {
     // (layout safety, project evidence, card and wiring status) are three card
     // reads, and on a slow card the button sat unchanged for seconds.
     const [installPreparing, setInstallPreparing] = useState(false);
+    // The save's own outcome on its own button: "Restarting card…" while the
+    // card restarts on purpose, then "Saved" for a few seconds. A status line
+    // elsewhere can be replaced by another screen's notice; the button cannot.
+    const [saveRestarting, setSaveRestarting] = useState(false);
+    const [savedAt, setSavedAt] = useState(0);
+    useEffect(() => {
+      if (!savedAt) return undefined;
+      const timer = setTimeout(() => setSavedAt(0), 6000);
+      return () => clearTimeout(timer);
+    }, [savedAt]);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
@@ -2311,6 +2322,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     const savePreviewToCard = async () => {
       if (installPreparing) return;
       if (staleCardConflict) setStaleCardConflict(false);
+      setSavedAt(0);
       setInstallPreparing(true);
       // The owner's "Save mine anyway" covers exactly one attempt, however it ends.
       try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); saveAnywayRef.current = false; }
@@ -2334,6 +2346,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       const installIntent = {};
       installIntentRef.current = installIntent;
       let packageForCard = null;
+      let restartPlanned = false;
       try {
         const requestedRevision = projectLifecycle.editedRevision;
         const requestedGeneration = projectLifecycle.generation;
@@ -2365,7 +2378,14 @@ function writeSectionDisplayOrder(projectId, ids) {
           blockPatternCardEffect(currentPatternInstallAccess());
           return;
         }
-        const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
+        // A quiet card (its Wi-Fi re-associating) is asked again before
+        // Studio says anything; the button keeps saying "Checking card…".
+        let checkingShown = false;
+        const keepChecking = () => { checkingShown = true; setStatusKind('info'); setStatus('Checking card…'); };
+        const before = await withCardReadRetry(
+          () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          { onRetry: keepChecking },
+        );
         if (!matchesCurrentCardProjectEvidence(before) && !matchesSameProjectCardEvidence(before)) {
           blockPatternCardEffect('project');
           return;
@@ -2377,10 +2397,10 @@ function writeSectionDisplayOrder(projectId, ids) {
           return;
         }
         saveAnywayRef.current = false;
-        const [cardStatus, wiringStatus] = await Promise.all([
+        const [cardStatus, wiringStatus] = await withCardReadRetry(() => Promise.all([
           readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
           getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
-        ]);
+        ]), { onRetry: keepChecking });
         assertCardDeploymentPreflightIdentity(before, cardStatus);
         if ((wiringStatus.cardId && wiringStatus.cardId !== before.cardId)
           || (wiringStatus.buildId && wiringStatus.buildId !== before.buildId)) {
@@ -2400,19 +2420,40 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
         dispatchCardSave({ type: 'start', revision: requestedRevision });
-        const response = await pushConfigToCard(packageForCard, {
-          host: safety.host || cardHost,
-          transport: cardLink?.transport,
-          timeoutMs: 6000,
-          reboot: 'if-needed',
-          allowLayoutChange: undefined,
-          allowProjectChange: undefined,
-        });
+        if (checkingShown) { setStatusKind(''); setStatus(''); }
+        let response;
+        try {
+          response = await pushConfigToCard(packageForCard, {
+            host: safety.host || cardHost,
+            transport: cardLink?.transport,
+            timeoutMs: 6000,
+            reboot: 'if-needed',
+            allowLayoutChange: undefined,
+            allowProjectChange: undefined,
+          });
+        } catch (pushError) {
+          // The write went out and no answer came back. A real card restarts
+          // the moment it stores a save, so a lost reply is usually a save
+          // that landed. Read the card back before saying anything.
+          const replyLost = pushError?.reason === 'offline' || pushError?.reason === 'timeout';
+          if (!replyLost || pushError?.delivery === 'not-sent' || pushError?.delivery === 'rejected') throw pushError;
+          response = { ok: true, rebooting: true, replyLost: true };
+        }
         if (response?.state === 'staged') {
           window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
           return;
         }
-        const postWriteWiring = await getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }).catch(() => null);
+        if (response?.rebooting) {
+          // Every accepted save restarts the card; it is quiet for about 14 s.
+          noteCardRestartPlanned({ waitMs: CARD_RESTART_WAIT_MS });
+          restartPlanned = true;
+          setSaveRestarting(true);
+          setStatusKind('info');
+          setStatus('Restarting the card…');
+        }
+        const postWriteWiring = response?.rebooting
+          ? null
+          : await getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }).catch(() => null);
         if (postWriteWiring?.hasCandidate) {
           // Some card builds acknowledge /api/config before the candidate is
           // exposed in that reply. The Card status flow can resume the exact
@@ -2422,8 +2463,15 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
         const verification = await waitForCardDeploymentVerification(exactPrepared, {
           readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          ...(response?.rebooting ? {
+            restartWaitMs: CARD_RESTART_WAIT_MS,
+            restartFromBootId: before.bootId || '',
+            intervalMs: 800,
+          } : {}),
         });
         dispatchCardSave({ type: 'confirm' });
+        setSaveRestarting(false);
+        setSavedAt(Date.now());
         const commitBoard = JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
           && JSON.stringify(latestBoardRef.current) !== JSON.stringify(nextBoard);
         const commitController = JSON.stringify(latestControllerRef.current) === JSON.stringify(requestedController)
@@ -2470,11 +2518,16 @@ function writeSectionDisplayOrder(projectId, ids) {
         // save may report its own success; it may not erase someone else's
         // warning.
         if (projectAuthorizationRef.current === authorizationAtSave) {
-          setStatusKind('');
-          setStatus('');
+          setStatusKind('ok');
+          setStatus('Saved to the card.');
         }
       } catch (error) {
         dispatchCardSave({ type: 'fail', error: error?.message });
+        if (error?.reason === 'restart-timeout') {
+          setStatusKind('err');
+          setStatus(error.message);
+          return;
+        }
         if (error?.reason === 'mixed-content') {
           offerCardHandoff(packageForCard, 'Saved in Studio. The browser blocked direct local-card access, so open the card installer to finish saving it on the card.');
         } else if (error?.reason === 'layout-mismatch' || error?.reason === 'project-mismatch' || error?.reason === 'config-too-large') {
@@ -2492,6 +2545,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           setStatus('Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.');
         }
       } finally {
+        if (restartPlanned) { noteCardRestartSettled(); setSaveRestarting(false); }
         if (installIntentRef.current === installIntent) installIntentRef.current = null;
       }
     };
@@ -3276,7 +3330,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                   disabled={handoffInvalid || editingProjectOnly || !installGate.allowed || installPreparing}
                   aria-busy={installPreparing || cardSave.status === 'pending' ? 'true' : undefined}
                   data-testid="pattern-install-on-card"
-                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : installPreparing ? 'Checking card…' : cardSave.status === 'failed' ? 'Try saving again' : 'Save to card'}</button>
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? (saveRestarting ? 'Restarting card…' : 'Sending…') : installPreparing ? 'Checking card…' : savedAt && cardSave.status === 'confirmed' ? 'Saved' : cardSave.status === 'failed' ? 'Try saving again' : 'Save to card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner

@@ -158,6 +158,50 @@ export function cardConfigServerErrorMessage(status) {
   return `The card could not confirm the save (code ${status}). Check what the card shows, then try saving again.`;
 }
 
+/**
+ * Card reads before a save run on a card that may be briefly quiet (its Wi-Fi
+ * re-associating: 4–12 s on the real card). A read that got no answer is
+ * asked again — `tries` in all, `intervalMs` apart — before Studio says
+ * anything. A card that answered and refused is never retried.
+ */
+export const CARD_READ_RETRY = Object.freeze({ tries: 3, intervalMs: 3000 });
+
+export function isCardSilenceError(error) {
+  if (!error) return false;
+  const status = Number(error.status);
+  if (Number.isFinite(status) && status >= 400) return false;
+  if (error.delivery === 'rejected') return false;
+  if (error.name === 'AbortError' || error.name === 'TypeError') return true;
+  // Only "no answer" is retried. A card that answered with the wrong
+  // identity, an old firmware, or a refusal said something; asking again
+  // would only hide it.
+  const reason = String(error.reason || '');
+  return ['', 'readback', 'timeout', 'offline', 'bridge-timeout', 'runtime-rejected', 'no-answer',
+    'read-back-missing', 'unreachable'].includes(reason);
+}
+
+export async function withCardReadRetry(read, {
+  tries = CARD_READ_RETRY.tries,
+  intervalMs = CARD_READ_RETRY.intervalMs,
+  onRetry = () => {},
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < Math.max(1, tries); attempt += 1) {
+    if (attempt > 0) {
+      onRetry(attempt, lastError);
+      await sleep(intervalMs);
+    }
+    try {
+      return await read();
+    } catch (error) {
+      lastError = error;
+      if (!isCardSilenceError(error)) throw error;
+    }
+  }
+  throw lastError;
+}
+
 export const CARD_DID_NOT_ANSWER_MESSAGE = 'The card did not answer. Check it has power and is on this Wi-Fi, then try again.';
 
 async function postConfigToHost(host, runtimePackage, options = {}) {
@@ -188,8 +232,13 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
       json?.requiresReboot === true ||
       (options.reboot === 'if-needed' && await cardNeedsConfigReboot(host, runtimePackage, options)));
     if (shouldReboot) {
-      await requestCardReboot(host, options);
-      return { ...json, rebooting: true };
+      // The save itself is already accepted and stored. Firmware restarts on
+      // its own within 5 s of an accepted save (kConfigRestartFallbackMs), so
+      // a reboot request the card is already too busy restarting to answer is
+      // not a failed save — it was reported as "did not answer" before.
+      let rebootRequest = 'sent';
+      try { await requestCardReboot(host, options); } catch { rebootRequest = 'unconfirmed'; }
+      return { ...json, rebooting: true, rebootRequest };
     }
     return json;
   } finally {
@@ -434,15 +483,22 @@ async function cardNeedsConfigReboot(host, runtimePackage, options = {}) {
 }
 
 async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
-  const timeoutMs = Math.min(options.timeoutMs || 6000, 1200);
+  const timeoutMs = Math.min(options.timeoutMs || 6000, 3000);
   const transport = selectedTransport(options);
-  const current = transport === 'bridge'
-    ? await bridgeRequest('firmware-info', {}, {
+  const readOnce = () => (transport === 'bridge'
+    ? bridgeRequest('firmware-info', {}, {
         host,
         timeoutMs,
         retryOnTimeout: true,
       }, options).catch(() => null)
-    : await readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch);
+    : readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch));
+  // An unanswered read here used to fall through as "no current layout", which
+  // also skipped the layout and project checks. Ask a quiet card again.
+  let current = await readOnce();
+  for (let retry = 1; !current && retry < (options.readTries ?? CARD_READ_RETRY.tries); retry += 1) {
+    await new Promise(resolve => setTimeout(resolve, options.readRetryMs ?? CARD_READ_RETRY.intervalMs));
+    current = await readOnce();
+  }
   const pinLayoutChanged = current ? cardConfigStructuralWiringChangedFromInfo(current, runtimePackage) : false;
   const outputsChanged = current ? cardConfigNeedsRebootFromInfo(current, runtimePackage) : false;
   const projectChanged = current ? cardConfigProjectMismatchFromInfo(current, runtimePackage) : false;
@@ -532,10 +588,12 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   let exactIdentity = null;
   if (!useBridge) {
     try {
-      exactIdentity = await guardDirectCardMutation(host, {
+      // A quiet card (Wi-Fi re-associating, 4–12 s) is asked again before
+      // the save is refused as "Nothing was sent".
+      exactIdentity = await withCardReadRetry(() => guardDirectCardMutation(host, {
         fetchImpl: options.fetchImpl,
-        timeoutMs: Math.min(options.timeoutMs || 6000, 1500),
-      });
+        timeoutMs: Math.min(options.timeoutMs || 6000, 3000),
+      }), { tries: options.readTries ?? CARD_READ_RETRY.tries, intervalMs: options.readRetryMs ?? CARD_READ_RETRY.intervalMs });
     } catch (cause) {
       const error = cause?.reason
         ? new CardPushError(cause.reason, cause.message, cause, cause.status)

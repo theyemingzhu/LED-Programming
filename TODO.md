@@ -114,6 +114,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Top priority — make the card boringly reliable
 
+- [ ] Stop the bridge resending `/api/config` after a timeout (the card restarts twice) and give Show, Recover lights and the wiring-test end the same restart wait the saves now have _(band: agent-runnable)_ _(effort: medium)_ → Plan: [false-failures.md](todo/plans/false-failures.md)
+- [ ] Watch one real Save to card on the gallery card end on "Saved" with no failure line in the ~15 s restart _(band: you-required)_ _(effort: quick)_ → Plan: [false-failures.md](todo/plans/false-failures.md)
 - [ ] **Execute the staged [Reliable Chip Closure plan](docs/superpowers/plans/2026-08-08-reliable-chip-closure.md).** _(firmware agent + Studio agent + CI/docs agent + Adrian)_ Phase 1 fixes proven-network retry when the router starts late, adds the firmware-owned reboot fallback after an interrupted config save, gates Art-Net consistently, publishes the exact signed release, and passes the real-card power-cycle/outage matrix. Phase 2 immediately adds universal two-envelope authority and a truthful LAN/router-address recovery action. The old `2462ca4` audit branch was deleted 2026-08-25; do not revive it. The leftover gates are listed under the 2026-08-11 audit below — implement them from current `main`. Done only when the exact merged Studio and signed firmware build numbers match the live release and the recorded hardware pass.
 
 ## Active release path

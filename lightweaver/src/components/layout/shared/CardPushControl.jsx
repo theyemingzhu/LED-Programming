@@ -24,6 +24,7 @@ import {
   isCardAlreadyCurrent,
   orchestrateCardDeploymentStart,
   waitForCardDeploymentVerification,
+  CARD_RESTART_WAIT_MS,
 } from '../../../lib/cardDeployment.js';
 import {
   activateAndWaitForCardWiring,
@@ -39,7 +40,7 @@ import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
-import { getCardLinkState, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
+import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
@@ -70,7 +71,7 @@ async function readReadyDeploymentEvidence(host, transport = getCardLinkState().
   return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
 }
 
-async function waitForReadyDeploymentVerification(prepared, host) {
+async function waitForReadyDeploymentVerification(prepared, host, restart = null) {
   let readiness = null;
   const verification = await waitForCardDeploymentVerification(prepared, {
     readEvidence: async () => {
@@ -79,6 +80,13 @@ async function waitForReadyDeploymentVerification(prepared, host) {
       return evidence;
     },
     requireReady: true,
+    // Every accepted save restarts the card (about 14 s on the real card).
+    // Wait for the new boot instead of failing after a few seconds.
+    ...(restart ? {
+      restartWaitMs: CARD_RESTART_WAIT_MS,
+      restartFromBootId: restart.fromBootId || '',
+      intervalMs: 800,
+    } : {}),
   });
   return { verification, readiness };
 }
@@ -360,6 +368,8 @@ export function CardPushControl({
       }
       let configPushAttempted = false;
       let deploymentStart;
+      let bootBeforeSave = '';
+      let restartPlanned = false;
       try {
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
@@ -391,6 +401,7 @@ export function CardPushControl({
                 }
               }
               configPushAttempted = true;
+              bootBeforeSave = getCardLinkState().validatedBootId || getCardLinkState().readiness?.bootId || '';
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
@@ -466,15 +477,28 @@ export function CardPushControl({
       // Only an explicit reply establishes that a restart was requested.
       // A lost reply still requires read-back, but cannot prove a restart.
       const cardIsRestarting = response?.requiresReboot === true || response?.rebooting === true;
-      setPushStatus(cardIsRestarting ? 'Card restarted — verifying…' : 'Verifying the exact project on the card…');
-      if (cardIsRestarting) setInstallRestarting(true);
+      setPushStatus(cardIsRestarting ? 'Restarting the card…' : 'Verifying the exact project on the card…');
+      if (cardIsRestarting) {
+        setInstallRestarting(true);
+        noteCardRestartPlanned({ waitMs: CARD_RESTART_WAIT_MS });
+        restartPlanned = true;
+      }
       let verification;
       try {
-        ({ verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host));
+        ({ verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host,
+          cardIsRestarting || response?.pendingVerification ? { fromBootId: bootBeforeSave } : null));
+        if (restartPlanned) { noteCardRestartSettled(); restartPlanned = false; }
       } catch (verifyError) {
         // Once a config may have reached the card, a failed read is
         // inconclusive, whether or not the reply mentioned a reboot.
+        if (restartPlanned) { noteCardRestartSettled(); restartPlanned = false; }
         setInstallRestarting(false);
+        if (verifyError?.reason === 'restart-timeout') {
+          failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true, verifyReason: verifyError.reason };
+          dispatchAction({ type: 'fail', error: verifyError.message });
+          setPushStatus(verifyError.message);
+          return;
+        }
         failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true, verifyReason: verifyError?.reason };
         const message = `${cardIsRestarting ? 'The card restarted, but Studio' : 'Studio'} could not verify this install (${verifyError?.reason || 'readback unavailable'}). Retry reads the card again without sending the project.`;
         dispatchAction({ type: 'fail', error: message });
@@ -810,6 +834,7 @@ export function CardPushControl({
             ? { 'data-testid': 'card-install-already-current' }
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
+          {action.status === 'pending' && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
           {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (

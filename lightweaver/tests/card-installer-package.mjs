@@ -123,7 +123,11 @@ assert.equal(pushed.state, 'staged');
 assert.equal(pushed.activationId, 'installer-layout-candidate');
 assert.equal(pushed.saved, undefined);
 assert.equal(pushed.rebooting, undefined);
+// The pre-save identity read is asked three times when the card does not
+// answer at all (todo/plans/false-failures.md, D4); mDNS failing is silence.
 assert.deepEqual(requests.map(request => request.url), [
+  'http://lightweaver.local/api/firmware-info',
+  'http://lightweaver.local/api/firmware-info',
   'http://lightweaver.local/api/firmware-info',
   'http://lightweaver.local/api/config',
   'http://lightweaver.local/api/status',

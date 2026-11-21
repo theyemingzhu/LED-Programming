@@ -145,11 +145,26 @@ export function CardFacts({
     }
     const seq = ++colorSeq.current;
     setColorStatus({ kind: '', text: `Trying ${colorOrder} on the strip…` });
-    pushLiveHardwareToCard({ colorOrder }, { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 })
-      .then(async response => {
-        if (response?.ok !== true || !Number.isSafeInteger(response?.stateRevision)) throw new Error('no card acknowledgement');
-        const readback = await readCardStatusEnvelope({ ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 });
-        if (!response.cardId || readback?.cardId !== response.cardId || readback?.led?.colorOrder !== colorOrder) throw new Error('readback mismatch');
+    // A slow card gets 4.5 s per step and one more try; a reply that was
+    // lost is first checked against what the card now reports (sweep item
+    // S4, todo/plans/false-failures.md). It used to fail after 2 s.
+    const options = { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 4500 };
+    const tryOnce = async () => {
+      const response = await pushLiveHardwareToCard({ colorOrder }, options);
+      if (response?.ok !== true || !Number.isSafeInteger(response?.stateRevision)) throw new Error('no card acknowledgement');
+      const readback = await readCardStatusEnvelope(options);
+      if (!response.cardId || readback?.cardId !== response.cardId || readback?.led?.colorOrder !== colorOrder) throw new Error('readback mismatch');
+    };
+    tryOnce()
+      .catch(async () => {
+        if (seq !== colorSeq.current) return;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const readback = await readCardStatusEnvelope(options).catch(() => null);
+        if (readback?.led?.colorOrder === colorOrder) return;
+        if (seq !== colorSeq.current) return;
+        await tryOnce();
+      })
+      .then(() => {
         if (seq !== colorSeq.current) return;
         setColorStatus({ kind: 'ok', text: `${colorOrder} is on the strip. Check colors to confirm it; Save to card to keep it.` });
       })

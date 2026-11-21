@@ -56,7 +56,7 @@ export async function installHttpsStudio(page: Page, localBaseURL: string) {
  * runtimeCommandReady, without which every privileged command is refused.
  */
 export async function installFakeCardBridge(page: Page, card: CardSimulator, host = 'lightweaver.local') {
-  await page.exposeFunction('__lwBridgeRequest', (type: string, payload: unknown) => card.handleBridge(type, payload));
+  await page.exposeFunction('__lwBridgeRequest', (type: string, payload: unknown) => card.relayBridge(type, payload));
 
   await page.addInitScript(({ cardHost, bridgeVersion }) => {
     const origin = `http://${cardHost}`;

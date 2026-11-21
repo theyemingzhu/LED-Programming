@@ -149,6 +149,10 @@ export function normalizeCardProjectEvidence(payload = {}) {
     firmwareVersion: identity.firmwareVersion,
     buildId: identity.buildId,
     ...(identity.projectId ? { projectId: identity.projectId } : {}),
+    // Which life of the card answered. A save restarts the card, and only an
+    // answer from the NEW boot proves the restart happened and the saved
+    // project survived it.
+    ...(cleanText(source.bootId, 96) ? { bootId: cleanText(source.bootId, 96) } : {}),
     ...(identity.projectRevision !== undefined ? { projectRevision: identity.projectRevision } : {}),
     ...(identity.projectFingerprint ? { projectFingerprint: identity.projectFingerprint } : {}),
     ...(identity.productionJobId ? { productionJobId: identity.productionJobId } : {}),
