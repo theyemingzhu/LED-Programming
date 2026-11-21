@@ -175,7 +175,11 @@ export function CardPushControl({
     wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
     gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
   const [pushHost, setPushHost] = useState(() => getCardHostname());
-  const [pushStatus, setPushStatus] = useState('');
+  // An install queued by the URL (Layout's "Check and install") or a press
+  // shows it is working at once: the preflight reads come before the send's
+  // own status, and on a busy page that left about a second of a screen with
+  // no sign of work (F-D4, todo/plans/false-failures.md).
+  const [pushStatus, setPushStatus] = useState(() => (autoStart && !disabled ? 'Checking card…' : ''));
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
   const [pushFallbackJson, setPushFallbackJson] = useState('');
   const [pushFallbackPackage, setPushFallbackPackage] = useState(null);
@@ -233,6 +237,7 @@ export function CardPushControl({
     if (installInFlightRef.current) return;
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
+    setPushStatus(current => current || 'Checking card…');
     // While the install checks a slow card, the footer does not call it gone.
     noteCardCheckHold();
     try {
@@ -566,6 +571,7 @@ export function CardPushControl({
     }));
     } finally {
       noteCardCheckRelease();
+      setPushStatus(current => (current === 'Checking card…' ? '' : current));
       installInFlightRef.current = false;
       saveAnywayRef.current = false;
     }
@@ -853,7 +859,7 @@ export function CardPushControl({
             ? { 'data-testid': 'card-install-already-current' }
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
-          {action.status === 'pending' && <span className="lw-notice-spinner" aria-hidden="true" />}
+          {(action.status === 'pending' || pushStatus === 'Checking card…') && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
           {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (

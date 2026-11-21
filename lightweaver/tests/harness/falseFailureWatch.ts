@@ -72,30 +72,41 @@ export async function falseFailures(page: Page): Promise<string[]> {
  * Record whether "working" was visible throughout: samples every 100 ms and
  * keeps the longest stretch with neither a busy control nor a progress line.
  */
-export async function startWorkingWatch(page: Page, busySelector: string, workingPattern: string) {
-  await page.evaluate(({ selector, pattern }) => {
-    const w = window as unknown as { __lwIdleGapMs?: number; __lwWorkingStop?: () => void; __lwWorkingSeen?: string[] };
+export async function startWorkingWatch(page: Page, busySelector: string, workingPattern: string, donePattern = '') {
+  await page.evaluate(({ selector, pattern, done }) => {
+    const doneRe = done ? new RegExp(done, 'i') : null;
+    let doneSeen = false;
+    const w = window as unknown as { __lwIdleGapMs?: number; __lwWorkingStop?: () => void; __lwWorkingSeen?: string[]; __lwIdleGapText?: string };
     w.__lwWorkingStop?.();
     const re = new RegExp(pattern, 'i');
     let idleSince = 0;
+    let idleText = '';
     w.__lwIdleGapMs = 0;
+    w.__lwIdleGapText = '';
     w.__lwWorkingSeen = [];
     const timer = setInterval(() => {
+      // Once the save's success is on screen the wait is over; nothing after
+      // it is "a wait with no sign of work".
+      if (doneSeen || (doneRe && doneRe.test(`${location.hash} ${document.body?.innerText || ''}`))) { doneSeen = true; idleSince = 0; return; }
       const busy = Boolean(document.querySelector(selector));
       const match = (document.body?.innerText || '').match(re);
       if (match && !w.__lwWorkingSeen!.includes(match[0])) w.__lwWorkingSeen!.push(match[0]);
       if (busy || match) { idleSince = 0; return; }
-      if (!idleSince) idleSince = performance.now();
-      w.__lwIdleGapMs = Math.max(w.__lwIdleGapMs || 0, performance.now() - idleSince);
+      if (!idleSince) {
+        idleSince = performance.now();
+        idleText = `${location.hash} | ${(document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 400)}`;
+      }
+      const gap = performance.now() - idleSince;
+      if (gap > (w.__lwIdleGapMs || 0)) { w.__lwIdleGapMs = gap; w.__lwIdleGapText = idleText; }
     }, 100);
     w.__lwWorkingStop = () => clearInterval(timer);
-  }, { selector: busySelector, pattern: workingPattern });
+  }, { selector: busySelector, pattern: workingPattern, done: donePattern });
 }
 
-export async function stopWorkingWatch(page: Page): Promise<{ idleGapMs: number; seen: string[] }> {
+export async function stopWorkingWatch(page: Page): Promise<{ idleGapMs: number; seen: string[]; gapText: string }> {
   return page.evaluate(() => {
-    const w = window as unknown as { __lwIdleGapMs?: number; __lwWorkingStop?: () => void; __lwWorkingSeen?: string[] };
+    const w = window as unknown as { __lwIdleGapMs?: number; __lwWorkingStop?: () => void; __lwWorkingSeen?: string[]; __lwIdleGapText?: string };
     w.__lwWorkingStop?.();
-    return { idleGapMs: w.__lwIdleGapMs || 0, seen: w.__lwWorkingSeen || [] };
+    return { idleGapMs: w.__lwIdleGapMs || 0, seen: w.__lwWorkingSeen || [], gapText: w.__lwIdleGapText || '' };
   });
 }

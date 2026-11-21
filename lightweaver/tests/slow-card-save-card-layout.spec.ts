@@ -12,7 +12,11 @@ import {
 
 const REAL_RESTART_MS = 14000;
 // Success text counts: the owner is told how it ended, not left waiting.
-const WORKING = 'Restarting (the )?card|Checking card|Verifying|Sending|Saving|Loading|Installed revision';
+const WORKING = 'Restarting (the )?card|Checking card|Verifying|Sending|Saving|Loading';
+// The save's own success: its banner, or (Layout's install hands off) arriving
+// on Patterns with the card holding the project. Matched against
+// "<hash> <screen text>". Watching stops counting once either is shown.
+const DONE = 'Installed revision \\d+ on card|^#screen=pattern [\\s\\S]*Installed on card';
 const BUSY = '.la-card-push-banner.is-pending, [aria-busy="true"], .lw-notice-spinner';
 
 test.describe.configure({ timeout: 150000 });
@@ -64,7 +68,7 @@ test('Layout: an LED-count save through a 14 s restart ends Installed on card, n
     .toBe(spec.pixels + 1);
 
   await startFalseFailureWatch(page);
-  await startWorkingWatch(page, BUSY, WORKING);
+  await startWorkingWatch(page, BUSY, WORKING, DONE);
   const startedAt = Date.now();
   await page.getByTestId('layout-check-and-install').click();
   await expect(page.getByText(/Restarting (the )?card/).first()).toBeVisible({ timeout: 15000 });
@@ -73,7 +77,7 @@ test('Layout: an LED-count save through a 14 s restart ends Installed on card, n
   const tookMs = Date.now() - startedAt;
   const working = await stopWorkingWatch(page);
   expect(await falseFailures(page)).toEqual([]);
-  expect(working.idleGapMs).toBeLessThan(600);
+  expect(working.idleGapMs, `longest stretch with no sign of work began at: ${working.gapText}`).toBeLessThan(600);
   expect(tookMs).toBeGreaterThan(REAL_RESTART_MS - 1000);
   expect(card.state.pixels).toBe(spec.pixels + 1);
   expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/config')).toHaveLength(1);
@@ -98,7 +102,7 @@ test('Card Home: Save to card through a 14 s restart ends Installed on card, nev
   await expect(save).toBeEnabled({ timeout: 25000 });
 
   await startFalseFailureWatch(page);
-  await startWorkingWatch(page, BUSY, WORKING);
+  await startWorkingWatch(page, BUSY, WORKING, DONE);
   const startedAt = Date.now();
   await save.click();
   await expect(page.getByText(/Restarting (the )?card/).first()).toBeVisible({ timeout: 15000 });
@@ -106,7 +110,7 @@ test('Card Home: Save to card through a 14 s restart ends Installed on card, nev
   const tookMs = Date.now() - startedAt;
   const working = await stopWorkingWatch(page);
   expect(await falseFailures(page)).toEqual([]);
-  expect(working.idleGapMs).toBeLessThan(600);
+  expect(working.idleGapMs, `longest stretch with no sign of work began at: ${working.gapText}`).toBeLessThan(600);
   expect(tookMs).toBeGreaterThan(REAL_RESTART_MS - 1000);
   expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/config')).toHaveLength(1);
   await page.waitForTimeout(3000);
