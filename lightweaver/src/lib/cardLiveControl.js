@@ -1,3 +1,4 @@
+import { noteCardRestartPlanned, noteCardRestartSettled } from './cardLink.js';
 import { savedPatternMetadata } from './cardSavedControls.js';
 import {
   canPushDirectlyToCard,
@@ -529,8 +530,13 @@ function waitForRecoveryRetry(ms, setTimeoutImpl = setTimeout) {
   return new Promise(resolve => setTimeoutImpl(resolve, ms));
 }
 
+// The real card is silent ~14 s after a restart, and its first answers are
+// slow; 15 s ended a healthy recovery with "did not reconnect in time".
+// Same limit as a save's restart wait (CARD_RESTART_WAIT_MS).
+const RECOVERY_RESTART_WAIT_MS = 45000;
+
 async function redeliverRecoveryAfterRestart(host, payload, options = {}) {
-  const deadline = Date.now() + (options.restartTimeoutMs || 15000);
+  const deadline = Date.now() + (options.restartTimeoutMs || RECOVERY_RESTART_WAIT_MS);
   await waitForRecoveryRetry(options.restartSettleMs ?? 800, options.setTimeoutImpl);
   let lastError = null;
   do {
@@ -567,13 +573,25 @@ async function redeliverRecoveryAfterRestart(host, payload, options = {}) {
 async function finishRecovery(host, payload, response, options = {}) {
   const acknowledged = requireRecoveryAcknowledgement(response);
   if (options.restartCard !== true) return acknowledged;
-  if (recoveryUsesBridge(options)) {
-    await sendCardBridgeRequest('reboot', {}, { host, timeoutMs: Math.min(options.timeoutMs || 3000, 1200) });
-  } else {
-    await requestCardReboot(host, options);
+  // The restart is Studio's own: the link reads the silence as "Restarting
+  // card", never "stopped responding". A reboot request whose reply is lost
+  // is not a failure; the redelivery below proves the card came back.
+  noteCardRestartPlanned({ waitMs: options.restartTimeoutMs || RECOVERY_RESTART_WAIT_MS });
+  try {
+    try {
+      if (recoveryUsesBridge(options)) {
+        await sendCardBridgeRequest('reboot', {}, { host, timeoutMs: Math.min(options.timeoutMs || 3000, 1200) });
+      } else {
+        await requestCardReboot(host, options);
+      }
+    } catch (rebootError) {
+      if (Number(rebootError?.status) >= 400) throw rebootError;
+    }
+    const restored = await redeliverRecoveryAfterRestart(host, payload, options);
+    return { ...restored, restarted: true };
+  } finally {
+    noteCardRestartSettled();
   }
-  const restored = await redeliverRecoveryAfterRestart(host, payload, options);
-  return { ...restored, restarted: true };
 }
 
 function cloneJson(value) {

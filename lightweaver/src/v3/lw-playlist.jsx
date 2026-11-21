@@ -14,9 +14,10 @@ import { useProject } from '../state/ProjectContext.jsx';
 import { REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook } from './v3-data.js';
 import { getCardPatternById } from '../lib/cardPatternBank.js';
 import { DEFAULT_CARD_PATTERN_BANK } from '../lib/cardRuntimeContract.js';
-import { CardPushError, cardStorageJson, readCardProjectEvidence } from '../lib/cardPushClient.js';
+import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry } from '../lib/cardPushClient.js';
+import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { evaluateCardInstallGate, readCardCommissioningVerification } from '../lib/cardInstallGate.js';
 import { deriveSectionTargets, normalizeSavedLooks } from '../lib/sectionLookModel.js';
@@ -741,7 +742,9 @@ function realPatternShape(patternId) {
         // its short wiring package here.
         packageForCard = runtimePackageForCardOperation(validRuntimePackage, { operation: 'save' });
         prepareCardStoragePayload(packageForCard);
-        const before = await readCardProjectEvidence({ host, transport: cardLink?.transport });
+        // A quiet card is asked again before Studio says anything.
+        const before = await withCardReadRetry(() => readCardProjectEvidence({ host, transport: cardLink?.transport }));
+        let replyLost = false;
         const response = await syncRuntimePackageToCard({
           host,
           transport: cardLink?.transport,
@@ -756,13 +759,30 @@ function realPatternShape(patternId) {
               sectionFamilies, palette, hidden, bpm, gammaEnabled, gammaValue, symSettings, sectionTargets },
             confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
           },
+        }).catch(error => {
+          // The write went out and no answer came back: a real card restarts
+          // the moment it stores a save. Read it back before saying anything,
+          // never "the card page did not answer" (follow-up F-B1).
+          const lost = ['offline', 'timeout', 'bridge-timeout'].includes(error?.reason);
+          if (!lost || error?.delivery === 'not-sent' || error?.delivery === 'rejected') throw error;
+          replyLost = true;
+          return { ok: true, rebooting: true, replyLost: true };
         });
         if (!installIsCurrent()) return;
         const exactPrepared = { ...runtimeBuild.prepared, cardId: before.cardId };
-        const verification = await waitForCardDeploymentVerification(
-          exactPrepared,
-          { readEvidence: () => readCardProjectEvidence({ host, transport: cardLink?.transport }) },
-        );
+        if (replyLost) noteCardRestartPlanned();
+        let verification;
+        try {
+          verification = await waitForCardDeploymentVerification(
+            exactPrepared,
+            {
+              readEvidence: () => readCardProjectEvidence({ host, transport: cardLink?.transport }),
+              ...(replyLost ? { restartWaitMs: CARD_RESTART_WAIT_MS, restartFromBootId: before.bootId || '', intervalMs: 800 } : {}),
+            },
+          );
+        } finally {
+          if (replyLost) noteCardRestartSettled();
+        }
         markProjectInstalled({
           revision: projectLifecycle.editedRevision,
           generation: projectGeneration,

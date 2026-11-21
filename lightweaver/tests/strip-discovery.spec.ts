@@ -1019,6 +1019,9 @@ test.describe('discovery on a card that already holds a project (ui-repair B0)',
       projectFingerprint: 'a1b2c3d4e5f60718', provisionalSetup: true,
       knownGoodProject: true, commandReady: true, playbackReady: true, outputReady: true,
     });
+    // The frame stream opens ws://<host>:81/ws; answer it here, or it leaves this
+    // Mac for whatever card is on the network (tests/harness/networkGuard.ts).
+    await page.routeWebSocket(`ws://${HOST}:81/ws`, () => {});
     await page.route(`http://${HOST}/**`, async (route: any) => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;

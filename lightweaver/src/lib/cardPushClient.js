@@ -180,9 +180,25 @@ export function isCardSilenceError(error) {
     'read-back-missing', 'unreachable'].includes(reason);
 }
 
+/**
+ * An mDNS name (lightweaver.local) that does not resolve fails at once with a
+ * network error. That is not a quiet card: asking again only holds back the
+ * fallback that finds the card by its address (192.168.4.1), by about 6 s.
+ * A slow answer from a .local card (a timeout) is still asked again.
+ */
+export function isMdnsCardHost(host) {
+  const name = String(host || '').trim().replace(/^https?:\/\//i, '').replace(/[/:].*$/, '');
+  return /\.local\.?$/i.test(name);
+}
+
+export function isUnresolvedMdnsFailure(host, error) {
+  return isMdnsCardHost(host) && error?.name === 'TypeError';
+}
+
 export async function withCardReadRetry(read, {
   tries = CARD_READ_RETRY.tries,
   intervalMs = CARD_READ_RETRY.intervalMs,
+  shouldRetry = isCardSilenceError,
   onRetry = () => {},
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
@@ -196,7 +212,7 @@ export async function withCardReadRetry(read, {
       return await read();
     } catch (error) {
       lastError = error;
-      if (!isCardSilenceError(error)) throw error;
+      if (!shouldRetry(error)) throw error;
     }
   }
   throw lastError;
@@ -415,14 +431,15 @@ function projectMismatchError(current = {}, runtimePackage = {}) {
   return err;
 }
 
-async function readFirmwareInfoToHost(host, timeoutMs = 1200, fetchImpl = fetch) {
+async function readFirmwareInfoToHost(host, timeoutMs = 1200, fetchImpl = fetch, onError = () => {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const response = await fetchImpl(`${cardHostToUrl(host)}/api/firmware-info`, { method: 'GET', cache: 'no-store', signal: ctrl.signal });
     if (!response.ok) return null;
     return await response.json().catch(() => null);
-  } catch {
+  } catch (error) {
+    onError(error);
     return null;
   } finally {
     clearTimeout(timer);
@@ -485,17 +502,21 @@ async function cardNeedsConfigReboot(host, runtimePackage, options = {}) {
 async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
   const timeoutMs = Math.min(options.timeoutMs || 6000, 3000);
   const transport = selectedTransport(options);
+  let unresolvedName = false;
   const readOnce = () => (transport === 'bridge'
     ? bridgeRequest('firmware-info', {}, {
         host,
         timeoutMs,
         retryOnTimeout: true,
       }, options).catch(() => null)
-    : readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch));
+    : readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch, error => {
+      unresolvedName = isUnresolvedMdnsFailure(host, error);
+    }));
   // An unanswered read here used to fall through as "no current layout", which
-  // also skipped the layout and project checks. Ask a quiet card again.
+  // also skipped the layout and project checks. Ask a quiet card again — but
+  // not a .local name that does not resolve (see isMdnsCardHost).
   let current = await readOnce();
-  for (let retry = 1; !current && retry < (options.readTries ?? CARD_READ_RETRY.tries); retry += 1) {
+  for (let retry = 1; !current && !unresolvedName && retry < (options.readTries ?? CARD_READ_RETRY.tries); retry += 1) {
     await new Promise(resolve => setTimeout(resolve, options.readRetryMs ?? CARD_READ_RETRY.intervalMs));
     current = await readOnce();
   }
@@ -593,7 +614,11 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
       exactIdentity = await withCardReadRetry(() => guardDirectCardMutation(host, {
         fetchImpl: options.fetchImpl,
         timeoutMs: Math.min(options.timeoutMs || 6000, 3000),
-      }), { tries: options.readTries ?? CARD_READ_RETRY.tries, intervalMs: options.readRetryMs ?? CARD_READ_RETRY.intervalMs });
+      }), {
+        tries: options.readTries ?? CARD_READ_RETRY.tries,
+        intervalMs: options.readRetryMs ?? CARD_READ_RETRY.intervalMs,
+        shouldRetry: error => isCardSilenceError(error) && !isUnresolvedMdnsFailure(host, error),
+      });
     } catch (cause) {
       const error = cause?.reason
         ? new CardPushError(cause.reason, cause.message, cause, cause.status)

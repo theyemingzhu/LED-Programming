@@ -123,6 +123,8 @@ assert.equal(pushed.state, 'staged');
 assert.equal(pushed.activationId, 'installer-layout-candidate');
 assert.equal(pushed.saved, undefined);
 assert.equal(pushed.rebooting, undefined);
+// A .local name that does not resolve is asked once, not three times: the
+// fallback to the card's own address must not wait ~6 s behind retries.
 assert.deepEqual(requests.map(request => request.url), [
   'http://lightweaver.local/api/firmware-info',
   'http://lightweaver.local/api/config',

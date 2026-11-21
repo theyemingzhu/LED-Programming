@@ -152,6 +152,13 @@ Three tools, each for one kind of question. Full guide: `docs/practice-card.md`.
 A green Fast run is not evidence about timing. A fix for a real-card fault is
 not done until Real-timing reproduces the fault red and then passes.
 
+How: in a spec, `createPracticeCard(spec, { timing: 'real' })` from
+`lightweaver/tests/harness/practiceTiming.ts` (`LW_PRACTICE_TIMING=real` sets
+the run default). On screen, `lw practice` (Fast on 7101, Real-timing on 7102,
+page with lights and controls, "Open Studio on this card"). Drift check
+against the physical card, read-only, on demand: `npm run practice:contract`
+in `lightweaver/`.
+
 ## Agent ownership boundaries
 - `led-art-mapper/app/src/` — owned by led-art-mapper agent; do not edit
 - `lightweaver/src/` — owned by lightweaver-app agent; do not edit

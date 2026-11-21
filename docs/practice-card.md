@@ -14,12 +14,47 @@ The practice card is the simulated card in `lightweaver/tests/harness/`
 Real-timing are two timing profiles of the same simulator, chosen per
 simulator instance, so both can run at once in different tests or tabs.
 
-Status (2026-11-21): this rule is in force now. The profile switch, the
-practice-card page (`lw practice`) and the contract check are being built in
-the follow-up pull request; progress and decisions are in
-`todo/plans/practice-card.md`. Until they land, "Real-timing" means the
-simulator's explicit timing knobs (`goOffline`/`goOnline`, `reboot`, and the
-silence and delay options) set to the numbers below.
+## How to use it
+
+**In a Playwright spec** — one switch per simulator instance:
+
+```ts
+import { createPracticeCard } from './harness/practiceTiming.js';
+const { card, timing } = createPracticeCard(cardState('playing'), { timing: 'real' });
+await card.install(page);            // same simulator, Real-timing in front of it
+timing.restart(); timing.wifiDrop();  // or let Studio's own reboot trigger it
+```
+
+`timing` defaults to `LW_PRACTICE_TIMING` (`real`), else `fast`. Two
+instances with different profiles run side by side in one test or two tabs
+(`tests/practice-card.spec.ts` proves it). `overrides` turns single behaviours
+off for a focused test, e.g. `{ spontaneousSilence: null }`. Existing specs
+that call `createCardSimulator` directly are Fast.
+
+**On screen** — `lw practice` (or `npm run practice` in `lightweaver/`) starts
+a Fast card on port 7101 and a Real-timing card on 7102 and opens
+`http://127.0.0.1:7101/practice/`: the card's lights drawn as the strip, its
+state, the request log, and controls to switch Fast / Real-timing, take it
+off Wi-Fi, blip Wi-Fi, restart it, blank it, and pick any state from
+`cardStates.ts`. More cards: `--card 7103:real:blackout`.
+
+**Studio on a practice card** — the page's "Open Studio on this card" button
+(or `npm run practice:studio -- --port 7102`) opens Studio in its own window.
+Studio keeps only the hostname of a card address and talks to it on port 80
+(`src/lib/cardIdentity.js` `normalizeHost`), and port 80 on this Mac is the
+i64os Caddy proxy, so a normal browser tab cannot reach a card on 7101. In
+that window every card address — `practice-<port>.local`, `lightweaver.local`,
+`192.168.4.1`, `192.168.18.70` — leads to the practice card, so it can never
+reach the physical card by accident. Studio pairs, connects and reports the
+card exactly as with a real one; on Real-timing a restart reads "Card
+restarted — verifying", then "Card stopped responding", then "Connected"
+after about 20 s, as on the real card.
+
+**Files** — `tests/harness/practiceTiming.ts` (profiles, timing controller,
+Playwright layer), `tests/harness/practiceServer.ts` (the simulator as a local
+HTTP card), `tests/harness/practice/index.html` (the page),
+`scripts/practice-card.mjs`, `scripts/practice-studio.mjs`,
+`scripts/practice-contract.mjs`, traces in `tests/harness/traces/`.
 
 ## Practice card, Fast
 
@@ -73,7 +108,8 @@ lights.
    patterns, playlist), keep it in your scratchpad, restore it and read back
    again to prove the card is as you found it.
 5. The contract check (`npm run practice:contract` in `lightweaver/`) only
-   reads from it. It is safe to run while nobody holds the card for writing.
+   sends GET requests. It is safe to run while another session holds the card
+   for writing.
 
 ## Two rules that are not optional
 
@@ -91,4 +127,14 @@ The Real-timing profile is only as good as its numbers. When the physical
 card's behaviour changes (a firmware release, a new Wi-Fi setup), run the
 contract check: it replays one fixed read-only request script against both the
 physical card and the Real-timing practice card and prints where shapes or
-timings drift beyond tolerance. It runs on demand, never in CI.
+timings drift beyond tolerance (timing: more than 40 ms AND 50% apart on the
+median). It runs on demand, never in CI:
+
+```
+cd lightweaver && npm run practice:contract            # card at 192.168.18.70
+npm run practice:contract -- --card lightweaver.local --json report.json
+```
+
+A drift line is either the practice card being wrong (fix the simulator or the
+profile, citing a trace) or the real card having changed (record a new trace,
+then update the profile).

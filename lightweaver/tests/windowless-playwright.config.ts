@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testPort } from './testPort.mjs';
+import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
 
 const windowlessPort = testPort + 1;
 
 export default defineConfig({
+  testIgnore: guardTestIgnore,
+  globalTeardown: './harness/networkGuard.ts',
   // A flake used to be a hard stop. Because the Tests workflow gates Deploy
   // site, one wobbling test on main cancelled the deploy silently — the change
   // was merged, not live, and nothing said so. It happened twice in one day on
@@ -25,6 +28,7 @@ export default defineConfig({
   testDir: '.',
   testMatch: /windowless-.*\.spec\.ts/,
   use: {
+    launchOptions: guardLaunchOptions,
     trace: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 'retain-on-failure' : 'off',
     baseURL: `http://127.0.0.1:${windowlessPort}`,
     serviceWorkers: 'allow',
