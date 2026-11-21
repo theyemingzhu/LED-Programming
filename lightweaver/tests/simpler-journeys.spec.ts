@@ -17,6 +17,7 @@ import { cardState } from './harness/cardStates';
 import { guardRealCard, recordJourney } from './ux/journeyRecorder';
 import { driveCardUpdate, driveChangeCount, driveFirstSetup, driveFreshBrowserPickup, driveRename } from './ux/drivers';
 import { seedFirmwareUpdate } from './ux/updateSeed';
+import { seedCompleteProject, seedKnownCard } from './ux/_seed';
 import { MATRIX_PATTERNS } from './harness/cardStates';
 import { bootSetUp } from './ux/journeySeed';
 
@@ -28,7 +29,19 @@ export const PRESSES = {
   'first-setup': { 390: 11, 1280: 11 },
   'change-count': { 390: 2, 1280: 2 },
   'fresh-browser-pickup': { 390: 2, 1280: 2 },
+  'card-update': { 390: 2, 1280: 2 },
 };
+
+async function staleCard(page: Page) {
+  await guardRealCard(page);
+  const spec = cardState('stale-firmware');
+  const card = createCardSimulator(spec);
+  await seedCompleteProject(page, cardState('installed-match'));
+  await seedKnownCard(page, spec);
+  await seedFirmwareUpdate(page);
+  await card.install(page);
+  return card;
+}
 
 async function blankCard(page: Page) {
   await guardRealCard(page);
@@ -82,6 +95,18 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const { presses, steps } = await j.finish();
       expect(steps.some(step => step.label === 'Connect'), 'C5: no second Connect press').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['fresh-browser-pickup'][vp.width]);
+    });
+
+    test(`[C6] a card update starts from the update screen's first button, in ${PRESSES['card-update'][vp.width]} presses`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await staleCard(page);
+      const j = recordJourney(page, 'card-update', vp.width);
+      await driveCardUpdate(page, j);
+      const { presses, steps } = await j.finish();
+      expect(steps.some(step => step.label === 'Update over Wi-Fi'), 'C6: no reveal press').toBe(false);
+      expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['card-update'][vp.width]);
+      // The update really started, bound to this card by the software grant.
+      expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__.length)).toBe(1);
     });
   });
 }
@@ -188,4 +213,14 @@ test('[C5] once paired, the chip still opens the card connection dialog', async 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await chip.click();
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
+});
+
+test('[C6] the update screen still explains the binding and still offers USB instead', async ({ page }) => {
+  test.setTimeout(120_000);
+  await staleCard(page);
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible({ timeout: 20_000 });
+  await expect(panel).toContainText('binds this signed update to this exact card');
+  expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__.length), 'nothing starts by itself').toBe(0);
 });

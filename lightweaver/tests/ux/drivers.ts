@@ -134,7 +134,11 @@ export async function driveCardUpdate(page: Page, j: Journey) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
   await j.land('opens Studio; card connected, firmware older than release');
-  await j.press(page.getByRole('button', { name: /^\s*\d+\s*→\s*\d+/ }).first(), 'Card Home: release update link');
+  // Card Home's own update door ("Update card" in This card); older builds
+  // showed it as a "1392 → 2407" link.
+  const door = page.getByRole('button', { name: 'Update card', exact: true })
+    .or(page.getByRole('button', { name: /^\s*\d+\s*→\s*\d+/ })).first();
+  await j.press(door, 'Card Home: Update card');
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toBeVisible({ timeout: 15_000 });
   const reveal = panel.getByRole('button', { name: 'Update over Wi-Fi' });
