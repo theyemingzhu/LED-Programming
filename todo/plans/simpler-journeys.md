@@ -116,3 +116,38 @@ Each spec calls `guardRealCard()` first, so no request can reach the real card a
 - **First setup is measured via Layout**, because that is the only primary the light-check screen offers. The "Install and open Patterns" button behind the overlay is covered by it, so a first-time owner cannot press it.
 - **Known friction not reproduced here:** "0 of 3 done" on a connected card, and the five buttons on the temporary-setup Card Home. The measured paths did not land on those states. Re-check them with `cardState('provisional')`.
 - **Wi-Fi recovery modelled as card offline → back online** on the same host. A card that has moved to its setup network (192.168.4.1) is not modelled, because the simulator answers on one host.
+
+## Build log (branch `claude/simpler-journeys-build`, on top of `claude/false-failures`)
+
+Adrian: "build all nine cuts" (relayed 2026-11-21). One commit per cut, each
+with an exact press-count assertion at 390 and 1280 px in
+`lightweaver/tests/simpler-journeys.spec.ts` (now in `ci:browser-smoke` and
+`test:release-ui`) and a "still reachable" test.
+
+| Cut | Commit | Journey presses (phone / desktop) | Kept, and how it is proven |
+|---|---|---|---|
+| C1 Save to card ends the light check | e7ad2c0e | first setup 15 → 13 | "Place on artwork" opens Layout and writes nothing |
+| C2 light test starts itself | 9c0d9585 | first setup 13 → 12; change count part of 4 → 2 | "No, restore working setup" restores; unconfirmed, the card puts its setup back; Real-timing 14 s restart into the test |
+| C3 count saved from its row | 06f27939 | change count 3 → 2 | Layout's count editors unchanged; typing writes nothing |
+| C4 temporary setup is not "a different project" | 2cc4e11d | first setup 12 → 11 | a real other project still asks, nothing written first |
+| C5 "Found — pair" pairs | 224436e4 (+1a1df82c) | fresh browser 3 → 2 | once paired the chip opens the connection dialog |
+| C6 Wi-Fi update opens on its start button | 5356f435 | card update 3 → 2 | binding sentence, grant checks and USB door shown; nothing starts unpressed |
+| C7 rename in place | 3f9df51f | rename + save 4 → 3 | top-bar rename works; a rename writes nothing by itself |
+| C8 last confirm saves | 5a88135c | first setup 11 → 10 | "Yes, and add another strip" keeps the first strip; counts move to the done screen |
+| C9 no notice covers a button | 6285f806 | phone first setup: the cover press was already gone (58a29e0c) | every journey asserts no "close notice" press |
+| Save project is a plain button | 9f524837 | — | still in the top bar, enabled |
+| Back stays in Studio | 23212ae3 | — | Back from Playlist → Patterns → Card, never leaves |
+
+### Decisions taken while building
+
+- **C2 Real-timing.** `cardSimulator` gains `restartAfterActivateMs`: the card answers the activation, then is silent for it (real ~14 s) while it boots the candidate. Studio's 18 s wait for the test state covers it (passed 3/3). A first attempt silenced the card before it answered the activation; that is not how a real card behaves and was a test error, not a product one.
+- **C2 "Cancel change" before the test.** It is no longer offered before the lights change, because the test starts on the owner's own Save. The same protection is "No, restore working setup" during the test, plus the card's own timed restore. A candidate resumed after a reload still waits for "Start light test".
+- **C3 how the count is applied.** Card Home must not re-implement how a total is spread across drawn strips. The row hands the total to Layout's own setter (`lib/ledCountHandoff.js`, one-shot, stale after 15 s), which applies it, waits until Layout stops re-rendering, then opens the same Save to card. Without the wait the install cancelled itself ("The project changed after this card attempt was prepared"). The owner presses nothing on Layout; it passes through.
+- **C3 lands on Patterns.** The install route every Save to card uses ends on Patterns after the confirm (`next=patterns`); a count change uses the same route rather than a second one.
+- **C8 what the second confirm protected.** Nothing the first did not: each strip is confirmed at its own end marker, and Save there writes nothing to the card. Its counts list moved to the done screen; its "Add another strip" moved beside the last confirm.
+- **C9 already fixed upstream.** 58a29e0c (another session) moved the power note and colour question into the page. C9 became a guard so it cannot return.
+- **C5 failure path.** If pairing from the chip fails, the dialog opens and explains it; it does not fail silently.
+
+### Specs red on the base branch (not caused by this batch)
+
+Measured on `742ee685` in a clean worktree: `card-home-compact` U1a/U1b/U1d/U1e, `studio-hardening` 574/612/867, `setup-led-count` 145, `connect-simple` 90/135, `connection-center-quality` 221/266/283/336/364/384, `first-action-walk` 212/327/347, `patterns-playlist-compact` 154, `patterns-v3` 764, `multiple-output-journey` (fails at line 67 on base; this branch gets past it to line 120), `journey-count-save` F14 (fails under parallel load on base too), and `test:core:source` (`tests/card-bridge-handoff.mjs`, identical assertion on base).
