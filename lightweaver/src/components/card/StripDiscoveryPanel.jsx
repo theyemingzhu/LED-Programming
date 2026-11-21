@@ -266,6 +266,7 @@ export function StripDiscoveryPanel({
   embedded = false,
   onLifecycleChange = null,
   onComplete = null,
+  onSaveToCard = null,
 }) {
   const host = normalizeCardHost(cardHost || cardLink?.host || readStoredCardHost());
   const flowIdRef = useRef('');
@@ -1807,26 +1808,41 @@ export function StripDiscoveryPanel({
           )}
           {embedded ? (
             <>
-              <h3>Ready for Layout</h3>
+              <h3>Ready to save to the card</h3>
               <p>
                 Studio saved the output, color order, light count, and final-light boundary in this project.
-                The card is still running a temporary low-power setup; place the lights in the artwork before the final test and card install.
+                The card is still running a temporary low-power setup until you save.
               </p>
               {layoutPrepared && (
                 <p className="strip-discovery-note" data-testid="discovery-layout-guidance">
                   {Number(committedPartsRef.current?.strips?.length) > 1
-                    ? 'Move these strips onto your artwork. Their counts and GPIO wiring are already filled in.'
-                    : 'Move this strip onto your artwork. Its count and GPIO wiring are already filled in.'}
+                    ? 'Placing these strips on your artwork is optional. Their counts and GPIO wiring are already filled in.'
+                    : 'Placing this strip on your artwork is optional. Its count and GPIO wiring are already filled in.'}
                 </p>
               )}
-              <button
-                type="button"
-                className="btn primary"
-                data-testid="discovery-continue-layout"
-                onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
-              >
-                Continue to Layout
-              </button>
+              {/* Layout gates nothing (setupJourney.js phasesFor: layout is
+                  `optional`, never current), so the one primary here is the
+                  write the owner came for. Layout stays a door beside it. */}
+              <div className="strip-discovery-actions">
+                {onSaveToCard && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    data-testid="discovery-save-to-card"
+                    onClick={() => { void stopBenchAudition().then(restored => { if (restored) onSaveToCard(); }); }}
+                  >
+                    Save to card
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={onSaveToCard ? 'btn' : 'btn primary'}
+                  data-testid="discovery-continue-layout"
+                  onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
+                >
+                  {onSaveToCard ? 'Place on artwork' : 'Continue to Layout'}
+                </button>
+              </div>
             </>
           ) : installed ? (
             <div data-testid="discovery-installed">

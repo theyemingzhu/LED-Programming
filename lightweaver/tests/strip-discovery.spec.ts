@@ -846,7 +846,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
     await expect(page.getByTestId('discovery-open-patterns')).toBeVisible();
     await expect(page.getByTestId('discovery-continue-layout')).toBeVisible();
-    await expect(page.getByTestId('discovery-done')).toContainText('Move this strip onto your artwork');
+    await expect(page.getByTestId('discovery-done')).toContainText('Placing this strip on your artwork is optional');
     await expect(page.getByTestId('card-setup-close')).toBeEnabled();
     await expect(page.getByTestId('card-setup-disconnect')).toBeEnabled();
 

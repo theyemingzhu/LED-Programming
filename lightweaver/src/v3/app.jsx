@@ -1099,6 +1099,15 @@ function Shell({ offlineUpdateController = null }) {
     routeStore.replace('#screen=layout&mode=draw');
   }, [flushProjectAutosave, routeStore]);
 
+  // The light check's one primary: straight to the card write the owner came
+  // for. Same route Card Home's "Save and open Patterns" opens (lw-setup.jsx
+  // openPatterns), so the install path is shared, not duplicated.
+  const saveCardSetupToCard = useCallback(() => {
+    flushProjectAutosave();
+    setCardSetupPersistent(false);
+    routeStore.replace('#screen=card&section=setup&task=install-project&next=patterns');
+  }, [flushProjectAutosave, routeStore]);
+
   const disconnectCardSetup = useCallback(async () => {
     await releaseCardBridge('disconnected');
     closeCardSetup();
@@ -2554,6 +2563,7 @@ function Shell({ offlineUpdateController = null }) {
             onDismiss={closeCardSetup}
             onDisconnect={disconnectCardSetup}
             onComplete={completeCardSetup}
+            onSaveToCard={saveCardSetupToCard}
             onMinimizedChange={next => {
               if (next) {
                 setCardSetupPersistent(true);

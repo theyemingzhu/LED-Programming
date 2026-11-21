@@ -13,7 +13,9 @@ import type { Locator, Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const UX_OUT = process.env.LW_UX_OUT || join(process.cwd(), '..', '.claude', 'ux-journeys');
+export const UX_OUT = process.env.LW_UX_OUT || '';
+/** Screenshots and journey.json are written only when LW_UX_OUT is set; a CI press-count run writes nothing. */
+const WRITING = Boolean(UX_OUT);
 
 export type StepRecord = {
   n: number;
@@ -86,8 +88,8 @@ async function snapshot(page: Page) {
 }
 
 export function recordJourney(page: Page, journey: string, width: number) {
-  const dir = join(UX_OUT, journey, String(width));
-  mkdirSync(dir, { recursive: true });
+  const dir = WRITING ? join(UX_OUT, journey, String(width)) : '';
+  if (WRITING) mkdirSync(dir, { recursive: true });
   const started = Date.now();
   const record: JourneyRecord = {
     journey, width, presses: 0, typed: 0, screens: [], wordsBeforeFirstAction: 0, seconds: 0, steps: [], notes: [],
@@ -97,7 +99,7 @@ export function recordJourney(page: Page, journey: string, width: number) {
     const snap = await snapshot(page).catch(() => ({ screen: '?', heading: '', words: 0, primaries: [], choices: [] }));
     const n = record.steps.length + 1;
     const shot = `${String(n).padStart(2, '0')}.png`;
-    await page.screenshot({ path: join(dir, shot) }).catch(() => {});
+    if (WRITING) await page.screenshot({ path: join(dir, shot) }).catch(() => {});
     if (!record.screens.includes(snap.screen)) record.screens.push(snap.screen);
     if (kind !== 'land' && record.presses === 0 && record.typed === 0) record.wordsBeforeFirstAction = snap.words;
     record.steps.push({ n, kind, label, ...snap, ms: Date.now() - started, shot });
@@ -146,7 +148,7 @@ export function recordJourney(page: Page, journey: string, width: number) {
     async finish() {
       await mark('land', record.blocked ? `blocked: ${record.blocked}` : 'done');
       record.seconds = Math.round((Date.now() - started) / 100) / 10;
-      writeFileSync(join(dir, 'journey.json'), `${JSON.stringify(record, null, 2)}\n`);
+      if (WRITING) writeFileSync(join(dir, 'journey.json'), `${JSON.stringify(record, null, 2)}\n`);
       return record;
     },
   };
