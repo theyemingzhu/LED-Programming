@@ -26,7 +26,7 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 
 /** Presses each journey takes today, per width. Lower a number only with the cut that earns it. */
 export const PRESSES = {
-  'first-setup': { 390: 11, 1280: 11 },
+  'first-setup': { 390: 10, 1280: 10 },
   'change-count': { 390: 2, 1280: 2 },
   'fresh-browser-pickup': { 390: 2, 1280: 2 },
   'card-update': { 390: 2, 1280: 2 },
@@ -64,6 +64,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       expect(steps.some(step => step.label === 'Continue to Layout'), 'C1: Layout is a door, not a step').toBe(false);
       expect(steps.some(step => step.label === 'Start light test'), 'C2: the light test starts itself after Save').toBe(false);
       expect(steps.some(step => step.label === 'Replace the temporary setup'), 'C4: the temporary setup is not a different project').toBe(false);
+      expect(steps.some(step => step.label === 'Save what we found'), 'C8: the last confirm saves').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['first-setup'][vp.width]);
       // The write really happened: the card holds the counted project, not the temporary setup.
       await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 15_000 })
@@ -136,8 +137,6 @@ test('[C1] Layout still opens from the light check, and nothing is written to th
   await page.getByTestId('discovery-count-18').fill('41');
   await page.getByTestId('discovery-counts-done').click();
   await page.getByTestId('discovery-end-yes').click();
-  const record = page.getByTestId('discovery-record-save');
-  if (await record.isVisible().catch(() => false)) await record.click();
   await expect(page.getByTestId('discovery-save-to-card')).toBeVisible({ timeout: 15_000 });
   const door = page.getByTestId('discovery-continue-layout');
   await expect(door).toHaveText('Place on artwork');
@@ -247,3 +246,23 @@ test('[C7] the top-bar rename still works and writes nothing to the card by itse
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').name)).toBe('Renamed in Layout');
   expect(card.requests.filter(r => r.method === 'POST'), 'a rename writes nothing to the card by itself').toHaveLength(0);
 });
+
+test('[C8] "Yes, and add another strip" keeps the first strip and opens the port picker again', async ({ page }) => {
+  test.setTimeout(150_000);
+  const card = await blankCard(page);
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByTestId('setup-lights-action').click();
+  await page.getByTestId('discovery-probe-18').click();
+  await page.getByTestId('discovery-start').click();
+  await page.getByTestId('discovery-color-red').click();
+  await page.getByTestId('discovery-color-green').click();
+  await page.getByTestId('discovery-count-18').fill('41');
+  await page.getByTestId('discovery-counts-done').click();
+  await expect(page.getByTestId('discovery-end-yes')).toBeVisible();
+  await page.getByTestId('discovery-end-add-strip').click();
+  await expect(page.getByTestId('discovery-probe-18')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('discovery-done')).toHaveCount(0);
+  expect(card.state.projectId, 'nothing was saved to the card').toBe('lightweaver-bench-discovery-v1');
+});
+

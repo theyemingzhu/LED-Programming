@@ -817,7 +817,6 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   await page.getByTestId('discovery-count-18').fill('41');
   await page.getByTestId('discovery-counts-done').click();
   await page.getByTestId('discovery-end-yes').click();
-  await page.getByTestId('discovery-record-save').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
   await page.getByTestId('discovery-continue-layout').click();
   const realProjectId = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id || '');

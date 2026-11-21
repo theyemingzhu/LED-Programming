@@ -76,12 +76,12 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // hand — every `.click()` below, in source order:
   // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
-  // discovery-end-yes, discovery-record-save, discovery-continue-layout,
+  // discovery-end-yes, discovery-continue-layout,
   // setup-verify-action,
   // wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '13 deliberate clicks' },
+  annotation: { type: 'clicks', description: '12 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -139,8 +139,7 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   await expect(page.getByTestId('discovery-end-marker')).toBeVisible();
   await page.getByTestId('discovery-end-yes').click();
 
-  await expect(page.getByTestId('discovery-record')).toBeVisible();
-  await page.getByTestId('discovery-record-save').click();
+  // The last end-marker confirm saves what was found (simpler-journeys C8).
 
   // Embedded discovery's "done" screen only ever offers Continue to Layout —
   // recording never installs the real project, so the card is still holding

@@ -59,8 +59,9 @@ export async function driveFirstSetup(page: Page, j: Journey, { stopBeforeConfir
   await j.press(page.getByTestId('discovery-end-yes'), 'Yes, that is the last one');
   const record = page.getByTestId('discovery-record-save');
   const done = page.getByTestId('discovery-done');
-  await expect(record.or(done).first()).toBeVisible({ timeout: 20_000 });
-  if (await shown(record)) await j.press(record, 'Save what we found');
+  // Builds before C8 asked again on a record screen; since C8 the last confirm
+  // saves and that screen only flashes past on the way to done.
+  if (!(await shown(done, 4000)) && await shown(record)) await j.press(record, 'Save what we found');
   await expect(done).toBeVisible({ timeout: 20_000 });
   const save = page.getByTestId('discovery-save-to-card');
   if (await shown(save)) {
