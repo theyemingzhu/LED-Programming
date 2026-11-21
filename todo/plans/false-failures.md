@@ -92,10 +92,11 @@ Fixed in this batch with a test each: 1, 2, 3, 4–5, 7, 16, 20, 28, 32, 33–35
 
 All in `ci:browser-smoke` and `test:release-ui`. Each browser spec except the two idle-silence guards was run red against main's `src/` first. The idle-silence guards pass on main too, because the 20 s direct keepalive rarely lands inside a 6 s silence; the deterministic proof is the unit test.
 
-## Follow-ups (not done here)
+## Follow-ups, second batch (2026-11-21, branch `claude/false-failures-2`)
 
-- Bridge `config` is in the bridge retry set: a timeout can send `/api/config` twice, so the card restarts twice (row 25).
-- Show screen: stream-health notice after 3 s of silence (rows 37–38).
-- Recover lights / blackout recovery: 3.2 s against a card that restarts on purpose (rows 29–30).
-- Wiring-test end: 4 × 750 ms checks after a possible restart (row 21).
-- `test:core:source` flake: `tests/ai-pattern-server.mjs` failed once and passed once on the same tree.
+- **F-B1 Bridge resend.** `config` and `recover-lights` are no longer resent after a bridge timeout (the card may already have stored the save and be restarting; a resend restarted it twice). Only a stale tab reference is retried; a timeout is "delivery unknown" and the caller reads the card back. Patterns and Playlist now treat a lost save reply (`offline`, `timeout`, `bridge-timeout`) as "read back first", waiting through the restart. Test: `slow-card-bridge.spec.ts` "sent once" (a guard: it is green on main too, because the fake bridge never reaches the retry; the change is defensive).
+- **F-B2 Recover lights.** It restarts the card on purpose; the wait for the card to come back is 45 s (was 15 s), a lost reboot reply is not a failure, the link says "Restarting card", and Patterns no longer drops the recovery's result when the restart cancels pending previews (own counter). Test: `slow-card-bridge.spec.ts` "Recover lights through an 18 s restart" — red on main ("The card restarted but did not reconnect in time"), green here.
+- **F-B3 Wiring-test end.** After the light test expires the card restarts to its working setup; Studio keeps asking for up to 45 s (was 4 quick checks, ~15 s) and says "The light test ended. The card is restarting to its working setup…". No browser test (the expiry flow needs a timed probation); reviewed in code only.
+- **F-B4 Show.** A stream that stops reaching the lights shows "Waiting for the lights to answer…" with a spinner after 3 s (was an error), and pauses itself after 20 s (was 15 s). The pre-show card check asks 3 times, 4 s each (was 2 × 2.5 s). No browser test (needs the frame stream); reviewed in code only.
+
+Still open: watch one real Save on the gallery card (Adrian).

@@ -744,15 +744,23 @@ export function CardPushControl({
         }
       } catch (error) {
         if (cancelled) return;
+        // An expired light test restarts the card back to its working setup
+        // (about 14 s on the real card). Four quick checks ended a healthy
+        // restart with "did not answer"; keep asking up to the save's
+        // restart limit, and say what is happening (follow-up F-B3).
         const checks = Number(wiringCandidate.expiryChecks || 0) + 1;
-        if (checks < 4) {
-          setWiringCandidate(current => current ? { ...current, expiresAt: Date.now() + 750, expiryChecks: checks } : current);
+        const quietSince = wiringCandidate.expiryQuietSince || Date.now();
+        if (Date.now() - quietSince < CARD_RESTART_WAIT_MS) {
+          if (checks === 1) setPushStatus('The light test ended. The card is restarting to its working setup…');
+          setWiringCandidate(current => current ? {
+            ...current, expiresAt: Date.now() + 1000, expiryChecks: checks, expiryQuietSince: quietSince,
+          } : current);
         } else {
           failedAttemptRef.current = wiringCandidate.attempt;
           setWiringCandidate(null);
           setWiringTestState('failed');
-          dispatchAction({ type: 'fail', error: 'The card did not answer after the light test ended.' });
-          setPushStatus('The card did not answer after the light test ended. Read this card again before retrying.');
+          dispatchAction({ type: 'fail', error: 'The card has not come back since the light test ended (45 s).' });
+          setPushStatus('The card has not come back since the light test ended (45 s). Check it has power and is on this Wi-Fi, then read it again.');
         }
       }
     }, Math.max(0, wiringCandidate.expiresAt - Date.now()) + 250);
