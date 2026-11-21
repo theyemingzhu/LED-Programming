@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testPort as port, testBaseURL } from './tests/testPort.mjs';
+import { guardLaunchOptions, guardTestIgnore } from './tests/harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
 export default defineConfig({
+  testIgnore: guardTestIgnore,
+  globalTeardown: './tests/harness/networkGuard.ts',
   testDir: './tests',
   // A flake used to be a hard stop. Because the Tests workflow gates Deploy
   // site, one wobbling test on main cancelled the deploy silently — the change
@@ -25,6 +28,7 @@ export default defineConfig({
   // retain Playwright's normal timeouts and still fail closed.
   expect: { timeout: 15_000 },
   use: {
+    launchOptions: guardLaunchOptions,
     trace: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 'retain-on-failure' : 'off',
     baseURL: testBaseURL,
     // Keep same-origin API fixtures authoritative even if a developer has a

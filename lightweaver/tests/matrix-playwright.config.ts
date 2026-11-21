@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testPort as port, testBaseURL } from './testPort.mjs';
+import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
 
 // The card state matrix — see docs/card-state-matrix.md.
 //
@@ -12,6 +13,8 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 //
 //   npx playwright test --config tests/matrix-playwright.config.ts
 export default defineConfig({
+  testIgnore: guardTestIgnore,
+  globalTeardown: './harness/networkGuard.ts',
   // A flake used to be a hard stop. Because the Tests workflow gates Deploy
   // site, one wobbling test on main cancelled the deploy silently — the change
   // was merged, not live, and nothing said so. It happened twice in one day on
@@ -39,6 +42,7 @@ export default defineConfig({
   // stop being able to hide behind.
   workers: 1,
   use: {
+    launchOptions: guardLaunchOptions,
     baseURL: testBaseURL,
     serviceWorkers: 'block',
   },

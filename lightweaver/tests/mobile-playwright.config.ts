@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testPort as port, testBaseURL } from './testPort.mjs';
+import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
 
 // The phone lens, deliberately OUT of playwright.config.ts.
 //
@@ -22,6 +23,8 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 // and the rest of the suite — they assume the desktop two-pane layout and never open
 // the mobile controls sheet, so their locators sit behind an inert boundary.
 export default defineConfig({
+  testIgnore: guardTestIgnore,
+  globalTeardown: './harness/networkGuard.ts',
   testDir: '.',
   // Only the specs actually converted to work at both widths. Without this the
   // phone lens picks up all 57 spec files and reports ~700 tests, most of them
@@ -47,6 +50,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   expect: { timeout: 15_000 },
   use: {
+    launchOptions: guardLaunchOptions,
     baseURL: testBaseURL,
     serviceWorkers: 'block',
   },
