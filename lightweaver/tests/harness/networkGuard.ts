@@ -13,8 +13,10 @@
 //
 //  1. `guardTestIgnore` — the live-hardware specs are not collected at all.
 //  2. `guardLaunchOptions` — every browser sends every non-loopback request
-//     (http, https, ws, any host, IP literal or .local name) to a tripwire
-//     proxy on this Mac that refuses it with 451 and writes it down. Requests
+//     to a tripwire proxy on this Mac. Requests to a local-network address
+//     (10/8, 172.16/12, 192.168/16, 169.254/16, any .local name, any bare
+//     name without a dot) — where a card can live — are refused with 451 and
+//     written down. Public internet is forwarded untouched: it is not a card. Requests
 //     a spec answers itself through page.route never reach the network, so
 //     the practice card and every route stub keep working. Loopback
 //     (localhost, 127.0.0.1, [::1], *.localhost) is bypassed: the Vite server
@@ -32,6 +34,7 @@
 // card-workspace), and failing on those would turn every pull request red.
 // Before this guard those reads reached the physical card in local runs.
 import http from 'node:http';
+import net from 'node:net';
 import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,7 +62,7 @@ function guardPortFor(dir: string) {
 export const GUARD_PORT = Number(process.env.LW_NETWORK_GUARD_PORT || guardPortFor(here));
 
 const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?|[a-z0-9-]+\.localhost)$/i;
-const PRIVATE = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)|\.local$/i;
+const PRIVATE = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)|\.local$|^[a-z0-9-]+$/i;
 
 export function isLoopbackHost(host: string) { return LOOPBACK.test(host.replace(/:\d+$/, '')); }
 export function isPrivateHost(host: string) { return PRIVATE.test(host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '')); }
@@ -73,6 +76,11 @@ function record(target: string, how: string) {
 }
 
 // ── Layer 2: the tripwire proxy ───────────────────────────────────────────
+// Public internet (fonts, CDNs) is forwarded untouched: it cannot be a card,
+// and refusing it put "connection failed" lines in specs that require a clean
+// console (measured on CI 2026-11-21). Only local-network addresses are refused.
+const rawHttpRequest = http.request;
+const bareHost = (hostPort: string) => hostPort.replace(/^\[|\]$/g, '').replace(/:\d+$/, '');
 const probes: string[] = [];
 function startTripwire() {
   const server = http.createServer((req, res) => {
@@ -81,15 +89,39 @@ function startTripwire() {
       res.end(JSON.stringify(probes));
       return;
     }
+    let target: URL | null = null;
+    try { target = new URL(req.url || ''); } catch { /* not a proxy request */ }
+    if (target && !isPrivateHost(target.hostname)) {
+      const upstream = rawHttpRequest({
+        hostname: target.hostname, port: target.port || 80, path: `${target.pathname}${target.search}`,
+        method: req.method, headers: req.headers,
+      }, answer => { res.writeHead(answer.statusCode || 502, answer.headers); answer.pipe(res); });
+      upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+      req.pipe(upstream);
+      return;
+    }
     if (req.url?.includes(GUARD_PROBE_PATH)) probes.push(req.url);
     record(req.url || '', `browser ${req.method}`);
     res.writeHead(451, { 'Content-Type': 'text/plain' });
     res.end(`Refused by tests/harness/networkGuard.ts: tests may not reach ${req.url}. Set ${PHYSICAL_CARD_FLAG}=1 only for deliberate real-card work.`);
   });
   // https and wss arrive as CONNECT: refuse the tunnel.
-  server.on('connect', (req, socket) => {
-    if (req.url?.includes(GUARD_PROBE_PATH)) probes.push(req.url);
-    record(`https://${req.url}`, 'browser CONNECT');
+  server.on('connect', (req, socket, head) => {
+    const hostPort = req.url || '';
+    const host = bareHost(hostPort);
+    if (!isPrivateHost(host)) {
+      const port = Number(hostPort.match(/:(\d+)$/)?.[1] || 443);
+      const upstream = net.connect(port, host, () => {
+        socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head?.length) upstream.write(head);
+        upstream.pipe(socket); socket.pipe(upstream);
+      });
+      upstream.on('error', () => socket.destroy());
+      socket.on('error', () => upstream.destroy());
+      return;
+    }
+    if (hostPort.includes(GUARD_PROBE_PATH)) probes.push(hostPort);
+    record(`https://${hostPort}`, 'browser CONNECT');
     socket.end('HTTP/1.1 451 Unavailable For Legal Reasons\r\n\r\n');
   });
   // Another process of this run already holds it; that one records for all.
@@ -122,7 +154,7 @@ function guardNode() {
     const guarded = ((input: unknown, init?: unknown) => {
       const host = hostOf(input);
       const method = String((init as { method?: string })?.method || (input as { method?: string })?.method || 'GET').toUpperCase();
-      if (!isLoopbackHost(host)) return Promise.reject(refuse(String((input as { url?: string })?.url || input), method));
+      if (isPrivateHost(host) && !isLoopbackHost(host)) return Promise.reject(refuse(String((input as { url?: string })?.url || input), method));
       return original(input as never, init as never);
     }) as typeof fetch & { __lwGuard?: boolean };
     guarded.__lwGuard = true;
@@ -135,7 +167,7 @@ function guardNode() {
       const wrapped = function (this: unknown, ...args: unknown[]) {
         const host = hostOf(args[0]);
         const opts = (typeof args[1] === 'object' && args[1]) || (typeof args[0] === 'object' && args[0]) || {};
-        if (!isLoopbackHost(host)) throw refuse(`${mod === https ? 'https' : 'http'}://${host}`, String((opts as { method?: string }).method || 'GET').toUpperCase());
+        if (isPrivateHost(host) && !isLoopbackHost(host)) throw refuse(`${mod === https ? 'https' : 'http'}://${host}`, String((opts as { method?: string }).method || 'GET').toUpperCase());
         return (fn as (...a: unknown[]) => unknown).apply(this, args);
       } as unknown as typeof http.request & { __lwGuard?: boolean };
       wrapped.__lwGuard = true;
