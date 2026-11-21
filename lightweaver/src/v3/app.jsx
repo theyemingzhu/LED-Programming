@@ -19,6 +19,7 @@ import { NoticeLayer } from '../components/NoticeLayer.jsx';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge, releaseInheritedBridgeWindowName } from '../lib/cardBridge.js';
 import { bootstrapCardHostFromLocation, canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection.js';
+import { pairDiscoveredCard } from '../lib/cardPairing.js';
 import {
   bootstrapBridgeCallback,
   clearStoredBridgeResult,
@@ -1659,6 +1660,17 @@ function Shell({ offlineUpdateController = null }) {
       void saveProjectToCard();
       return;
     }
+    // "Found — pair" does what it says (simpler-journeys C5): pairing a card
+    // already found is the whole job, the same pairDiscoveredCard the dialog's
+    // Connect calls. Only a failure opens the dialog, which then explains it.
+    if (cardLifecycle.state === 'found-unpaired' && cardLink.discoveredCard?.id) {
+      setCardControlOpen(false);
+      void pairDiscoveredCard(cardLink).then(
+        result => { if (!result?.ok) setConnectionCenterOpen(true); },
+        () => setConnectionCenterOpen(true),
+      );
+      return;
+    }
     if (surface === 'card-control') setCardControlOpen(true);
     else if (surface === 'setup' || commissioningShouldSuppressConnectOverlay(inspectCardCommissioning().flow)) {
       setCardControlOpen(false);
@@ -1668,7 +1680,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
+  }, [cardLifecycle, cardLink, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);

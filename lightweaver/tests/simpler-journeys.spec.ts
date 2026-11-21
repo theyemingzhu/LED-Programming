@@ -15,7 +15,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard, recordJourney } from './ux/journeyRecorder';
-import { driveChangeCount, driveFirstSetup } from './ux/drivers';
+import { driveCardUpdate, driveChangeCount, driveFirstSetup, driveFreshBrowserPickup, driveRename } from './ux/drivers';
+import { seedFirmwareUpdate } from './ux/updateSeed';
+import { MATRIX_PATTERNS } from './harness/cardStates';
 import { bootSetUp } from './ux/journeySeed';
 
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true };
@@ -25,6 +27,7 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 export const PRESSES = {
   'first-setup': { 390: 11, 1280: 11 },
   'change-count': { 390: 2, 1280: 2 },
+  'fresh-browser-pickup': { 390: 2, 1280: 2 },
 };
 
 async function blankCard(page: Page) {
@@ -65,6 +68,20 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       expect(steps.filter(s => s.kind === 'press').some(s => s.screen.startsWith('layout')), 'C3: no press on Layout').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['change-count'][vp.width]);
       expect(card.state.pixels).toBe(60);
+    });
+
+    test(`[C5] a fresh browser pairs from the chip and plays a look, in ${PRESSES['fresh-browser-pickup'][vp.width]} presses`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await guardRealCard(page);
+      const spec = cardState('installed-match');
+      const card = createCardSimulator(spec);
+      await card.install(page);
+      const j = recordJourney(page, 'fresh-browser-pickup', vp.width);
+      const target = MATRIX_PATTERNS.find(p => p.id !== spec.currentId) || MATRIX_PATTERNS[0];
+      await driveFreshBrowserPickup(page, j, card, target.id);
+      const { presses, steps } = await j.finish();
+      expect(steps.some(step => step.label === 'Connect'), 'C5: no second Connect press').toBe(false);
+      expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['fresh-browser-pickup'][vp.width]);
     });
   });
 }
@@ -155,4 +172,20 @@ test('[C4] a card holding someone else\'s project still asks before it is replac
   await page.waitForTimeout(1500);
   expect(card.requests.filter(r => r.method === 'POST'), 'nothing is written before the owner answers').toHaveLength(0);
   expect(card.state.projectId).toBe('lwproj-matrix-piece');
+});
+
+test('[C5] once paired, the chip still opens the card connection dialog', async ({ page }) => {
+  test.setTimeout(120_000);
+  await guardRealCard(page);
+  const card = createCardSimulator(cardState('installed-match'));
+  await card.install(page);
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  const chip = page.getByTestId('card-link-status');
+  await expect(chip).toContainText(/Found/, { timeout: 20_000 });
+  await chip.click();
+  await expect.poll(() => page.evaluate(async () => String((await import('/src/lib/cardLink.js')).getSharedCardLink().getState()?.state || '')), { timeout: 15_000 })
+    .toMatch(/^connected-/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await chip.click();
+  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
 });

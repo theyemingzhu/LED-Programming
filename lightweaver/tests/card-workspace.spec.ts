@@ -1883,8 +1883,9 @@ test('direct discovery never auto-adopts; explicit pairing persists identity but
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found — pair/);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
 
+  // The owner's press on "Found — pair" IS the explicit pairing
+  // (simpler-journeys C5); it still never happens on its own.
   await page.getByTestId('card-link-status').click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-explicit-pair');
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
 });
