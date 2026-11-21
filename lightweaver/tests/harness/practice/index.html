@@ -180,8 +180,9 @@ requestAnimationFrame(frame);
 
 async function others() {
   const found = [];
+  const own = Number(location.port);
   for (const p of [7101, 7102, 7103, 7104]) {
-    if (snap && p === snap.port) continue;
+    if (p === own) continue;
     try {
       const r = await fetch(`http://127.0.0.1:${p}/practice/api/state`, { signal: AbortSignal.timeout(400) });
       const s = await r.json();
