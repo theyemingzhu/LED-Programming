@@ -479,7 +479,7 @@ function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProjec
         {action({ label: 'Preferences', title: 'Open Studio preferences', icon: I.preferences, onClick: onPreferences })}
         <span className="top-div" />
         {action({ label: 'Export project', title: 'Download a project file you can reopen on another device', icon: I.exportProject, onClick: onDownload })}
-        {action({ label: 'Save project', title: saveTitle, icon: I.saveProject, primary: true, tooltipAlign: 'end', onClick: onSave })}
+        {action({ label: 'Save project', title: saveTitle, icon: I.saveProject, tooltipAlign: 'end', onClick: onSave })}
       </div>
     </header>
   );

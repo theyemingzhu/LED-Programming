@@ -283,3 +283,16 @@ test('[C8] "Yes, and add another strip" keeps the first strip and opens the port
   expect(card.state.projectId, 'nothing was saved to the card').toBe('lightweaver-bench-discovery-v1');
 });
 
+
+test('[G1] the top-bar Save project is a plain button, so each screen keeps one primary', async ({ page }) => {
+  test.setTimeout(90_000);
+  await bootSetUp(page);
+  for (const hash of ['#screen=card&section=setup', '#screen=pattern', '#screen=layout&mode=draw', '#screen=playlist']) {
+    await page.goto(`/${hash}`, { waitUntil: 'domcontentloaded' });
+    const save = page.locator('header').getByRole('button', { name: 'Save project' });
+    await expect(save).toBeVisible({ timeout: 20_000 });
+    await expect(save, `${hash}: Save project is not a primary`).not.toHaveClass(/primary/);
+    await expect(save).toBeEnabled();
+  }
+});
+
