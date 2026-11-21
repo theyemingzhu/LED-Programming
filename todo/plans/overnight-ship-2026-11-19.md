@@ -5,7 +5,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 ## Summary (final, 06:45)
 
-**Live:** Studio build 2554. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501); second-browser takeover: pick-up on any screen, stale-save guard with "Copy of", highlight follows the card, "Save to card" wording (2515). One revert (#441 → #443), corrected and re-shipped as #444.
+**Live:** Studio build 2566. Night: untouched starter is not "a draft that differs" and offers no save over the card (2471). Day: Patterns "not sent" clears once a dropped card is back (2476); reload-safe install recognition, fresh-browser pick-up of the card project, timed-out tap resend, journey-direct-preview fix + PR lane (2501); second-browser takeover: pick-up on any screen, stale-save guard with "Copy of", highlight follows the card, "Save to card" wording (2515). One revert (#441 → #443), corrected and re-shipped as #444.
 **Rejected:** nothing outright. 70f4a99b was rejected overnight (it wiped refusals from a connected card) and shipped in the morning only together with its correction 60d314dd, on the coordinator's decision. Corrected before shipping: 5bd8ec31 (no resend after a 409, 30 s limit), eca27506 (never replaces owner work), 13abb518 (a second tab no longer rewrites the card).
 **Needs Adrian:** nothing blocking. Shipping stopped for today after 2 real CI failures (both reverted, live unaffected). Waiting for the next window: batch 8 (footer Save to card, setup step count, slow-card "Checking…", plain save-error message, counting-lights phone layout, red-on-main spec fixes), once its smoke-lane order passes pages-staging.mjs. Follow-ups red on main outside CI: studio-hardening ×3, preserving-firmware-update:772, patterns-playlist-compact:154.
 
@@ -133,3 +133,12 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 06:02 Tests for 41ddea53 (#448): success (first try). Deploy site + Build firmware binary: success, no signer commit.
 - 06:12 Live proof: studio-release.json buildNumber 2554, sourceRevision 41ddea53 (= origin/main). Served code contains "The card could not confirm the save (code", "Studio is re-reading the card" / "Reconnecting…", "Try saving again", "Setup: step ", "Look at the strip and choose its color." (CardSetupOverlay) and `ownEditPending` (footer).
 - **Shipped — Studio build 2554**: footer Save to card for this browser's own edit (never over another window's change), setup step count, "Checking…/Reconnecting…" for a slow card, plain save-error message, counting-lights colour question and power note in the page, "Save to card" wording, red-on-main specs fixed and in CI lanes. Next queued: d0d49124 (studio-hardening stale tests, test-only).
+
+## 2026-11-21
+
+- **Shipped — Studio build 2559** (#451, f60a83cb): false failures on a slow, healthy card ("Restarting the card…" through the save restart). Plus daa1d758, card-installer-package expects the pre-save retries.
+- **Shipped — Studio build 2561** (#453, 7dcdd4d9): an unresolvable `.local` name is asked once, removing the ~6 s wait before the 192.168.4.1 fallback. Main Tests needed one re-run (`project-geometry.test.js` mapper flake).
+- **Shipped — Studio build 2566** (#454, 133b9516, live with #452 at 13171cf4): bridge no longer resends config/recover-lights; Recover lights waits 45 s; light-test end waits through the restart; Show "Waiting for the lights to answer…".
+- **Held:** batch C `claude/slow-card-reads` @ 1837b915 — its own `slow-card-save-card-layout.spec.ts:52` idle gap 800 ms > 600 ms in two full lanes; returned to the false-failures session.
+- **Still queued:** d0d49124 (studio-hardening test fix), practice-card branch.
+- Local-run notes: Chromium and the background-release path test need the sandbox off with `TMPDIR` outside `claude-*`.
