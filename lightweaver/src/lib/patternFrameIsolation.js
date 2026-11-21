@@ -1,5 +1,4 @@
 import compilerSource from './patterns.js?raw';
-import legacyCompilerSource from '../../src-v3/lib/patterns.js?raw';
 import mapperCompilerSource from '../../../led-art-mapper/app/src/patterns.js?raw';
 import mapperRuntimeSource from '../../../led-art-mapper/app/src/mapper-runtime.js?raw';
 import bootstrapSource from './pattern-isolation/bootstrap.js?raw';
@@ -17,7 +16,7 @@ function workerRuntime() {
     Object.defineProperty(globalThis, name, { value: undefined, writable: false, configurable: false });
   }
 }
-const workerSourceFor = dialect => `(${workerRuntime.toString()})();\n${dialect !== 'modern' ? '(() => {' : ''}\n${runtimeFor(dialect === 'legacy-v3' ? legacyCompilerSource : dialect === 'mapper' ? mapperCompilerSource : compilerSource)}\n${dialect === 'mapper' ? runtimeFor(mapperRuntimeSource) : ''}\n
+const workerSourceFor = dialect => `(${workerRuntime.toString()})();\n${dialect !== 'modern' ? '(() => {' : ''}\n${runtimeFor(dialect === 'mapper' ? mapperCompilerSource : compilerSource)}\n${dialect === 'mapper' ? runtimeFor(mapperRuntimeSource) : ''}\n
 const send = postMessage.bind(globalThis);
 const unpack = ${unpackPatternSample.toString()};
 let previousSources = '', functions = [];
@@ -33,7 +32,7 @@ onmessage = ({data}) => {
     const mapperRaw = ${dialect === 'mapper' ? 'new Float64Array(data.sampleCount * 3)' : 'null'};
     let mapperDiagnostics = null;
     let currentFunction;
-    const invoke = () => currentFunction(...${dialect === 'legacy-v3' ? 'args.slice(0, 15)' : dialect === 'mapper' ? 'args.slice(0, 12)' : 'args'});
+    const invoke = () => currentFunction(...${dialect === 'mapper' ? 'args.slice(0, 12)' : 'args'});
     for (let i = 0; i < data.sampleCount; i++) {
       unpack(data, i, args);
       currentFunction = functions[data.sourceIndices[i]];
@@ -57,7 +56,7 @@ ${dialect !== 'modern' ? '})();' : ''}`;
 
 /** One outstanding frame per owner. No execution fallback is permitted. */
 export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000, dialect = 'modern' } = {}) {
-  if (dialect !== 'modern' && dialect !== 'legacy-v3' && dialect !== 'mapper') throw new Error('Unsupported pattern dialect.');
+  if (dialect !== 'modern' && dialect !== 'mapper') throw new Error('Unsupported pattern dialect.');
   const workerSource = workerSourceFor(dialect);
   let frame = null, port = null, ready = null, pending = null;
   let disposed = false, serial = 0, sourcesKey = null, cancelStartup = null;
@@ -108,7 +107,7 @@ export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000, 
     async render({ sources, samples }) {
       if (disposed) throw new Error('Pattern service disposed.');
       if (pending) throw new Error('Pattern frame already pending.');
-      const packet = packPatternFrameJob({ sources, samples }, { argumentCount: dialect === 'legacy-v3' ? 15 : dialect === 'mapper' ? 12 : 21 });
+      const packet = packPatternFrameJob({ sources, samples }, { argumentCount: dialect === 'mapper' ? 12 : 21 });
       const key = JSON.stringify(sources);
       if (sourcesKey !== null && key !== sourcesKey) teardown();
       await initialize();

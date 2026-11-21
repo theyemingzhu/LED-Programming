@@ -6,21 +6,12 @@ import {
   makePlaylistPushPendingState,
   makePlaylistPushSuccessState,
 } from '../src/lib/studioActionStatus.js';
-import {
-  formatBrowserProjectSaveLabel as formatBrowserProjectSaveLabelV3,
-  makePlaylistPushErrorState as makePlaylistPushErrorStateV3,
-  makePlaylistPushSuccessState as makePlaylistPushSuccessStateV3,
-} from '../src-v3/lib/studioActionStatus.js';
 
 assert.equal(
   formatBrowserProjectSaveLabel({ name: 'Shanghai Mandala' }),
   'Shanghai Mandala saved in browser library',
 );
 assert.equal(formatBrowserProjectSaveLabel({}), 'Project saved in browser library');
-assert.equal(
-  formatBrowserProjectSaveLabelV3({ name: 'Shanghai Mandala' }),
-  'Shanghai Mandala saved in browser library',
-);
 
 assert.deepEqual(actionStatus({ status: 'pending' }), { kind: 'pending', text: 'Installing playlist on card…' });
 assert.deepEqual(actionStatus({ status: 'confirmed' }), { kind: 'ok', text: 'Playlist installed on card.' });
@@ -39,7 +30,6 @@ assert.deepEqual(makePlaylistPushSuccessState({ rebooting: true }), {
   message: 'Playlist installed on card. The card is restarting to use it.',
   handoffUrl: '',
 });
-assert.equal(makePlaylistPushSuccessStateV3().message, 'Playlist installed on card.');
 
 const handoffBuilder = (host) => `http://${host}/#lwconfig=abc&reboot=1`;
 const bridgeTimeout = new Error('Timed out waiting for the card bridge.');
@@ -54,17 +44,6 @@ assert.deepEqual(
     message: 'The card page did not answer. Reopen the card page, then try Load playlist to card again.',
     handoffUrl: 'http://lightweaver.local/#lwconfig=abc&reboot=1',
     action: null,
-  },
-);
-assert.deepEqual(
-  makePlaylistPushErrorStateV3(bridgeTimeout, {
-    host: 'lightweaver.local',
-    buildHandoffUrl: handoffBuilder,
-  }),
-  {
-    kind: 'err',
-    message: 'The card page did not answer. Reopen the card page, then try Load playlist to card again.',
-    handoffUrl: 'http://lightweaver.local/#lwconfig=abc&reboot=1',
   },
 );
 
