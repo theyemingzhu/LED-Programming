@@ -1,0 +1,153 @@
+/* ============================================================
+   Lightweaver — the phone shell (≤ 640px)
+   ============================================================
+   One arrangement for the whole of Studio on a phone, decided once
+   (todo/plans/simpler-journeys.md → "Mobile UI/UX"):
+
+     top bar        what this is, project actions
+     status line    is the card answering, which builds   (read-only feel)
+     the screen     the work — full width
+     tab bar        where to go                            (thumb reach)
+
+   - The left rail becomes the tab bar. On a 390px phone the rail
+     took 58px (15%) of every screen's width.
+   - The footer becomes the status line under the top bar. At the
+     bottom it sat directly under the screen's own buttons, styled as
+     boxes, so it read as part of the work. Up top, in plain text,
+     it reads as the machine reporting on itself.
+   - Notices dock directly above the tab bar, and the screen (and the
+     card setup sheet) end where the notice begins. Nothing slides:
+     every screen is top-anchored, so only its bottom edge rises. A
+     notice therefore never sits on top of a control.
+
+   Tokens only (v3-styles.css). Loaded last in main.jsx so it wins
+   the cascade; never loaded by card-main.jsx, so the signed card
+   bundle is untouched.
+   ============================================================ */
+
+@media (max-width: 640px) {
+  .app {
+    --studio-rail-width: 0px;
+    --lw-tabbar-h: calc(54px + env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top"
+      "stat"
+      "body"
+      "rail";
+  }
+  .app > .screen {
+    grid-column: 1 / -1;
+    grid-row: 3 / 4;
+    /* The notice stack's height, published by NoticeLayer while a
+       notice shows. The screen gives that ground up at its bottom. */
+    margin-bottom: var(--lw-notice-stack-h, 0px);
+  }
+
+  /* ── Tab bar (was the left rail) ─────────────────────────── */
+  .rail {
+    grid-area: rail;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
+    min-height: var(--lw-tabbar-h);
+    padding: 0 4px env(safe-area-inset-bottom);
+    overflow: visible;
+    border-right: 0;
+    border-top: 1px solid var(--border-hair);
+  }
+  .rail .spring,
+  /* Batch production flashes cards over USB, which phone browsers
+     cannot do. The workshop door stays on desktop. */
+  .rail .rail-workshop { display: none; }
+  .rail-item {
+    flex: 1 1 0;
+    width: auto;
+    max-width: 76px;
+    height: 54px;
+    min-height: 44px;
+    border-radius: var(--r-sm);
+  }
+  .rail-item .lbl { font-size: 10.5px; }
+  .rail-item.active::before {
+    left: 50%; top: 0;
+    transform: translateX(-50%);
+    width: 24px; height: 2px;
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* ── Status line (was the footer) ────────────────────────── */
+  .status-bar,
+  .status-bar:has(.sb-offline) {
+    grid-area: stat;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 10px;
+    height: auto;
+    min-height: 34px;
+    padding: 0 10px;
+    border-top: 0;
+    border-bottom: 1px solid var(--border-hair);
+  }
+  .status-bar .sb-spring { display: block; flex: 1; }
+  /* Read as status, not as boxed buttons. Still pressable: the card
+     word opens the Connection Center, the firmware line the update. */
+  .status-bar .card-status-control,
+  .status-bar .card-status-control.is-connected,
+  .status-bar .card-status-control.is-needs-attention {
+    height: 34px; min-height: 34px;
+    padding-inline: 0;
+    background: transparent;
+    border-color: transparent;
+  }
+  .status-bar button.sb-firmware {
+    min-height: 34px;
+    padding-inline: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-hi);
+    text-decoration: underline;
+    text-decoration-color: var(--accent-line);
+    text-underline-offset: 3px;
+  }
+  .status-bar .sb-firmware { padding-inline: 0; white-space: nowrap; }
+  /* The short-strip preview is a bench tool with its own row of
+     controls; there is no room for it beside three facts. */
+  .status-bar .sb-teststrip { display: none; }
+
+  /* ── Notices: above the tab bar, never over a control ───────── */
+  .lw-notice-layer {
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--lw-bottom-chrome-h, 54px) + 8px);
+  }
+
+  /* ── Card setup sheet: edge to edge, ends where a notice begins ── */
+  .card-setup-backdrop:not(.is-minimized) {
+    padding: 0 0 var(--lw-notice-reserve, 0px);
+    place-items: stretch;
+    /* The sheet fills the phone, so nothing behind it needs to show
+       through the strip a notice reserves. */
+    background: var(--bg-app);
+  }
+  .card-setup-backdrop:not(.is-minimized) .card-setup-overlay {
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  /* The sheet's safety row was three stacked rows (150px). One row of two
+     buttons with the reminder under it gives the step back ~70px. */
+  .card-setup-overlay-foot {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  }
+  .card-setup-overlay-foot > p { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
+  .card-setup-overlay-foot > .btn { justify-self: end; }
+}
