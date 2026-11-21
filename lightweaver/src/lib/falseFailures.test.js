@@ -196,3 +196,22 @@ test('a count change on a quiet card asks again before "the card did not take it
   assert.equal(statusReads, 2, 'the quiet status read was asked again');
   assert.notEqual(result.reason, 'wiring-unreachable');
 });
+
+// An unresolvable .local name is not a quiet card: asking it again only held
+// back the fallback to the card's own address by about 6 s.
+test('a .local name that does not resolve is asked once; a quiet card address is still asked three times', async () => {
+  const { withCardReadRetry, isUnresolvedMdnsFailure, isCardSilenceError } = await import('./cardPushClient.js');
+  const run = async host => {
+    let reads = 0;
+    await withCardReadRetry(async () => { reads += 1; throw new TypeError('Failed to fetch'); }, {
+      sleep: async () => {},
+      shouldRetry: error => isCardSilenceError(error) && !isUnresolvedMdnsFailure(host, error),
+    }).catch(() => {});
+    return reads;
+  };
+  assert.equal(await run('lightweaver.local'), 1);
+  assert.equal(await run('http://lightweaver.local:80'), 1);
+  assert.equal(await run('192.168.18.70'), 3);
+  const timeout = Object.assign(new Error('aborted'), { name: 'AbortError' });
+  assert.equal(isUnresolvedMdnsFailure('lightweaver.local', timeout), false, 'a slow .local card is still asked again');
+});
