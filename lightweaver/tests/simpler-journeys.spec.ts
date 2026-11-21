@@ -23,7 +23,7 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 
 /** Presses each journey takes today, per width. Lower a number only with the cut that earns it. */
 export const PRESSES = {
-  'first-setup': { 390: 12, 1280: 12 },
+  'first-setup': { 390: 11, 1280: 11 },
   'change-count': { 390: 2, 1280: 2 },
 };
 
@@ -46,6 +46,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const { presses, steps } = await j.finish();
       expect(steps.some(step => step.label === 'Continue to Layout'), 'C1: Layout is a door, not a step').toBe(false);
       expect(steps.some(step => step.label === 'Start light test'), 'C2: the light test starts itself after Save').toBe(false);
+      expect(steps.some(step => step.label === 'Replace the temporary setup'), 'C4: the temporary setup is not a different project').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['first-setup'][vp.width]);
       // The write really happened: the card holds the counted project, not the temporary setup.
       await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 15_000 })
@@ -144,4 +145,14 @@ test('[C3] the count is still editable in Layout, and the row writes nothing unt
   expect(card.requests.filter(r => r.method === 'POST'), 'typing writes nothing').toHaveLength(0);
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
   await expect(page.getByLabel('Total LEDs')).toBeEditable({ timeout: 20_000 });
+});
+
+test('[C4] a card holding someone else\'s project still asks before it is replaced', async ({ page }) => {
+  test.setTimeout(150_000);
+  const card = await bootSetUp(page, "project.id = 'lwproj-open-work'; project.name = 'Open work';");
+  await page.goto('/#screen=card&section=setup&task=install-project&next=patterns', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('replace-card-project')).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(1500);
+  expect(card.requests.filter(r => r.method === 'POST'), 'nothing is written before the owner answers').toHaveLength(0);
+  expect(card.state.projectId).toBe('lwproj-matrix-piece');
 });

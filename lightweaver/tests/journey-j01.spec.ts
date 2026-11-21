@@ -77,11 +77,11 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
   // discovery-end-yes, discovery-record-save, discovery-continue-layout,
-  // setup-verify-action, replace-card-project,
+  // setup-verify-action,
   // wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '14 deliberate clicks' },
+  annotation: { type: 'clicks', description: '13 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -230,19 +230,16 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
     + 'not layout placement — there is no strip left to place',
   ).toHaveAttribute('data-journey-task', 'test-and-save', { timeout: CONNECT_BUDGET_MS });
 
-  // ── Phase 4 opens the install task. The discovery bench sentinel still
-  // names a different project, so Studio first asks the owner to explicitly
-  // replace it on this card. The real discovered project has 41 pixels on
+  // ── Phase 4 opens the install task. The card still holds the discovery
+  // bench sentinel, which is Studio's own temporary setup, so replacing it
+  // needs no second question (simpler-journeys C4). The real discovered project has 41 pixels on
   // GPIO 18, but its output identity, LED type, and current limit differ
   // from the temporary bench setup. Firmware stages that structural change
   // for a physical light test even though the pin is unchanged.
   const configPostsBeforeInstall = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length;
   await page.getByTestId('setup-verify-action').click();
   await expect(page).toHaveURL(/next=patterns/);
-  await expect(page.getByTestId('replace-card-project')).toBeVisible();
-  expect(card.state.projectId, 'opening the install task must not silently replace the bench project').toBe('lightweaver-bench-discovery-v1');
-  await page.getByTestId('replace-card-project').click();
-  await expect(page).toHaveURL(/replace=project/);
+  await expect(page.getByTestId('replace-card-project'), 'the temporary setup is not someone else\'s project').toHaveCount(0);
 
   // The structural change stages a physical light test, which starts on its
   // own after the owner's Save (simpler-journeys C2).

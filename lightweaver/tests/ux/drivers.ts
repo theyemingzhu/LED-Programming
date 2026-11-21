@@ -104,3 +104,62 @@ export async function driveChangeCount(page: Page, j: Journey, card: { state: { 
   }
   await finishCardSave(page, j, { done: async () => card.state.pixels === pixels && !card.state.wiringTestActive });
 }
+
+/** A fresh browser opens Patterns, connects the card it finds, and plays a tile. */
+export async function driveFreshBrowserPickup(page: Page, j: Journey, card: { waitForPlaying(id: string, ms?: number): Promise<void> }, patternId: string) {
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  await j.land('opens led.mandalacodes.com/#screen=pattern');
+  const linkState = async () => page.evaluate(async () => String((await import('/src/lib/cardLink.js')).getSharedCardLink().getState()?.state || ''));
+  const connected = async () => /^connected-/.test(await linkState());
+  await j.press(page.getByTestId('card-link-status'), 'Footer chip: Found — pair');
+  // Whatever the screens still ask for to finish connecting: the dialog's own primary.
+  const deadline = Date.now() + 20_000;
+  while (!(await connected()) && Date.now() < deadline) {
+    const dialog = page.getByRole('dialog');
+    const primary = dialog.locator('.btn.primary:visible').filter({ hasNotText: /^Save project$/ }).first();
+    if (await shown(primary)) {
+      await j.press(primary, ((await primary.textContent()) || '').replace(/\s+/g, ' ').trim());
+    }
+    await page.waitForTimeout(400);
+  }
+  if (!(await connected())) throw new Error(`not connected: ${await linkState()}`);
+  await j.land('connected');
+  await j.press(page.locator(`.pm-cards .pmcard[data-pattern-id="${patternId}"]`).first(), `Tap pattern tile "${patternId}"`);
+  await card.waitForPlaying(patternId, 8000);
+}
+
+/** Update the card's firmware over Wi-Fi from Card Home. */
+export async function driveCardUpdate(page: Page, j: Journey) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  await j.land('opens Studio; card connected, firmware older than release');
+  await j.press(page.getByRole('button', { name: /^\s*\d+\s*→\s*\d+/ }).first(), 'Card Home: release update link');
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  const reveal = panel.getByRole('button', { name: 'Update over Wi-Fi' });
+  const start = panel.getByRole('button', { name: 'Start secure Wi-Fi update' });
+  await expect(reveal.or(start).first()).toBeVisible({ timeout: 15_000 });
+  if (await shown(reveal) && !(await shown(start))) await j.press(reveal, 'Update over Wi-Fi');
+  await j.press(start, 'Start secure Wi-Fi update');
+  await expect(panel).toContainText(/Restarting card|restart/i, { timeout: 20_000 });
+}
+
+/** Rename the project from Card Home and save the name to the card. */
+export async function driveRename(page: Page, j: Journey, card: { state: { projectName: string } }, name = 'Gallery north wall') {
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(2000);
+  await j.land('Card Home, connected');
+  const edit = page.getByTestId('setup-project-name-edit');
+  if (!(await shown(edit))) await j.press(page.getByRole('button', { name: 'Review checks', exact: true }), 'Review checks');
+  await j.press(edit, 'Tap the project name');
+  const input = page.getByTestId('setup-project-name-input');
+  await j.type(input, name, 'Type the new name');
+  await input.press('Enter');
+  j.record.presses += 1;
+  j.note('Enter counted as one press');
+  await page.waitForTimeout(800);
+  await j.press(page.getByRole('button', { name: 'Save to card', exact: true }).first(), 'Save to card');
+  await finishCardSave(page, j, { done: async () => card.state.projectName === name });
+}
