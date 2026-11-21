@@ -227,3 +227,27 @@ test('while a save checks a slow card, missed keepalives do not say "stopped res
   const afterRelease = reduceCardLink(released, { type: 'direct-ping-missed', host: HOST, at: at + 15000 });
   assert.equal(afterRelease.state, 'reconnecting', 'once the save stops checking, the miss rule applies again');
 });
+
+test('a card that never restarted is never told it "has not come back after restarting" (F-D2)', async () => {
+  const time = clock();
+  const error = await waitForCardDeploymentVerification(prepared, {
+    restartWaitMs: 45000, restartFromBootId: 'boot-1', intervalMs: 800, now: time.now, sleep: time.sleep,
+    readEvidence: async () => ({ cardId: CARD_ID, bootId: 'boot-1' }),
+  }).catch(caught => caught);
+  assert.equal(error.reason, 'save-not-applied');
+  assert.doesNotMatch(error.message, /come back|restart/i);
+});
+
+test('an old rollback record on a bench card running the restored build is history (F-D1)', () => {
+  const benchReadiness = {
+    ...readyReadiness, commandReady: false, playbackReady: false, provisionalSetup: true, uptimeMs: 49 * 60000,
+    buildId: 'b'.repeat(40), buildNumber: 2464,
+    firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'new-slot-rollback-detected', restoredBuildNumber: 2464, lastError: '' },
+  };
+  const lifecycle = deriveCardLifecycle({ link: link(benchReadiness), project: PROJECT });
+  assert.notEqual(lifecycle.state, 'update-rolled-back');
+  assert.notEqual(lifecycle.label, 'Update rolled back');
+  assert.equal(lifecycle.pastUpdateRolledBack, true);
+  const own = deriveCardLifecycle({ link: link(benchReadiness), project: PROJECT, update: { phase: 'rolled-back' } });
+  assert.equal(own.state, 'update-rolled-back', 'an update this browser ran still stops the owner');
+});
