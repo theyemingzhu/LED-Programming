@@ -1,0 +1,252 @@
+{
+ "app": "Lightweaver",
+ "cardId": "lw-b0fe81f61b44",
+ "firmwareVersion": "1.2.4",
+ "buildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+ "buildNumber": 2464,
+ "bootId": "boot-3c09d114-b0fe81f61b44",
+ "uptimeMs": 4509706,
+ "provisioningContractVersion": 1,
+ "runtimePhase": "ready",
+ "commandReady": true,
+ "firmwareUpdateReady": true,
+ "projectRepositoryMessage": "project repository ready",
+ "playbackReady": true,
+ "outputReady": true,
+ "projectOutputReady": true,
+ "outputDriverReady": true,
+ "pixelCapacity": {
+  "schemaLimit": 65535,
+  "allocatedBoot": 512
+ },
+ "outputInitialization": {
+  "ok": true,
+  "code": "ready",
+  "message": "configured project outputs initialized"
+ },
+ "configValid": true,
+ "knownGoodProject": true,
+ "resumedLiveLook": false,
+ "provisionalSetup": true,
+ "safeMode": false,
+ "configSchemaVersion": 1,
+ "capabilitiesVersion": 2,
+ "capabilities": {
+  "clientPlaylist": {
+   "version": 1
+  },
+  "clientPattern": {
+   "version": 1
+  },
+  "kaleidoscopeReflectionPoints": 1,
+  "symmetrySides": 1,
+  "firmwareUpdate": {
+   "version": 1,
+   "network": true,
+   "softwareGrant": true
+  }
+ },
+ "firmwareUpdate": {
+  "phase": "rolled-back",
+  "receivedBytes": 0,
+  "expectedBytes": 0,
+  "expectedBuildId": "",
+  "activeSlot": "app0",
+  "pendingSlot": "",
+  "lastError": "",
+  "rollbackReason": "new-slot-rollback-detected",
+  "rebootCorrelation": "reboot-fde5e7912ffd193965c2ed4baed7d186",
+  "restoredFirmwareVersion": "1.2.4",
+  "restoredBuildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+  "restoredBuildNumber": 2464
+ },
+ "ok": true,
+ "errorCode": 0,
+ "mode": "website-flash",
+ "source": "internal-flash",
+ "runtimeSource": "internal-flash",
+ "projectId": "lightweaver-bench-discovery-v1",
+ "resetReason": 3,
+ "projectRevision": 1,
+ "projectFingerprint": "d93ebe18ab7780b1",
+ "productionJobId": "",
+ "productionJobDigest": "",
+ "wiringProbation": {
+  "active": false,
+  "remainingMs": 0
+ },
+ "limits": {
+  "pixels": 65535,
+  "outputs": 4,
+  "looks": 32,
+  "zones": 12,
+  "rangesPerZone": 6,
+  "configStorageBytes": 3968
+ },
+ "kaleidoscopeMappings": [],
+ "recipeCapabilities": {
+  "version": 1,
+  "firmwareVersion": "1.2.4",
+  "buildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+  "schemaVersions": [
+   1
+  ],
+  "supportedNodes": [
+   "solid",
+   "palette",
+   "wave",
+   "fastled-noise",
+   "hash-sparkle",
+   "scale",
+   "offset",
+   "repeat",
+   "mirror",
+   "radial-mask",
+   "linear-mask",
+   "threshold"
+  ],
+  "supportedBlends": [
+   "add",
+   "max",
+   "multiply",
+   "crossfade"
+  ],
+  "supportedModulators": [
+   "lfo",
+   "noise-clock"
+  ],
+  "bakeOnlyNodes": [
+   "particles",
+   "reaction-diffusion",
+   "graph",
+   "shader",
+   "audio"
+  ],
+  "maxLayers": 3,
+  "maxConfigBytes": 3968,
+  "maxOperationsPerFrame": 250000,
+  "maxEstimatedStateBytes": 2048,
+  "physicalParityVerified": false,
+  "colorJourney": {
+   "version": 1,
+   "maxPixels": 256,
+   "phaseEncoding": "q0.16-hex",
+   "restart": "restart"
+  },
+  "colorJourneyV2": {
+   "version": 2,
+   "maxPixels": 65535,
+   "maxPhaseSpans": 64,
+   "phaseEncoding": "q0.16-affine",
+   "restart": "restart"
+  },
+  "colorJourneyV3": {
+   "version": 3,
+   "maxPixels": 65535,
+   "maxPhaseSpans": 64,
+   "maxPhaseErrorTicks": 194,
+   "phaseEncoding": "q0.16-affine-rgb1",
+   "restart": "restart"
+  }
+ },
+ "piece": {
+  "name": "Lightweaver Bench Discovery",
+  "hostname": "lightweaver"
+ },
+ "led": {
+  "pixels": 256,
+  "type": "WS2812B",
+  "colorOrder": "GRB",
+  "outputGammaEnabled": false,
+  "outputGammaValue": 2.2,
+  "calibration": {
+   "red": 1,
+   "green": 1,
+   "blue": 1
+  },
+  "maxMilliamps": 2000,
+  "estimatedFullWhiteMilliamps": 15360,
+  "limitedFullWhiteMilliamps": 2000
+ },
+ "wiringRevision": 0,
+ "wiringDigest": "",
+ "currentLookIndex": 0,
+ "currentLookId": "bench-warm",
+ "currentPatternId": "bench-warm",
+ "outputs": [
+  {
+   "id": "bench-18",
+   "pin": 18,
+   "pixels": 256,
+   "gpio": 18,
+   "count": 256,
+   "segments": [
+    {
+     "id": "bench-18-full",
+     "count": 256,
+     "direction": "forward"
+    }
+   ]
+  }
+ ],
+ "lwOutput": {
+  "contract": 1,
+  "sourceClass": "local",
+  "requestedBrightnessByte": 0,
+  "brightnessByte": 0,
+  "brightnessScale": 0,
+  "powerLimited": false,
+  "gammaEnabled": false,
+  "gammaValue": 2.2,
+  "calibration": {
+   "red": 1,
+   "green": 1,
+   "blue": 1
+  },
+  "measuredFps": 25,
+  "dithering": false
+ },
+ "wifi": {
+  "transport": "station",
+  "hostname": "lightweaver",
+  "ip": "192.168.18.70",
+  "transition": "station",
+  "phase": "station",
+  "transitionPending": false,
+  "apActive": false,
+  "stationIp": "192.168.18.70",
+  "handoffGeneration": 0,
+  "phaseStartedMs": 5999,
+  "lastAttemptMs": 3540,
+  "attemptCount": 1,
+  "lastError": "",
+  "failureStage": "",
+  "failureReason": "",
+  "driverReason": 0,
+  "networkBindingsPending": false,
+  "wledListenerReady": true,
+  "artnetListenerReady": true,
+  "lastBindingAttemptMs": 5999,
+  "configured": true,
+  "ssid": "(redacted)",
+  "savedPasswordAvailable": true
+ },
+ "streaming": false,
+ "frameSource": "internal",
+ "nativeRenderArmSupported": true,
+ "nativeRenderArmed": false,
+ "nativeRendering": false,
+ "nativeFadeScale": 0,
+ "nativeArmedZones": [],
+ "projectHead": "",
+ "maxMilliamps": 2000,
+ "maxMilliampsSource": "config",
+ "playlist": {
+  "configured": false,
+  "playing": false,
+  "entryIndex": 0,
+  "entryCount": 0,
+  "patternId": "",
+  "remainingSeconds": 0
+ }
+}
