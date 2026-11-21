@@ -109,6 +109,13 @@ const RETRYABLE_BRIDGE_TYPES = new Set([
 // feature first shipped in. Cards report their version in the 'ready'
 // handshake (and on every relay reply); firmware older than the versioned
 // bridge reports nothing, which we treat as 0 (legacy).
+// A write that restarts the card. When its reply times out the card may well
+// have stored it and gone off to restart: sending it again restarts the card a
+// second time. Only a stale tab reference (closed / missing — the message never
+// left) is retried; a timeout is reported as "delivery unknown" so the caller
+// reads the card back instead. todo/plans/false-failures.md, follow-up F-B1.
+const RESTARTING_WRITE_TYPES = new Set(['config', 'recover-lights']);
+
 export const CARD_BRIDGE_PROTOCOL_VERSION = 9;
 export const CARD_BRIDGE_FEATURE_VERSIONS = {
   frame: 1,
@@ -2766,6 +2773,10 @@ export function sendCardBridgeRequest(type, payload = {}, {
         // re-adopting the opener fixes. Only 'bridge-timeout' got past the
         // guard, so a first request after a reconnect failed instead of
         // reconnecting.
+        if (error?.reason === 'bridge-timeout' && RESTARTING_WRITE_TYPES.has(type)) {
+          if (error && typeof error === 'object' && !error.delivery) error.delivery = 'unknown';
+          throw error;
+        }
         const worthReattaching = error?.reason === 'bridge-timeout'
           || error?.reason === 'bridge-closed'
           || error?.reason === 'bridge-missing';

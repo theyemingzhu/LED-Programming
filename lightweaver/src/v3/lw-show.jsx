@@ -1006,7 +1006,11 @@ function ShowScreen({
       return;
     }
     const bridgeGone = health.reason === 'bridge-missing';
-    if ((bridgeGone && health.failingForMs >= 1200 && health.consecutiveFailures >= 3) || health.failingForMs >= 15000) {
+    // A healthy card can go quiet for 4–12 s while its Wi-Fi re-associates
+    // (todo/plans/false-failures.md, follow-up F-B4). Before 3 s say nothing;
+    // then say Studio is waiting, not that something broke; stop only after
+    // 20 s of sustained failure, or at once when the card page itself closed.
+    if ((bridgeGone && health.failingForMs >= 1200 && health.consecutiveFailures >= 3) || health.failingForMs >= SHOW_STREAM_GIVE_UP_MS) {
       void stopLights({
         kind: 'err',
         text: bridgeGone
@@ -1017,7 +1021,7 @@ function ShowScreen({
     }
     if (health.failingForMs >= 3000 && !healthNoticeShownRef.current) {
       healthNoticeShownRef.current = true;
-      setNotice({ kind: 'err', text: "The lights aren't receiving the show — check that your card page is still open." });
+      setNotice({ kind: 'pending', text: 'Waiting for the lights to answer… the show keeps playing here and resumes on the lights by itself.' });
     }
   }, [stopLights]);
 
@@ -1050,13 +1054,13 @@ function ShowScreen({
         // Elicit a versioned reply so a quietly-bootstrapped bridge reports
         // its real protocol version before we gate on it. Retry once — a
         // sleepy card page often misses the first ping.
+        // Three tries, 4 s each, a second apart: a quiet but healthy card
+        // answers within that, and only then is it worth saying anything.
         let pinged = false;
-        try {
-          await pingCardBridge({ timeoutMs: 2500 });
-          pinged = true;
-        } catch {
+        for (let attempt = 0; attempt < 3 && !pinged; attempt += 1) {
+          if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 1000));
           try {
-            await pingCardBridge({ timeoutMs: 2500 });
+            await pingCardBridge({ timeoutMs: 4000 });
             pinged = true;
           } catch { /* the card never answered — handled below */ }
         }
@@ -1314,7 +1318,8 @@ function ShowScreen({
                 alignItems: 'center',
                 gap: 10,
               }}>
-                <span style={{ flex: 1 }}>{notice.text}</span>
+                {notice.kind === 'pending' && <span className="lw-notice-spinner" aria-hidden="true" />}
+                <span style={{ flex: 1 }} data-testid="show-notice">{notice.text}</span>
                 {notice.action === 'flash' && (
                   <button type="button" className="btn primary" onClick={() => go?.('flash')}>Open Flash</button>
                 )}
@@ -1562,5 +1567,8 @@ function ShowScreen({
     </div>
   );
 }
+
+// How long the show keeps trying before it pauses itself (was 15 s).
+const SHOW_STREAM_GIVE_UP_MS = 20000;
 
 export { ShowScreen };

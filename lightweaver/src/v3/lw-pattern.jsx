@@ -896,6 +896,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       return matches;
     }, [hasCurrentProjectAuthorization]);
 
+    const recoverySeq = useRef(0);
     const invalidatePendingPreview = useCallback(() => {
       browsePreviewSeq.current += 1;
       livePreviewSeq.current += 1;
@@ -2435,7 +2436,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           // The write went out and no answer came back. A real card restarts
           // the moment it stores a save, so a lost reply is usually a save
           // that landed. Read the card back before saying anything.
-          const replyLost = pushError?.reason === 'offline' || pushError?.reason === 'timeout';
+          const replyLost = ['offline', 'timeout', 'bridge-timeout'].includes(pushError?.reason);
           if (!replyLost || pushError?.delivery === 'not-sent' || pushError?.delivery === 'rejected') throw pushError;
           response = { ok: true, rebooting: true, replyLost: true };
         }
@@ -2860,7 +2861,12 @@ function writeSectionDisplayOrder(projectId, ids) {
         return;
       }
       if (livePreviewTimer.current) clearTimeout(livePreviewTimer.current);
-      const sequence = ++livePreviewSeq.current;
+      // Recover lights restarts the card on purpose, and the restart (a new
+      // boot) cancels pending previews through livePreviewSeq. The recovery
+      // keeps its own counter so its result is not thrown away by the very
+      // restart it asked for (follow-up F-B2, todo/plans/false-failures.md).
+      livePreviewSeq.current += 1;
+      const sequence = ++recoverySeq.current;
       dispatchPreviewAction({ type: 'reset' });
       setPreviewFailure(null);
       setHandoffUrl('');
@@ -2870,7 +2876,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       try {
         if (!recoveryBypassesProjectAuthorization) {
           const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
-          if (sequence !== livePreviewSeq.current) return;
+          if (sequence !== recoverySeq.current) return;
           if (!matchesCurrentCardProjectEvidence(evidence)) {
             blockPatternCardEffect('project');
             return;
@@ -2895,12 +2901,12 @@ function writeSectionDisplayOrder(projectId, ids) {
           { patternId: 'warm-white', brightness: 1, syncZones: true },
           { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 3200, restartCard: true },
         ));
-        if (sequence !== livePreviewSeq.current) return;
+        if (sequence !== recoverySeq.current) return;
         setStatusKind('');
         setRecoveryConfirmation('pending');
         setStatus('Recovery frame sent. Do you see warm white on the real LEDs?');
       } catch (error) {
-        if (sequence !== livePreviewSeq.current) return;
+        if (sequence !== recoverySeq.current) return;
         setStatusKind('err');
         setRecoveryConfirmation('');
         if (error?.reason === 'identity-missing' || error?.reason === 'wrong-card') {
