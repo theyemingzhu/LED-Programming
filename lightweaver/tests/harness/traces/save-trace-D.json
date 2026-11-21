@@ -1,0 +1,1047 @@
+{
+ "pre": {
+  "text": "Save to card",
+  "disabled": false
+ },
+ "reqs": [
+  {
+   "t": 0,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 72
+  },
+  {
+   "t": 23,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 71
+  },
+  {
+   "t": 106,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 89
+  },
+  {
+   "t": 210,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 76
+  },
+  {
+   "t": 211,
+   "m": "GET",
+   "path": "/api/wiring/status",
+   "status": 200,
+   "ms": 111
+  },
+  {
+   "t": 324,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 85
+  },
+  {
+   "t": 420,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 88
+  },
+  {
+   "t": 522,
+   "m": "POST",
+   "path": "/api/config",
+   "status": 200,
+   "ms": 202
+  },
+  {
+   "t": 725,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 51
+  },
+  {
+   "t": 780,
+   "m": "POST",
+   "path": "/api/reboot",
+   "status": 200,
+   "ms": 32
+  },
+  {
+   "t": 812,
+   "m": "GET",
+   "path": "/api/wiring/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 3004
+  },
+  {
+   "t": 3816,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 1150
+  },
+  {
+   "t": 4393,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 658
+  },
+  {
+   "t": 5069,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 107
+  },
+  {
+   "t": 5200,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 66
+  },
+  {
+   "t": 10056,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 67
+  },
+  {
+   "t": 15135,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 268
+  },
+  {
+   "t": 20409,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 82
+  },
+  {
+   "t": 25080,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 85
+  },
+  {
+   "t": 25504,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 80
+  },
+  {
+   "t": 30598,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 81
+  },
+  {
+   "t": 35692,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 81
+  },
+  {
+   "t": 40789,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 82
+  },
+  {
+   "t": 45177,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 70
+  },
+  {
+   "t": 45884,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 77
+  },
+  {
+   "t": 50974,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 84
+  },
+  {
+   "t": 56072,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 73
+  },
+  {
+   "t": 61157,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 78
+  }
+ ],
+ "polls": [
+  {
+   "t": -1,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 163446,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": -1,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 164527,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 965,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 4471,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 7977,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 11481,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 14986,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 14360,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 16473,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 15451,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 17564,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 16546,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 18660,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 17638,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 19749,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 18718,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 20833,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 19806,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 21921,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 20899,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 23012,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 21991,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 24105,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 23082,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 25197,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 24169,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 26285,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 25257,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 27371,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 26349,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 28462,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 27441,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 29551,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 28521,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 30634,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 29648,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 31760,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 30739,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 32852,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 31823,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 33936,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 32914,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 35030,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 34010,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 36124,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 35097,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 37208,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 36188,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 38302,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 37281,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 39393,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 38373,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 40487,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 39465,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 41578,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 40554,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 42667,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 41647,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 43760,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 42739,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 44851,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 43831,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 45946,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 44929,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 47040,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 46009,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 48126,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 47101,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 49214,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 48193,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 50308,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 49285,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 51397,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 50373,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 52491,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 51464,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 53575,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 52545,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 54658,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 53637,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 55759,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 54742,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 56853,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 55833,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 57945,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 56917,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 59030,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 58008,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 60121,
+   "bootId": "boot-8d93c885-b0fe81f61b44",
+   "up": 59092,
+   "rev": 0,
+   "fp": "b71fdea3",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  }
+ ],
+ "lab": [
+  {
+   "t": 30,
+   "text": "Checking card…",
+   "alert": "Installed on card | Preview sent to card | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 541,
+   "text": "Sending…",
+   "alert": "Installed on card | Preview sent to card | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 5161,
+   "text": "Save to card",
+   "alert": "Installed on card | Previewing in Studio | Open Card and check this project is still saved on this card before sending lights.× | LightweaverUpdate rolled back | Update rolled back | Card firmware 2464 ✓"
+  },
+  {
+   "t": 5416,
+   "text": "Save to card",
+   "alert": "Installed on card | Playing on the card | Open Card and check this project is still saved on this card before sending lights.× | Connected | Connected | Card firmware 2464 ✓"
+  }
+ ],
+ "events": [],
+ "final": {
+  "rev": 0,
+  "fp": "b71fdea3bb229e7db79fbd3fb7f6bbd5b71fdea3bb229e7db79fbd3fb7f6bbd5",
+  "pat": "fire",
+  "bootId": "boot-8d93c885-b0fe81f61b44",
+  "rr": 3
+ }
+}

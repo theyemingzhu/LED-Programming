@@ -1,0 +1,678 @@
+{
+ "pre": {
+  "text": "Save to card",
+  "disabled": false
+ },
+ "reqs": [
+  {
+   "t": null,
+   "m": "POST",
+   "path": "/api/control",
+   "status": 200,
+   "ms": 0
+  },
+  {
+   "t": 0,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 156
+  },
+  {
+   "t": 26,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 70
+  },
+  {
+   "t": 105,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 83
+  },
+  {
+   "t": 198,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 71
+  },
+  {
+   "t": 199,
+   "m": "GET",
+   "path": "/api/wiring/status",
+   "status": 200,
+   "ms": 107
+  },
+  {
+   "t": 308,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 80
+  },
+  {
+   "t": 398,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 75
+  },
+  {
+   "t": 484,
+   "m": "POST",
+   "path": "/api/config",
+   "status": 200,
+   "ms": 197
+  },
+  {
+   "t": 682,
+   "m": "GET",
+   "path": "/api/firmware-info",
+   "status": 200,
+   "ms": 51
+  },
+  {
+   "t": 739,
+   "m": "POST",
+   "path": "/api/reboot",
+   "status": "FAILED",
+   "err": "net::ERR_FAILED",
+   "ms": 2
+  },
+  {
+   "t": 741,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 32
+  },
+  {
+   "t": 4490,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 36
+  },
+  {
+   "t": 4554,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 44
+  },
+  {
+   "t": 4554,
+   "m": "GET",
+   "path": "/api/wiring/status",
+   "status": 200,
+   "ms": 82
+  },
+  {
+   "t": 4555,
+   "m": "GET",
+   "path": "/api/zones",
+   "status": 200,
+   "ms": 103
+  },
+  {
+   "t": 4556,
+   "m": "GET",
+   "path": "/api/zones",
+   "status": 200,
+   "ms": 121
+  },
+  {
+   "t": 9535,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 313
+  },
+  {
+   "t": 10355,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 2554
+  },
+  {
+   "t": 12857,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 114
+  },
+  {
+   "t": 12992,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 2817
+  },
+  {
+   "t": 12994,
+   "m": "GET",
+   "path": "/api/wiring/status",
+   "status": 200,
+   "ms": 2855
+  },
+  {
+   "t": 12995,
+   "m": "GET",
+   "path": "/api/zones",
+   "status": 200,
+   "ms": 2876
+  },
+  {
+   "t": 12995,
+   "m": "GET",
+   "path": "/api/zones",
+   "status": 200,
+   "ms": 2898
+  },
+  {
+   "t": 14850,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 1171
+  },
+  {
+   "t": 21036,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 253
+  },
+  {
+   "t": 26291,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 3808
+  },
+  {
+   "t": 32984,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 3140
+  },
+  {
+   "t": 35112,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 1141
+  },
+  {
+   "t": 35485,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 5895
+  },
+  {
+   "t": 41264,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 251
+  },
+  {
+   "t": 42022,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 9735
+  },
+  {
+   "t": 44523,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 7312
+  },
+  {
+   "t": 46517,
+   "m": "GET",
+   "path": "/api/status",
+   "status": "FAILED",
+   "err": "net::ERR_ABORTED",
+   "ms": 5394
+  },
+  {
+   "t": 52419,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 4564
+  },
+  {
+   "t": 54921,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 2217
+  },
+  {
+   "t": 56912,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 689
+  },
+  {
+   "t": 62613,
+   "m": "GET",
+   "path": "/api/status",
+   "status": 200,
+   "ms": 58
+  }
+ ],
+ "polls": [
+  {
+   "t": -1,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 528655,
+   "rev": 4,
+   "fp": "fa84d317",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 433,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 529770,
+   "rev": 4,
+   "fp": "fa84d317",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 1546,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 530849,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "recovering",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 2588,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 531888,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "recovering",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 3629,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 532928,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "recovering",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 4672,
+   "bootId": "boot-bedf2c92-b0fe81f61b44",
+   "up": 533972,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "recovering",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 5711,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 9216,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 12720,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 6903,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 13791,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 10079,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 16969,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 20474,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 15529,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 22417,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 16610,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 23515,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 17706,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 24596,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 18792,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 25680,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 29184,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 24349,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 31236,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 34740,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 30312,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 37201,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 40706,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 35756,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 42645,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 46149,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 49651,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 53155,
+   "err": "The operation was aborted due to timeout"
+  },
+  {
+   "t": 56658,
+   "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+   "up": 51855,
+   "rev": 0,
+   "fp": "f276a541",
+   "pat": "fire",
+   "rr": 3,
+   "phase": "ready",
+   "w": {
+    "wiringProbation": {
+     "active": false,
+     "remainingMs": 0
+    },
+    "wiringRevision": 0,
+    "wiringDigest": ""
+   }
+  },
+  {
+   "t": 58741,
+   "err": "The operation was aborted due to timeout"
+  }
+ ],
+ "lab": [
+  {
+   "t": 33,
+   "text": "Checking card…",
+   "alert": "Installed on card | Preview sent to card | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 542,
+   "text": "Sending…",
+   "alert": "Installed on card | Preview sent to card | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 797,
+   "text": "Retry install",
+   "alert": "Installed on card | Preview sent to card | Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.× | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 4620,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverUpdate rolled back | Update rolled back | Card firmware 2464 ✓"
+  },
+  {
+   "t": 9996,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverCard restarted — verifying | Card restarted — verifying | Checking card firmware · latest 2464"
+  },
+  {
+   "t": 13064,
+   "text": "Retry install",
+   "alert": "Not verified on this card | Playing on the card | Open Card and check this project is still saved on this card before sending lights.× | Connected | Connected | Card firmware 2464 ✓"
+  },
+  {
+   "t": 38175,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverCard stopped responding | Card stopped responding | Checking card firmware · latest 2464"
+  },
+  {
+   "t": 41746,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverCard restarted — verifying | Card restarted — verifying | Checking card firmware · latest 2464"
+  },
+  {
+   "t": 47134,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverCard stopped responding | Card stopped responding | Checking card firmware · latest 2464"
+  },
+  {
+   "t": 52013,
+   "text": "Retry install",
+   "alert": "Installed on card | Previewing in Studio | That tap was not sent to the card.This card is not ready for pattern commands. Recover and verify it before sending lights.Recover and verify card | LightweaverCard restarted — verifying | Card restarted — verifying | Checking card firmware · latest 2464"
+  },
+  {
+   "t": 57196,
+   "text": "Retry install",
+   "alert": "Not verified on this card | Playing on the card | Connected | Connected | Card firmware 2464 ✓"
+  }
+ ],
+ "events": [],
+ "final": {
+  "rev": 0,
+  "fp": "f276a54112b8685f2c71ef7544b2a8c7f276a54112b8685f2c71ef7544b2a8c7",
+  "pat": "fire",
+  "bootId": "boot-e3e4d9f2-b0fe81f61b44",
+  "rr": 3
+ }
+}
