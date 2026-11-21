@@ -296,3 +296,27 @@ test('[G1] the top-bar Save project is a plain button, so each screen keeps one 
   }
 });
 
+
+test.describe('[G2] Back stays in Studio', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test('Back after moving between screens returns to the screen before, inside Studio', async ({ page }) => {
+    test.setTimeout(90_000);
+    await guardRealCard(page);
+    await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+    const studioOrigin = new URL(page.url()).origin;
+    const rail = (name: string) => page.locator('.rail').getByRole('button', { name, exact: true }).or(page.getByRole('button', { name, exact: true })).first();
+    await expect(rail('Patterns')).toBeVisible({ timeout: 20_000 });
+    await rail('Patterns').tap();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#screen=pattern');
+    await rail('Playlist').tap();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toMatch(/^#screen=playlist/);
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#screen=pattern');
+    await expect(page.locator('.pm')).toBeVisible();
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toMatch(/^#screen=card/);
+    expect(new URL(page.url()).origin, 'Back never left Studio').toBe(studioOrigin);
+    await expect(page.locator('h1').first()).toBeVisible();
+  });
+
+});

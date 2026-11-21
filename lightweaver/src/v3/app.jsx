@@ -786,7 +786,11 @@ function Shell({ offlineUpdateController = null }) {
   // on its own, so nothing can leave the two disagreeing.
   const navigateToView = useCallback(nextView => {
     const target = normalizeStudioView(nextView, viewOptions());
-    routeStore.replace(canonicalStudioHash(routeStore.read(), target));
+    const current = routeStore.read();
+    const next = canonicalStudioHash(current, target);
+    // A different screen is a step Back can return to (studioRoute push).
+    if (studioViewFromHash(current, viewOptions()) !== target) routeStore.push(next);
+    else routeStore.replace(next);
   }, [routeStore]);
   const {
     projectName, setProjectName, serializeProject, flushProjectAutosave, replaceProject, replaceWithNewProject, requestReplacementConfirmation,
@@ -1070,9 +1074,11 @@ function Shell({ offlineUpdateController = null }) {
     params.delete('mode');
     params.delete('task');
     params.delete('intent');
-    // Replace, not push, so Back behaves the same for screen and section
-    // changes as it does for rail navigation.
-    routeStore.replace(`#${params.toString()}`);
+    // Arriving on Card from another screen is a step Back returns from;
+    // moving between Card sections replaces (simpler-journeys G2).
+    const fromOtherScreen = new URLSearchParams(routeStore.read().slice(1)).get('screen') !== 'card';
+    if (fromOtherScreen) routeStore.push(`#${params.toString()}`);
+    else routeStore.replace(`#${params.toString()}`);
   }, [flushProjectAutosave, routeStore]);
   const navigateStudio = useCallback((nextView) => {
     if (installActiveRef.current) return;
