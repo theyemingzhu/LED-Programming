@@ -32,3 +32,8 @@ All 16 requests answered. Timing within tolerance except `/api/zones` (card 40 m
 
 ## False-failures options (reported 2026-11-21, branch claude/false-failures @ 742ee685, not merged)
 setRestartSilence(ms) / restartAfterSaveMs, silenceFor(ms), answerAfter(path, ms, times), isRestarting(), setReplyDelay(ms), card.relayBridge. Plan once it is on main: the `real` profile drives these (restartAfterSaveMs = REAL_PROFILE.restartSilenceMs, spontaneous silences via silenceFor, per-path latency via answerAfter) instead of the route layer duplicating them; `createPracticeCard` times the bridge through relayBridge. Until then the layer stays as built, so this branch does not depend on an unmerged one.
+
+## Incident 2026-11-21: Step 5 runs reached the physical card
+The spec list was written to the sandbox TMPDIR and read from the unsandboxed one, so it was empty and `playwright test` ran the whole default suite twice, including tests/live-*.spec.ts. Those reset the physical card to the bench discovery project, installed and restarted it, and wiped its looks and sections. Fixed at the harness by PR #452 (tests/harness/networkGuard.ts): live specs not collected, every browser/Node request to a local-network address refused, a refused write fails the run; off only with LW_ALLOW_PHYSICAL_CARD=1. The guard then caught one real leak (strip-discovery's frame-stream WebSocket), fixed in the same PR.
+- D11: Any batch run from now names its files in the command itself (never a list read from a temp file), and runs only with the guard on main.
+- Step 5 (Real-timing run of the 37 simulator specs) is NOT done yet; it reruns with the guard in place.
