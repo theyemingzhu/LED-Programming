@@ -22,7 +22,7 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 
 /** Presses each journey takes today, per width. Lower a number only with the cut that earns it. */
 export const PRESSES = {
-  'first-setup': { 390: 13, 1280: 13 },
+  'first-setup': { 390: 12, 1280: 12 },
 };
 
 async function blankCard(page: Page) {
@@ -42,7 +42,8 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const j = recordJourney(page, 'first-setup', vp.width);
       await driveFirstSetup(page, j);
       const { presses, steps } = await j.finish();
-      expect(steps.some(step => step.label === 'Continue to Layout'), 'Layout is a door, not a step').toBe(false);
+      expect(steps.some(step => step.label === 'Continue to Layout'), 'C1: Layout is a door, not a step').toBe(false);
+      expect(steps.some(step => step.label === 'Start light test'), 'C2: the light test starts itself after Save').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['first-setup'][vp.width]);
       // The write really happened: the card holds the counted project, not the temporary setup.
       await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 15_000 })
@@ -73,4 +74,46 @@ test('[C1] Layout still opens from the light check, and nothing is written to th
   await door.click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
   expect(card.state.projectId, 'opening Layout must not write the project').toBe('lightweaver-bench-discovery-v1');
+});
+
+test('[C2] the self-started light test keeps its protection: "No" restores the working setup', async ({ page }) => {
+  test.setTimeout(180_000);
+  const card = await blankCard(page);
+  const j = recordJourney(page, 'first-setup-restore', 1280);
+  await driveFirstSetup(page, j, { stopBeforeConfirm: true });
+  expect(card.state.wiringTestActive, 'the card is in its probation window').toBe(true);
+  expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/wiring/confirm')).toHaveLength(0);
+  await expect(page.getByTestId('wiring-test-restore')).toBeVisible();
+  await page.getByTestId('wiring-test-restore').click();
+  await expect.poll(() => card.state.wiringTestActive, { timeout: 20_000 }).toBe(false);
+  expect(card.state.projectId, 'the temporary setup is back, nothing was made permanent').toBe('lightweaver-bench-discovery-v1');
+  expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/wiring/confirm')).toHaveLength(0);
+});
+
+test('[C2] the self-started light test keeps its protection: unconfirmed, the card puts its setup back', async ({ page }) => {
+  test.setTimeout(180_000);
+  const card = await blankCard(page);
+  const j = recordJourney(page, 'first-setup-expire', 1280);
+  await driveFirstSetup(page, j, { stopBeforeConfirm: true });
+  card.expireWiringProbation();
+  await expect.poll(() => card.state.pixels, { timeout: 20_000 }).toBe(256);
+  expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/wiring/confirm')).toHaveLength(0);
+});
+
+test('[C2] Real-timing: the light test starts itself and survives the 14 s restart into it', async ({ page }) => {
+  // Practice card Real-timing (docs/practice-card.md): the card restarts into
+  // the candidate and is silent for ~14 s, measured on lw-b0fe81f61b44.
+  test.setTimeout(240_000);
+  await guardRealCard(page);
+  const card = createCardSimulator(cardState('factory-blank'), { restartAfterActivateMs: 14_000 });
+  await card.install(page);
+  const started = Date.now();
+  const j = recordJourney(page, 'first-setup-real-timing', 390);
+  await driveFirstSetup(page, j);
+  const { presses, steps } = await j.finish();
+  expect(steps.some(step => step.label === 'Start light test'), 'no second press after the restart either').toBe(false);
+  expect(presses).toBe(PRESSES['first-setup'][390]);
+  expect(Date.now() - started, 'the run really waited out the restart').toBeGreaterThan(14_000);
+  await expect.poll(() => ({ testing: card.state.wiringTestActive, pixels: card.state.pixels }), { timeout: 20_000 })
+    .toEqual({ testing: false, pixels: 41 });
 });

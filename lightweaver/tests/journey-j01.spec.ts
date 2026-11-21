@@ -77,11 +77,11 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
   // discovery-end-yes, discovery-record-save, discovery-continue-layout,
-  // setup-verify-action, replace-card-project, wiring-test-start,
+  // setup-verify-action, replace-card-project,
   // wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '15 deliberate clicks' },
+  annotation: { type: 'clicks', description: '14 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -244,15 +244,13 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   await page.getByTestId('replace-card-project').click();
   await expect(page).toHaveURL(/replace=project/);
 
-  await expect(page.getByTestId('wiring-test-start'), 'the structural change must stage a physical light test').toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  expect(card.state.projectId, 'staging must preserve the bench project until activation').toBe('lightweaver-bench-discovery-v1');
+  // The structural change stages a physical light test, which starts on its
+  // own after the owner's Save (simpler-journeys C2).
+  await expect(page.getByTestId('wiring-test-confirm'), 'the structural change must run a physical light test').toBeVisible({ timeout: CONNECT_BUDGET_MS });
   expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length - configPostsBeforeInstall,
     'the structural install must not overwrite the known-good project through /api/config').toBe(0);
   expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate').length,
     'the exact real project must be staged once').toBe(1);
-
-  await page.getByTestId('wiring-test-start').click();
-  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   expect(card.state.wiringTestActive, 'activation must enter probation before confirmation').toBe(true);
   expect(card.state.pixels, 'the physical light test must run the counted 41 pixels').toBe(COUNTED_PIXELS);
   expect(card.state.projectId, 'probation must boot the real discovered project').toBe(realProjectId);

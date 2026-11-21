@@ -830,7 +830,6 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   // The temporary discovery project still owns the card. Explicitly replace
   // it, then confirm the exact saved project's staged light test.
   await page.getByRole('button', { name: 'Save to card', exact: true }).click();
-  await page.getByRole('button', { name: 'Start light test' }).click();
   await page.getByRole('button', { name: 'The lights look correct' }).click();
   await expect.poll(() => ({ projectId: card.state.projectId, pixels: card.state.pixels }), { timeout: 15_000 })
     .toEqual({ projectId: realProjectId, pixels: 41 });

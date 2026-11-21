@@ -40,7 +40,7 @@ async function pressAsShown(page: Page, j: Journey, steps: { locator: Locator; l
 }
 
 /** First setup from a blank card: pair, count the lights, save to card, confirm the light test. */
-export async function driveFirstSetup(page: Page, j: Journey) {
+export async function driveFirstSetup(page: Page, j: Journey, { stopBeforeConfirm = false } = {}) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.locator('main h1').first().waitFor({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(1500);
@@ -72,10 +72,16 @@ export async function driveFirstSetup(page: Page, j: Journey) {
     await j.press(page.getByRole('button', { name: /^card$/i }).first(), 'Back to Card');
     await j.press(page.getByTestId('setup-verify-action'), 'Save and open Patterns');
   }
+  await finishCardSave(page, j, { stopBeforeConfirm, done: async () => /#screen=pattern$/.test(page.url()) });
+}
+
+/** After an owner's Save to card: whatever the screens still ask for, up to the confirmed light test. */
+export async function finishCardSave(page: Page, j: Journey, { stopBeforeConfirm = false, done, timeoutMs = 60_000 }: { stopBeforeConfirm?: boolean; done: () => Promise<boolean>; timeoutMs?: number }) {
+  const confirm = page.getByTestId('wiring-test-confirm');
   await pressAsShown(page, j, [
     { locator: page.getByTestId('replace-card-project'), label: 'Replace the temporary setup' },
     { locator: page.getByTestId('wiring-test-start'), label: 'Start light test' },
-    { locator: page.getByTestId('wiring-test-confirm'), label: 'The lights look correct' },
-  ], async () => /#screen=pattern$/.test(page.url()));
-  await page.waitForTimeout(1000);
+    ...(stopBeforeConfirm ? [] : [{ locator: confirm, label: 'The lights look correct' }]),
+  ], stopBeforeConfirm ? () => shown(confirm) : done, timeoutMs);
+  await page.waitForTimeout(stopBeforeConfirm ? 0 : 1000);
 }

@@ -471,6 +471,10 @@ export function CardPushControl({
         setWiringCandidate({ activationId: response.activationId, attempt });
         setWiringTestState('staged');
         failedAttemptRef.current = null;
+        // The owner just pressed Save and is looking at the lights: start the
+        // test without a second press. Only a candidate THIS press staged —
+        // one resumed after a reload still waits for "Start light test".
+        testAfterStageRef.current = response.activationId;
         setPushStatus('New wiring is ready to test. Your current working setup is still safe.');
         return;
       }
@@ -757,6 +761,17 @@ export function CardPushControl({
       }
     }, Math.max(0, wiringCandidate.expiresAt - Date.now()) + 250);
     return () => { cancelled = true; clearTimeout(timer); };
+  }, [wiringCandidate, wiringTestState]);
+  // A fresh stage starts its own light test (see the stage-new branch above).
+  // Nothing about the protection moves: the card still holds its last working
+  // setup, puts it back on its own if nobody confirms, and the confirm stays a
+  // deliberate press beside "No, restore working setup".
+  const testAfterStageRef = useRef('');
+  useEffect(() => {
+    if (wiringTestState !== 'staged' || !wiringCandidate?.activationId) return;
+    if (testAfterStageRef.current !== wiringCandidate.activationId) return;
+    testAfterStageRef.current = '';
+    void startWiringTest();
   }, [wiringCandidate, wiringTestState]);
   const autoStartedRef = useRef(false);
   useEffect(() => {
