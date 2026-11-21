@@ -220,3 +220,64 @@ The order is by payback. "Wait" means another session is editing those files now
 **Total: about 47-62 hours.** Cleanups 1-3 are about 30-36 hours and carry most of the payback.
 
 **Not recommended: splitting `lw-pattern.jsx` just because it is big.** Size alone is not the cause. It shrinks by itself when cleanup 1 removes its own save code.
+
+## 7. Done on 2026-11-21: unused helpers deleted
+
+There were 15 candidates. 9 were deleted, with their own tests, the matching blocks in `tests/project-frame-audit.mjs`, and `tests/preview-fallback-strip.mjs` (also dropped from `test:core`):
+
+`aiPatternClient`, `aiPatternDraft`, `backgroundOutput`, `colourReorder`, `liveRecorder`, `patternStudio`, `previewFallbackStrip`, `projectHandoff`, `timelineLayout`.
+
+6 were kept on purpose:
+
+| Kept | Why |
+|---|---|
+| `svgDomStub` | A test helper used by 4 other test files. It belongs in `tests/`, not `src/lib`. |
+| `responsivenessProbe` | A measuring tool used by 2 other test files. |
+| `svgSanitize` | The SVG cleaner that `svgFlatten.js` says should run on every imported artwork. It was **never wired in**. This is unfinished security work, not dead code. It goes in TODO, not the bin. |
+| `artworkSymmetry` | Named in the queued Symmetry-mode TODO and in `todo/plans/symmetry-sides.md`. |
+| `wledBasicExport`, `wledInstallWizard` | CLAUDE.md marks WLED as a deferred lane that is kept for later. |
+
+Everything deleted can be recovered from git at the commit before this one.
+
+## 8. Streamlining plan: from many copies to one of each
+
+**Target:** every card action lives in exactly one place, and every card fact is worked out once. A fix to "how Studio talks to the card" should then touch 1 file plus its test, not 4 to 18.
+
+| Phase | What | Before → after | Size | When |
+|---|---|---|---|---|
+| 0 | Delete the unused helpers | 282 → 273 lib modules | done | now |
+| 1 | **Retire the frozen old Studio (`src-v3/`)**. Move the one file the new Studio still needs (the legacy pattern compiler that `patternFrameIsolation.js` loads) into `src/lib/legacy/`, and point 4 tests at it. | 33,072 lines and a second set of save paths → 0 | 3-4 h | needs Adrian's yes: it removes `?v=3` from the live site |
+| 2 | **One card-command module** (`src/lib/card/commands.js`): `saveProject`, `setLedCount`, `tapLook`, `recoverLights`, `setColourOrder`. Each command does the same 6 steps in one place: lease, pre-read with retry, send, wait through the restart, read back, plain words for the result. Every screen calls these. Cleanups 1 and 6. | 6 save paths, 3 count paths, 7 restart waits → 1 each | 18-22 h | after the false-failures and simpler-journeys branches merge |
+| 3 | **One card-state snapshot** (`src/lib/card/state.js`): connected, ready for looks, holds this project, update evidence and setup step, worked out once from the link and the stored records, with one word table. Screens read it and never recompute. Cleanups 2, 3 and 5. | 15 separate answers → 1 snapshot. 8 facts stored twice → 0. | 16-20 h | after phase 2 |
+| 4 | **One fake card** for every test (cleanup 4) | 31 fakes → 1 | 12-16 h | specs can move now, one at a time |
+| 5 | **Shrink the big screens**. This is mostly a result of phases 2-3, because each screen loses its own copy of the card code. Then split what is left by job. | `lw-pattern.jsx` 3,615 → under 2,000 lines | 6-8 h | last |
+
+**Result if all of it lands:** Studio goes from about 154,500 lines (121,476 in `src`, plus 33,072 in `src-v3`) to roughly 115,000. Each card job lives in one place instead of up to 7. The whole plan is about 55-70 hours.
+
+### Which agent does the work
+
+- **Phases 2 and 3 need an Opus session.** It owns `src/lib/card/` for the whole job. The hard part is judgment, not typing. For example, Card Home has the window lock and the footer doesn't, Scene doesn't wait through the restart, and the footer's error is thrown away. For each such difference the session has to decide whether it is a bug or on purpose. Opus designs the module, then moves the first screen (Card Home) across itself.
+- **The remaining screens move on Sonnet**, one screen per step, each step in its own worktree and landed before the next starts. They copy the pattern the first screen set. This is the same split that `todo/plans/symmetry-sides.md` used.
+- **Phases 1 and 4 are Sonnet work.** They are mechanical, and the tests already define what "correct" means.
+- **Only one session writes card code at a time.** Two sessions editing the save path at once is half of how this week went. Other sessions working on screens call the card module and never change it.
+- A Fable review runs at the end only if Adrian asks for one.
+
+## 9. Keeping it healthy
+
+The rules below are checked by CI, so nobody has to remember them. Each check is a few seconds of plain Node script, with no metered service.
+
+1. **One sender rule.** A test fails if any file outside `src/lib/card/` calls `pushConfigToCard`, posts to `/api/config` or `/api/control`, or calls `recoverCardLights` directly. A new screen cannot grow its own save path without CI going red.
+2. **One answer rule.** A test fails if any file outside `src/lib/card/state.js` calls `deriveCardLifecycle`, `isCardLinkConnected` or `installationMatch`-style comparisons.
+3. **A counts file that only goes down.** `lightweaver/code-health.json` records today's numbers:
+   - save paths
+   - fakes in tests
+   - files over 2,000 lines
+   - lib modules only tests import
+   - the size of the five largest files
+
+   CI recomputes them on every PR. A PR may lower a number, which updates the file, but never raise one. Raising one needs an explicit entry in the file saying why.
+4. **New tests use the shared fake card.** A spec that defines its own `/api/status` reply fails the check, unless it is on the shrinking allowlist from rule 3.
+5. **The "three files" stop.** Add to CLAUDE.md: when a fix for one rule needs the same change in 3 or more files, first move that rule into one place, then fix it there. This is what would have stopped this week's 12-file-then-6-file fix.
+6. **Re-measure once a month.** The measuring scripts from this report become `npm run health`. It prints this report's numbers, so drift shows up as a number, not a feeling.
+
+Rules 1-4 can only be switched on after phases 2 and 4 land. Until then they would fail on today's code. Rules 3 and 6 can go in now, with today's numbers as the starting line.
