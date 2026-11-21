@@ -164,7 +164,12 @@ export function cardConfigServerErrorMessage(status) {
  * asked again — `tries` in all, `intervalMs` apart — before Studio says
  * anything. A card that answered and refused is never retried.
  */
-export const CARD_READ_RETRY = Object.freeze({ tries: 3, intervalMs: 3000 });
+// Measured on the real card (2026-11-21): status answers in ~3.4 s when it is
+// busy, and it goes quiet 4–12 s on its own. Each try gets 6 s, and three
+// tries a second apart cover about 20 s before Studio says anything
+// (todo/plans/false-failures.md, F-C1). Was 3 s per try, which failed every
+// try against a card answering in 3.4 s.
+export const CARD_READ_RETRY = Object.freeze({ tries: 3, intervalMs: 1000, timeoutMs: 6000 });
 
 export function isCardSilenceError(error) {
   if (!error) return false;
@@ -446,7 +451,7 @@ async function readFirmwareInfoToHost(host, timeoutMs = 1200, fetchImpl = fetch,
   }
 }
 
-export async function readCardProjectEvidence({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
+export async function readCardProjectEvidence({ host, timeoutMs = CARD_READ_RETRY.timeoutMs, transport, fetchImpl = fetch } = {}) {
   if (transport === 'bridge' || (transport !== 'direct' && isMixedContentBlocked())) {
     const response = await sendCardBridgeRequest('firmware-info', { cache: 'no-store', nonce: Date.now() }, { host, timeoutMs, retryOnTimeout: true });
     return normalizeCardProjectEvidence(response);
@@ -458,7 +463,7 @@ export async function readCardProjectEvidence({ host, timeoutMs = 3000, transpor
 
 // Count preparation needs the full live firmware-info envelope, including
 // controls and output colour fields that project-identity normalization omits.
-export async function readCardFirmwareInfoEnvelope({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
+export async function readCardFirmwareInfoEnvelope({ host, timeoutMs = CARD_READ_RETRY.timeoutMs, transport, fetchImpl = fetch } = {}) {
   if (transport === 'bridge' || (transport !== 'direct' && isMixedContentBlocked())) {
     return sendCardBridgeRequest('firmware-info', { cache: 'no-store', nonce: Date.now() }, {
       host, timeoutMs, retryOnTimeout: true,
@@ -469,7 +474,7 @@ export async function readCardFirmwareInfoEnvelope({ host, timeoutMs = 3000, tra
   return result;
 }
 
-export async function readCardStatusEnvelope({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
+export async function readCardStatusEnvelope({ host, timeoutMs = CARD_READ_RETRY.timeoutMs, transport, fetchImpl = fetch } = {}) {
   if (transport === 'bridge' || (transport !== 'direct' && isMixedContentBlocked())) {
     return sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
       host,
@@ -500,7 +505,7 @@ async function cardNeedsConfigReboot(host, runtimePackage, options = {}) {
 }
 
 async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
-  const timeoutMs = Math.min(options.timeoutMs || 6000, 3000);
+  const timeoutMs = Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs);
   const transport = selectedTransport(options);
   let unresolvedName = false;
   const readOnce = () => (transport === 'bridge'
@@ -613,7 +618,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
       // the save is refused as "Nothing was sent".
       exactIdentity = await withCardReadRetry(() => guardDirectCardMutation(host, {
         fetchImpl: options.fetchImpl,
-        timeoutMs: Math.min(options.timeoutMs || 6000, 3000),
+        timeoutMs: Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs),
       }), {
         tries: options.readTries ?? CARD_READ_RETRY.tries,
         intervalMs: options.readRetryMs ?? CARD_READ_RETRY.intervalMs,

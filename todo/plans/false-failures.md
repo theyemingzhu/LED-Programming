@@ -100,3 +100,13 @@ All in `ci:browser-smoke` and `test:release-ui`. Each browser spec except the tw
 - **F-B4 Show.** A stream that stops reaching the lights shows "Waiting for the lights to answer…" with a spinner after 3 s (was an error), and pauses itself after 20 s (was 15 s). The pre-show card check asks 3 times, 4 s each (was 2 × 2.5 s). No browser test (needs the frame stream); reviewed in code only.
 
 Still open: watch one real Save on the gallery card (Adrian).
+
+## Batch C — a card that answers, slowly (2026-11-21, branch `claude/slow-card-reads`)
+
+Real-card finding on Studio build 2559 (coordinator): with the card answering status in about 3.4 s, Save to card showed "Checking card…", then after 6.8 s "Not saved to the card: it did not answer" and the footer "Card stopped responding", with no write attempted. Every Studio read gave the card 3 s or less, and the keepalive 2.5 s, so a busy card failed every try.
+
+- **D11.** Each card read gets 6 s (`CARD_READ_RETRY.timeoutMs`, and the defaults of `readCardProjectEvidence`, `readCardStatusEnvelope`, `readCardFirmwareInfoEnvelope`, `getCardWiringStatus`). Pre-save checks are asked 3 times, 1 s apart: about 20 s of "Checking card…" before Studio says the card did not answer, and the first answer goes straight on.
+- **D12.** The keepalive gets 6 s (`CARD_LINK_PING_TIMEOUT_MS`, was 2.5 s). Two consecutive misses (now about 25 s) still report the card gone.
+- **D13.** While a save is checking the card (Patterns, Card Home/Layout install, footer), the link holds "stopped responding" (`noteCardCheckHold`, up to 22 s); the save itself says what happened if the card never answers.
+
+Test: `tests/slow-card-reads.spec.ts` on the Real-timing practice card — direct and bridge, reply delay 3.5 s and a 10 s silence. Direct at 3.5 s was red on the code then live ("Not saved to the card: it did not answer", "Card stopped responding") and is green now; the other three were already green in the simulator and stay as guards. Unit: `falseFailures.test.js` check-hold rule.
