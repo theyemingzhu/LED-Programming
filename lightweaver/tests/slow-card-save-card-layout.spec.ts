@@ -11,7 +11,7 @@ import {
 } from './harness/falseFailureWatch';
 
 const REAL_RESTART_MS = 14000;
-const WORKING = 'Restarting (the )?card|Checking card|Verifying|Sending|Saving';
+const WORKING = 'Restarting (the )?card|Checking card|Verifying|Sending|Saving|Loading';
 const BUSY = '.la-card-push-banner.is-pending, [aria-busy="true"], .lw-notice-spinner';
 
 test.describe.configure({ timeout: 150000 });

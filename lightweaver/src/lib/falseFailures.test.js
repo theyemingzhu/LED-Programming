@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { initialCardLinkState, reduceCardLink, CARD_PLANNED_RESTART_MAX_MS } from './cardLink.js';
 import { deriveCardLifecycle, CARD_STARTING_GRACE_MS } from './cardLifecycle.js';
 import { waitForCardDeploymentVerification } from './cardDeployment.js';
-import { withCardReadRetry, isCardSilenceError, CardPushError } from './cardPushClient.js';
+import { withCardReadRetry, isCardSilenceError, CardPushError, CARD_READ_RETRY } from './cardPushClient.js';
 
 const HOST = 'lightweaver.local';
 const CARD_ID = 'lw-aabbccddeeff';
@@ -144,7 +144,7 @@ test('a quiet card during an ordinary verification is waited for, not failed aft
   assert.ok(reads > 20);
 });
 
-test('pre-save reads: a silent card is asked twice more, 3 s apart; a refusal is not retried', async () => {
+test('pre-save reads: a silent card is asked twice more, 1 s apart, 6 s each; a refusal is not retried', async () => {
   const waits = [];
   let calls = 0;
   const value = await withCardReadRetry(async () => {
@@ -153,7 +153,8 @@ test('pre-save reads: a silent card is asked twice more, 3 s apart; a refusal is
     return 'answered';
   }, { sleep: async ms => { waits.push(ms); } });
   assert.equal(value, 'answered');
-  assert.deepEqual(waits, [3000, 3000]);
+  assert.deepEqual(waits, [1000, 1000]);
+  assert.equal(CARD_READ_RETRY.timeoutMs, 6000, 'each try gives a busy card (3.4 s measured) room to answer');
 
   let refused = 0;
   await assert.rejects(withCardReadRetry(async () => {
@@ -214,4 +215,15 @@ test('a .local name that does not resolve is asked once; a quiet card address is
   assert.equal(await run('192.168.18.70'), 3);
   const timeout = Object.assign(new Error('aborted'), { name: 'AbortError' });
   assert.equal(isUnresolvedMdnsFailure('lightweaver.local', timeout), false, 'a slow .local card is still asked again');
+});
+
+test('while a save checks a slow card, missed keepalives do not say "stopped responding" (F-C1)', () => {
+  const at = 3_000_000;
+  const held = reduceCardLink(connectedDirect(), { type: 'card-check-hold', holdMs: 22000, at });
+  const missedTwice = reduceCardLink(reduceCardLink(held, { type: 'direct-ping-missed', host: HOST, at: at + 7000 }),
+    { type: 'direct-ping-missed', host: HOST, at: at + 14000 });
+  assert.equal(missedTwice.state, 'connected-direct');
+  const released = reduceCardLink(missedTwice, { type: 'card-check-release' });
+  const afterRelease = reduceCardLink(released, { type: 'direct-ping-missed', host: HOST, at: at + 15000 });
+  assert.equal(afterRelease.state, 'reconnecting', 'once the save stops checking, the miss rule applies again');
 });

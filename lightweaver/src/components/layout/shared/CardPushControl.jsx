@@ -13,6 +13,8 @@ import {
   assignCardWiringIdentityForChange,
   assignExactCandidateWiringIdentity,
   cardConfigStructuralWiringChangedFromInfo,
+  withCardReadRetry,
+  CARD_READ_RETRY,
 } from '../../../lib/cardPushClient.js';
 import {
   prepareCardDeployment,
@@ -40,7 +42,7 @@ import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
-import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
+import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
@@ -231,6 +233,8 @@ export function CardPushControl({
     if (installInFlightRef.current) return;
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
+    // While the install checks a slow card, the footer does not call it gone.
+    noteCardCheckHold();
     try {
       return await withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
     setCardHostname(cleanHost);
@@ -265,11 +269,13 @@ export function CardPushControl({
         let wiringStatus;
         let handoffOnly = false;
         try {
-          [before, status, wiringStatus] = await Promise.all([
-            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport }),
-            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport }),
-            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport }),
-          ]);
+          // A busy card answers in ~3.4 s and can go quiet 4–12 s: each read
+          // gets 6 s and the set is asked up to three times (F-C1).
+          [before, status, wiringStatus] = await withCardReadRetry(() => Promise.all([
+            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+          ]), { onRetry: () => setPushStatus('Checking card…') });
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
           if (!LOCAL_BRIDGE_RECOVERY_REASONS.has(preflightError?.reason)) throw preflightError;
@@ -374,9 +380,9 @@ export function CardPushControl({
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
           {
-            readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport }),
-            readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
-            readWiringStatus: () => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport }),
+            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
             lastSeen: (readProjectLifecycle?.() || projectLifecycle)?.installation || null,
             saveAnyway: saveAnywayRef.current,
             config: async () => {
@@ -555,6 +561,7 @@ export function CardPushControl({
     }
     }));
     } finally {
+      noteCardCheckRelease();
       installInFlightRef.current = false;
       saveAnywayRef.current = false;
     }
