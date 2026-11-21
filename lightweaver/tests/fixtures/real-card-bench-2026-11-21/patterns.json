@@ -1,0 +1,35 @@
+{
+ "currentIndex": 0,
+ "currentId": "bench-warm",
+ "startupPatternId": "bench-warm",
+ "playlist": {
+  "enabled": false,
+  "fadeMs": 1500,
+  "entries": []
+ },
+ "patterns": [
+  {
+   "id": "bench-warm",
+   "label": "Bench Warm",
+   "mode": "preset",
+   "runtimePatternId": "warm-white",
+   "preset": "warm-white",
+   "brightness": 0.25,
+   "savedControls": {},
+   "savedControlsRevision": "461af8eb9992ab20d4facd6138cdc368a812e7c2d3269e84a6e4b4f4ff142329",
+   "fadeOutMs": 320,
+   "fadeInMs": 420,
+   "file": "",
+   "fps": 24,
+   "loop": true,
+   "sequenceBytes": 0,
+   "sequenceSha256": "",
+   "controls": {
+    "customColor": false,
+    "breathe": false,
+    "drift": false
+   },
+   "zones": []
+  }
+ ]
+}

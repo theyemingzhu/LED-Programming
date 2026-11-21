@@ -1,0 +1,255 @@
+{
+ "bridgeVersion": 9,
+ "recipeCapabilities": {
+  "version": 1,
+  "firmwareVersion": "1.2.4",
+  "buildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+  "schemaVersions": [
+   1
+  ],
+  "supportedNodes": [
+   "solid",
+   "palette",
+   "wave",
+   "fastled-noise",
+   "hash-sparkle",
+   "scale",
+   "offset",
+   "repeat",
+   "mirror",
+   "radial-mask",
+   "linear-mask",
+   "threshold"
+  ],
+  "supportedBlends": [
+   "add",
+   "max",
+   "multiply",
+   "crossfade"
+  ],
+  "supportedModulators": [
+   "lfo",
+   "noise-clock"
+  ],
+  "bakeOnlyNodes": [
+   "particles",
+   "reaction-diffusion",
+   "graph",
+   "shader",
+   "audio"
+  ],
+  "maxLayers": 3,
+  "maxConfigBytes": 3968,
+  "maxOperationsPerFrame": 250000,
+  "maxEstimatedStateBytes": 2048,
+  "physicalParityVerified": false,
+  "colorJourney": {
+   "version": 1,
+   "maxPixels": 256,
+   "phaseEncoding": "q0.16-hex",
+   "restart": "restart"
+  },
+  "colorJourneyV2": {
+   "version": 2,
+   "maxPixels": 65535,
+   "maxPhaseSpans": 64,
+   "phaseEncoding": "q0.16-affine",
+   "restart": "restart"
+  },
+  "colorJourneyV3": {
+   "version": 3,
+   "maxPixels": 65535,
+   "maxPhaseSpans": 64,
+   "maxPhaseErrorTicks": 194,
+   "phaseEncoding": "q0.16-affine-rgb1",
+   "restart": "restart"
+  }
+ },
+ "maxMilliamps": 2000,
+ "maxMilliampsSource": "config",
+ "app": "Lightweaver",
+ "cardId": "lw-b0fe81f61b44",
+ "firmwareVersion": "1.2.4",
+ "buildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+ "buildNumber": 2464,
+ "bootId": "boot-3c09d114-b0fe81f61b44",
+ "uptimeMs": 4529107,
+ "provisioningContractVersion": 1,
+ "runtimePhase": "ready",
+ "commandReady": true,
+ "firmwareUpdateReady": true,
+ "projectRepositoryMessage": "project repository ready",
+ "playbackReady": true,
+ "outputReady": true,
+ "projectOutputReady": true,
+ "outputDriverReady": true,
+ "pixelCapacity": {
+  "schemaLimit": 65535,
+  "allocatedBoot": 512
+ },
+ "outputInitialization": {
+  "ok": true,
+  "code": "ready",
+  "message": "configured project outputs initialized"
+ },
+ "configValid": true,
+ "knownGoodProject": true,
+ "provisionalSetup": true,
+ "safeMode": false,
+ "configSchemaVersion": 1,
+ "capabilitiesVersion": 2,
+ "capabilities": {
+  "nativeRenderArm": 1,
+  "kaleidoscopeReflectionPoints": 1,
+  "symmetrySides": 1,
+  "firmwareUpdate": {
+   "version": 1,
+   "network": true,
+   "softwareGrant": true
+  },
+  "outputColor": 1,
+  "physicalFrameOrder": {
+   "version": 1
+  },
+  "sequenceMedia": {
+   "version": 2,
+   "maxBytes": 16777216,
+   "chunkBytes": 2048
+  }
+ },
+ "firmwareUpdate": {
+  "phase": "rolled-back",
+  "receivedBytes": 0,
+  "expectedBytes": 0,
+  "expectedBuildId": "",
+  "activeSlot": "app0",
+  "pendingSlot": "",
+  "lastError": "",
+  "rollbackReason": "new-slot-rollback-detected",
+  "rebootCorrelation": "reboot-fde5e7912ffd193965c2ed4baed7d186",
+  "restoredFirmwareVersion": "1.2.4",
+  "restoredBuildId": "56c00ce80e638b779e94653be5bd9700e8339070",
+  "restoredBuildNumber": 2464
+ },
+ "build": "Nov 19 2026 13:59:54",
+ "pixels": 256,
+ "piece": {
+  "id": "lightweaver-bench-discovery-v1",
+  "name": "Lightweaver Bench Discovery"
+ },
+ "projectRevision": 1,
+ "projectFingerprint": "d93ebe18ab7780b1",
+ "productionJobId": "",
+ "productionJobDigest": "",
+ "wiringRevision": 0,
+ "wiringDigest": "",
+ "ledType": "WS2812B",
+ "led": {
+  "brightnessLimit": 0.65
+ },
+ "estimatedFullWhiteMilliamps": 15360,
+ "limitedFullWhiteMilliamps": 2000,
+ "lookCount": 1,
+ "runtimeSource": "internal-flash",
+ "resetReason": 3,
+ "wiringProbation": {
+  "active": false,
+  "remainingMs": 0
+ },
+ "limits": {
+  "pixels": 65535,
+  "outputs": 4,
+  "looks": 32,
+  "zones": 12,
+  "rangesPerZone": 6,
+  "configStorageBytes": 3968
+ },
+ "freeHeap": 43792,
+ "rssi": -60,
+ "wifi": {
+  "ip": "192.168.18.70",
+  "hostname": "lightweaver",
+  "transport": "station",
+  "configured": true,
+  "ssid": "(redacted)",
+  "savedPasswordAvailable": true
+ },
+ "kaleidoscopeMappings": [],
+ "outputs": [
+  {
+   "id": "bench-18",
+   "pin": 18,
+   "pixels": 256,
+   "segments": [
+    {
+     "id": "bench-18-full",
+     "count": 256,
+     "direction": "forward"
+    }
+   ],
+   "gpio": 18,
+   "count": 256
+  }
+ ],
+ "controls": {
+  "encoder": {
+   "a": 4,
+   "b": 5,
+   "press": 0,
+   "configuredAlternatePress": 6,
+   "effectiveAlternatePress": 6,
+   "rotateDirection": "clockwise-brighter",
+   "brightnessStep": 18,
+   "aLow": true,
+   "bLow": false,
+   "pressPressed": false,
+   "alternatePressPressed": false
+  },
+  "previous": 7,
+  "next": 8,
+  "blackout": 9,
+  "statusLed": 2,
+  "previousPressed": false,
+  "nextPressed": false,
+  "blackoutPressed": false,
+  "brightnessAnalog": -1,
+  "manualBrightness": 1,
+  "lastEvent": "none",
+  "lastEventAtMs": 0,
+  "eventCounts": {
+   "next": 0,
+   "previous": 0,
+   "blackout": 0,
+   "brighter": 0,
+   "dimmer": 0
+  }
+ },
+ "outputColor": {
+  "contract": 1,
+  "colorOrder": "GRB",
+  "gammaEnabled": false,
+  "gammaValue": 2.2,
+  "calibration": {
+   "red": 1,
+   "green": 1,
+   "blue": 1
+  }
+ },
+ "lwOutput": {
+  "contract": 1,
+  "sourceClass": "local",
+  "requestedBrightnessByte": 0,
+  "brightnessByte": 0,
+  "brightnessScale": 0,
+  "powerLimited": false,
+  "gammaEnabled": false,
+  "gammaValue": 2.2,
+  "calibration": {
+   "red": 1,
+   "green": 1,
+   "blue": 1
+  },
+  "measuredFps": 21,
+  "dithering": false
+ }
+}

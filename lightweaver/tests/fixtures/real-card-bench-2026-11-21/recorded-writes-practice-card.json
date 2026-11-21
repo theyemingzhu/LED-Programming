@@ -1,0 +1,59 @@
+{
+ "writes": [
+  {
+   "t": 28.408,
+   "path": "/api/wiring/candidate",
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"candidate\":{\"version\":1,\"mode\":\"website-flash\",\"piece\":{\"id\":\"lightweaver-bench-discovery-v1\",\"name\":\"Untitled Project\"},\"projectRevision\":0,\"projectFingerprint\":\"bb2c0d3c6a7ed82af7a273307a95a862bb2c0d3c6a7ed82af7a273307a95a862\",\"led\":{\"type\":\"WS2812B\",\"pixels\":41,\"outputs\":[{\"id\":\"out1\",\"name\":\"Output 1\",\"pin\":18,\"pixels\":41,\"direction\":\"forward\",\"segments\":[{\"id\":\"bench-18-full\",\"count\":11,\"direction\":\"forward\"},{\"id\":\"run-strip-2\",\"count\":5,\"direction\":\"forward\"},{\"id\":\"run-strip-3\",\"count\":10,\"direction\":\"forward\"},{\"id\":\"run-strip-4\",\"count\":10,\"direction\":\"forward\"},{\"id\":\"run-strip-5\",\"count\":5,\"direction\":\"forward\"}]}],\"colorOrder\":\"RGB\",\"brightnessLimit\":0.45,\"maxMilliamps\":2000,\"outputGammaEnabled\":false,\"outputGammaValue\":2.2,\"calibration\":{\"red\":1,\"green\":1,\"blue\":1}},\"controls\":{\"encoder\":{\"a\":4,\"b\":5,\"press\":6,\"alternatePress\":-1,\"rotateDirection\":\"clockwise-brighter\",\"brightnessStep\":18},\"previous\":7,\"next\":8,\"blackout\":9,\"brightness\":-1,\"statusLed\":2},\"looks\":[{\"id\":\"combo-sparkle\",\"label\":\"Sparkle\",\"mode\":\"combo\",\"preset\":\"aurora\",\"brightness\":1,\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"sparkle\"},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"sparkle\"},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"sparkle\"},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"sparkle\"},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"sparkle\"}]},{\"id\":\"combo-combo-combo-1780274480570-1\",\"label\":\"Outer circle Aurora + Inner circle Aurora\",\"mode\":\"combo\",\"preset\":\"aurora\",\"brightness\":1,\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"aurora\"},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"aurora\"},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"aurora\"},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"aurora\"},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"aurora\"}]},{\"id\":\"combo-aurora\",\"label\":\"Aurora\",\"mode\":\"combo\",\"preset\":\"aurora\",\"brightness\":1,\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"aurora\"},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"aurora\"},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"aurora\"},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"aurora\"},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"aurora\"}]},{\"id\":\"combo-twinkle\",\"label\":\"Twinkle\",\"mode\":\"combo\",\"preset\":\"aurora\",\"brightness\":1,\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"twinkle\"},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"twinkle\"},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"twinkle\"},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"twinkle\"},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"twinkle\"}]},{\"id\":\"combo-lightweaver-section-layout\",\"label\":\"Current sections\",\"mode\":\"combo\",\"preset\":\"aurora\",\"brightness\":1,\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"sparkle\"},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"ripple\"},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"sparkle\"},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"lava\"},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"sparkle\"}]}],\"startupPatternId\":\"combo-sparkle\",\"zones\":[{\"id\":\"strip-1\",\"label\":\"Strip 1\",\"patternId\":\"fire\",\"brightness\":0.91,\"ranges\":[{\"start\":0,\"count\":11}]},{\"id\":\"strip-2\",\"label\":\"Strip 2\",\"patternId\":\"fire\",\"brightness\":0.91,\"ranges\":[{\"start\":11,\"count\":5}]},{\"id\":\"strip-3\",\"label\":\"Strip 3\",\"patternId\":\"fire\",\"brightness\":0.91,\"ranges\":[{\"start\":16,\"count\":10}]},{\"id\":\"strip-4\",\"label\":\"Strip 4\",\"patternId\":\"fire\",\"brightness\":0.91,\"ranges\":[{\"start\":26,\"count\":10}]},{\"id\":\"strip-5\",\"label\":\"Strip 5\",\"patternId\":\"fire\",\"brightness\":0.91,\"ranges\":[{\"start\":36,\"count\":5}]}],\"syncZones\":false,\"wiringRevision\":2,\"wiringDigest\":\"c85e6cedfc05fdace24a9cb238eb2dd10c652a6ffe4228dfca32084b10d5dca5\"}}",
+   "status": 200,
+   "resp": "{\"app\":\"Lightweaver\",\"ok\":true,\"state\":\"staged\",\"candidateState\":\"staged\",\"activationId\":\"act-matrix-1\",\"ledType\":\"WS2812B\",\"hasKnownGood\":true,\"hasCandidate\":true,\"bootedCandidate\":false,\"discoveryActive\":false,\"probationMs\":90000,\"remainingProbationMs\":0,\"testing\":false,\"nextStep\":\"activate\",\"outputsReady\":true,\"cardId\":\"lw-matrix-card\",\"firmwareVersion\":\"1.2.4\",\"buildId\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"buildNumber\":2464,\"projectRevision\":0,\"projectFingerprint\":\"bb2c0d3c6a7ed82af7a273307a95a862bb2c0d3c6a7ed82af7a273307a95a862\",\"productionJobId\":\"\",\"productionJobDigest\":\"\",\"wiring"
+  }
+ ],
+ "screens": [
+  "28.2s A Lightweaver card is not connected. Connect one to inspect it before installing or loading a project.",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting ",
+  "CLICK Save project to this card",
+  "CLICK FAILED TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting "
+ ],
+ "final": {
+  "pixels": 256,
+  "looks": []
+ }
+}
