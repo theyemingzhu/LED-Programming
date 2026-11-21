@@ -30,6 +30,7 @@ export const PRESSES = {
   'change-count': { 390: 2, 1280: 2 },
   'fresh-browser-pickup': { 390: 2, 1280: 2 },
   'card-update': { 390: 2, 1280: 2 },
+  rename: { 390: 3, 1280: 3 },
 };
 
 async function staleCard(page: Page) {
@@ -107,6 +108,17 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['card-update'][vp.width]);
       // The update really started, bound to this card by the software grant.
       expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__.length)).toBe(1);
+    });
+
+    test(`[C7] the project is renamed in place on Card Home and saved, in ${PRESSES.rename[vp.width]} presses`, async ({ page }) => {
+      test.setTimeout(150_000);
+      const card = await bootSetUp(page);
+      const j = recordJourney(page, 'rename', vp.width);
+      await driveRename(page, j, card);
+      const { presses, steps } = await j.finish();
+      expect(steps.some(step => step.label === 'Review checks'), 'C7: no press just to reveal the name').toBe(false);
+      expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES.rename[vp.width]);
+      expect(card.state.projectName).toBe('Gallery north wall');
     });
   });
 }
@@ -223,4 +235,15 @@ test('[C6] the update screen still explains the binding and still offers USB ins
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible({ timeout: 20_000 });
   await expect(panel).toContainText('binds this signed update to this exact card');
   expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__.length), 'nothing starts by itself').toBe(0);
+});
+
+test('[C7] the top-bar rename still works and writes nothing to the card by itself', async ({ page }) => {
+  test.setTimeout(150_000);
+  const card = await bootSetUp(page);
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill('Renamed in Layout');
+  await page.getByTestId('project-name-input').press('Enter');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').name)).toBe('Renamed in Layout');
+  expect(card.requests.filter(r => r.method === 'POST'), 'a rename writes nothing to the card by itself').toHaveLength(0);
 });

@@ -871,6 +871,8 @@ export function SetupScreen({
       setDraftSave({ pending: false, message: result?.message || 'Result not confirmed. Read the card before trying again.' });
     } catch (error) { setDraftSave({ pending: false, message: error?.message || 'Result not confirmed. Read the card before trying again.' }); }
   };
+  const installedProjectId = String(cardLink?.readiness?.projectId || cardState.status?.projectId || '').trim();
+  const installedProjectOpen = Boolean(installedProjectId) && installedProjectId === String(currentProject?.id || '').trim();
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
     && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
     && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
@@ -1225,7 +1227,12 @@ export function SetupScreen({
                 </button>
                 <div className="lw-identity-project">
                   <span>{installedHome ? 'On the card' : 'Your draft'}</span>
-                  {installedHome ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
+                  {/* An installed card whose project is the one open here renames in
+                      place (simpler-journeys C7); the name reaches the card with
+                      Save to card like any other edit. A different open project
+                      keeps the card's name read-only, since renaming would rename
+                      the draft, not what the card holds. */}
+                  {installedHome && !installedProjectOpen ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
                     <input
                       className="lw-identity-rename"
                       data-testid="setup-project-name-input"
