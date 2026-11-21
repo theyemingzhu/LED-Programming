@@ -33,6 +33,17 @@ export const PRESSES = {
   rename: { 390: 3, 1280: 3 },
 };
 
+/**
+ * C9: a notice never sits on top of the step's own button. The recorder
+ * counts closing such a notice as a press ("Close notice covering …"); on a
+ * phone the counting step used to cost one. Fixed upstream in 58a29e0c (the
+ * colour question and power note live in the page); every measured journey
+ * now holds it at both widths.
+ */
+function expectNoCoveredButton(steps: { label: string }[]) {
+  expect(steps.filter(step => /^Close notice covering/.test(step.label)).map(step => step.label), 'C9: no notice covers a button').toEqual([]);
+}
+
 async function staleCard(page: Page) {
   await guardRealCard(page);
   const spec = cardState('stale-firmware');
@@ -61,6 +72,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const j = recordJourney(page, 'first-setup', vp.width);
       await driveFirstSetup(page, j);
       const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
       expect(steps.some(step => step.label === 'Continue to Layout'), 'C1: Layout is a door, not a step').toBe(false);
       expect(steps.some(step => step.label === 'Start light test'), 'C2: the light test starts itself after Save').toBe(false);
       expect(steps.some(step => step.label === 'Replace the temporary setup'), 'C4: the temporary setup is not a different project').toBe(false);
@@ -77,6 +89,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const j = recordJourney(page, 'change-count', vp.width);
       await driveChangeCount(page, j, card);
       const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
       expect(steps.some(step => step.label === 'Change count'), 'C3: no detour door').toBe(false);
       // Layout applies the count with its own setter on the way through; the
       // owner presses nothing there.
@@ -95,6 +108,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const target = MATRIX_PATTERNS.find(p => p.id !== spec.currentId) || MATRIX_PATTERNS[0];
       await driveFreshBrowserPickup(page, j, card, target.id);
       const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
       expect(steps.some(step => step.label === 'Connect'), 'C5: no second Connect press').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['fresh-browser-pickup'][vp.width]);
     });
@@ -105,6 +119,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const j = recordJourney(page, 'card-update', vp.width);
       await driveCardUpdate(page, j);
       const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
       expect(steps.some(step => step.label === 'Update over Wi-Fi'), 'C6: no reveal press').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['card-update'][vp.width]);
       // The update really started, bound to this card by the software grant.
@@ -117,6 +132,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       const j = recordJourney(page, 'rename', vp.width);
       await driveRename(page, j, card);
       const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
       expect(steps.some(step => step.label === 'Review checks'), 'C7: no press just to reveal the name').toBe(false);
       expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES.rename[vp.width]);
       expect(card.state.projectName).toBe('Gallery north wall');
@@ -181,6 +197,7 @@ test('[C2] Real-timing: the light test starts itself and survives the 14 s resta
   const j = recordJourney(page, 'first-setup-real-timing', 390);
   await driveFirstSetup(page, j);
   const { presses, steps } = await j.finish();
+      expectNoCoveredButton(steps);
   expect(steps.some(step => step.label === 'Start light test'), 'no second press after the restart either').toBe(false);
   expect(presses).toBe(PRESSES['first-setup'][390]);
   expect(Date.now() - started, 'the run really waited out the restart').toBeGreaterThan(14_000);
