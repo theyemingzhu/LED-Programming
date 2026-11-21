@@ -15,7 +15,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard, recordJourney } from './ux/journeyRecorder';
-import { driveFirstSetup } from './ux/drivers';
+import { driveChangeCount, driveFirstSetup } from './ux/drivers';
+import { bootSetUp } from './ux/journeySeed';
 
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true };
 const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
@@ -23,6 +24,7 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 /** Presses each journey takes today, per width. Lower a number only with the cut that earns it. */
 export const PRESSES = {
   'first-setup': { 390: 12, 1280: 12 },
+  'change-count': { 390: 2, 1280: 2 },
 };
 
 async function blankCard(page: Page) {
@@ -48,6 +50,20 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
       // The write really happened: the card holds the counted project, not the temporary setup.
       await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 15_000 })
         .toEqual({ pixels: 41, provisional: false });
+    });
+
+    test(`[C3] the LED count is changed and saved from its own row, in ${PRESSES['change-count'][vp.width]} presses`, async ({ page }) => {
+      test.setTimeout(150_000);
+      const card = await bootSetUp(page);
+      const j = recordJourney(page, 'change-count', vp.width);
+      await driveChangeCount(page, j, card);
+      const { presses, steps } = await j.finish();
+      expect(steps.some(step => step.label === 'Change count'), 'C3: no detour door').toBe(false);
+      // Layout applies the count with its own setter on the way through; the
+      // owner presses nothing there.
+      expect(steps.filter(s => s.kind === 'press').some(s => s.screen.startsWith('layout')), 'C3: no press on Layout').toBe(false);
+      expect(presses, steps.filter(s => s.kind === 'press').map(s => s.label).join(' → ')).toBe(PRESSES['change-count'][vp.width]);
+      expect(card.state.pixels).toBe(60);
     });
   });
 }
@@ -116,4 +132,16 @@ test('[C2] Real-timing: the light test starts itself and survives the 14 s resta
   expect(Date.now() - started, 'the run really waited out the restart').toBeGreaterThan(14_000);
   await expect.poll(() => ({ testing: card.state.wiringTestActive, pixels: card.state.pixels }), { timeout: 20_000 })
     .toEqual({ testing: false, pixels: 41 });
+});
+
+test('[C3] the count is still editable in Layout, and the row writes nothing until Save to card', async ({ page }) => {
+  test.setTimeout(150_000);
+  const card = await bootSetUp(page);
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  const stepper = page.getByTestId('fact-lights-stepper');
+  await expect(stepper).toBeVisible({ timeout: 20_000 });
+  await stepper.getByLabel('Light count').fill('60');
+  expect(card.requests.filter(r => r.method === 'POST'), 'typing writes nothing').toHaveLength(0);
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByLabel('Total LEDs')).toBeEditable({ timeout: 20_000 });
 });

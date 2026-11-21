@@ -209,7 +209,7 @@ export function CardFacts({
           </Row>
           <Row
             label={outputs.length === 1 ? 'Lights on output 1' : 'Lights'}
-            hint={countEditor?.apply ? 'Set lights the strip to the count' : (count ? 'Counted to the last lit light' : 'Find my strips counts them')}
+            hint={countEditor?.saves ? 'Saved to the card with a light test' : countEditor?.apply ? 'Set lights the strip to the count' : (count ? 'Counted to the last lit light' : 'Find my strips counts them')}
             testId="fact-lights"
             note={countEditor?.message ? <p role="status" className="hh" data-testid="fact-lights-message">{countEditor.message}</p> : null}
           >
@@ -230,7 +230,7 @@ export function CardFacts({
                 />
                 <button type="button" className="btn lw-stepper-key" aria-label="One more light" disabled={!canSetCount} onClick={() => nudge(1)}>+</button>
                 <button type="button" className={countChanged ? 'btn primary' : 'btn'} data-testid="fact-lights-set" disabled={!canSetCount || !countChanged} onClick={applyCount}>
-                  {countEditor.busy ? 'Setting…' : 'Set'}
+                  {countEditor.saves ? (countEditor.busy ? 'Saving…' : 'Save to card') : (countEditor.busy ? 'Setting…' : 'Set')}
                 </button>
               </div>
             ) : (

@@ -36,7 +36,7 @@ async function pressAsShown(page: Page, j: Journey, steps: { locator: Locator; l
     }
     if (!acted) await page.waitForTimeout(250);
   }
-  throw new Error(`journey did not finish; pressed ${[...pressed].join(', ') || 'nothing'}`);
+  throw new Error(`journey did not finish at ${page.url()}; pressed ${[...pressed].join(', ') || 'nothing'}`);
 }
 
 /** First setup from a blank card: pair, count the lights, save to card, confirm the light test. */
@@ -84,4 +84,23 @@ export async function finishCardSave(page: Page, j: Journey, { stopBeforeConfirm
     ...(stopBeforeConfirm ? [] : [{ locator: confirm, label: 'The lights look correct' }]),
   ], stopBeforeConfirm ? () => shown(confirm) : done, timeoutMs);
   await page.waitForTimeout(stopBeforeConfirm ? 0 : 1000);
+}
+
+/** Change the LED count on an installed card (to `pixels`) and get it onto the card. */
+export async function driveChangeCount(page: Page, j: Journey, card: { state: { pixels: number; wiringTestActive: boolean } }, pixels = 60) {
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(2000);
+  await j.land('Card Home, connected');
+  const row = page.getByTestId('fact-lights');
+  const stepper = row.getByTestId('fact-lights-stepper');
+  if (await shown(stepper)) {
+    await j.type(stepper.getByLabel('Light count'), String(pixels), `Type ${pixels} in the Lights row`);
+    await j.press(stepper.getByTestId('fact-lights-set'), 'Save to card');
+  } else {
+    await j.press(row.getByRole('button', { name: 'Change count' }), 'Change count');
+    await j.type(page.getByLabel('Total LEDs'), String(pixels), `Type ${pixels} in Project LEDs (Layout)`);
+    await j.press(page.getByRole('button', { name: 'Install on card', exact: true }).first(), 'Install on card');
+  }
+  await finishCardSave(page, j, { done: async () => card.state.pixels === pixels && !card.state.wiringTestActive });
 }
