@@ -44,3 +44,7 @@ The spec list was written to the sandbox TMPDIR and read from the unsandboxed on
 
 ## Step 5 result (2026-11-21, guard on)
 41 simulator spec files, 399 tests under Real-timing: 353 pass. 15 tests red ONLY under Real-timing (confirmed by a Fast re-run of the same files on the same code); 4 more red in both modes. List handed to the coordinator in the shared notes folder (practice-realtiming-reds-2026-11-21.md). Not fixed here. Caveat: slow-card-save-card-layout adds its own restartAfterSaveMs, so under Real-timing it gets two restarts — when the profile drives the false-failures options (see above) this double count goes away.
+
+## Bench-discovery state (2026-11-21)
+Added `tests/harness/benchDiscoveryCard.ts` (`BENCH_DISCOVERY_STATE`, `createBenchDiscoveryCard`, `createBenchDiscoveryPracticeCard`) from the durability session's real read-back, copied to `tests/harness/traces/real-card-bench-2026-11-21/`. Checked by `tests/bench-discovery-card.spec.ts`. Not in CARD_STATES (would add matrix cells). Also in the practice page's state picker.
+- Follow-up: the simulator's /api/firmware-info adds a top-level `projectId` the real card does not send (it names the project as `piece.id` only). Simulator-wide; fix with the other shape drift.

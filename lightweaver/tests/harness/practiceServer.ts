@@ -21,6 +21,7 @@ import { CARD_STATES, REAL_CARD_STATE, cardState } from './cardStates.js';
 import type { CardStateSpec } from './cardStates.js';
 import { createCardSimulator } from './cardSimulator.js';
 import type { CardSimulator } from './cardSimulator.js';
+import { BENCH_DISCOVERY_STATE, createBenchDiscoveryCard } from './benchDiscoveryCard.js';
 import { TimingController, timingProfile, REAL_PROFILE, FAST_PROFILE } from './practiceTiming.js';
 import type { TimingProfileName } from './practiceTiming.js';
 
@@ -41,7 +42,7 @@ export { REAL_CARD_STATE };
 
 type LogEntry = { at: number; method: string; path: string; status: number | string; ms: number; note: string };
 
-const ALL_STATES: CardStateSpec[] = [...CARD_STATES, REAL_CARD_STATE];
+const ALL_STATES: CardStateSpec[] = [...CARD_STATES, REAL_CARD_STATE, BENCH_DISCOVERY_STATE];
 
 function specFor(id: string): CardStateSpec {
   if (id === REAL_CARD_STATE.id) return REAL_CARD_STATE;
@@ -63,7 +64,9 @@ export function startPracticeServer(options: PracticeServerOptions) {
   function build(id: string) {
     stateId = id;
     const profile = timingProfile(timing.profile.name);
-    card = createCardSimulator(specFor(id), { cardId, latencyMs: profile.simulatorLatencyMs });
+    card = id === BENCH_DISCOVERY_STATE.id
+      ? createBenchDiscoveryCard({ cardId, latencyMs: profile.simulatorLatencyMs })
+      : createCardSimulator(specFor(id), { cardId, latencyMs: profile.simulatorLatencyMs });
     // The simulator registers one handler per card host through page.route;
     // a stand-in page captures it. Every host gets the same handler.
     const fakePage = {
