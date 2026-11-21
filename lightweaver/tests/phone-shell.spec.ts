@@ -50,6 +50,23 @@ async function publishWarning(page: Page) {
   await page.waitForTimeout(400);
 }
 
+/** Text or controls off the phone scale: body text above 15px, titles above 17px. */
+function offScale(page: Page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('.card-setup-overlay') || document.querySelector('.app > .screen');
+    const out: string[] = [];
+    for (const el of root!.querySelectorAll('*')) {
+      const b = el.getBoundingClientRect();
+      if (b.width < 2 || b.height < 2 || el.closest('svg, canvas')) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent!.trim()) || el.matches('input, select, textarea');
+      const title = /^H[1-3]$/.test(el.tagName);
+      if ((own && !title && fs > 15) || (title && fs > 17)) out.push(`${el.tagName.toLowerCase()} ${fs}px: ${(el.textContent || (el as HTMLInputElement).value || '').trim().slice(0, 30)}`);
+    }
+    return out;
+  });
+}
+
 test.describe('phone 390', () => {
   test.use(PHONE);
 
@@ -131,6 +148,42 @@ test.describe('phone 390', () => {
     const covered = await rect(page, '.card-setup-overlay');
     expect(covered.bottom).toBeLessThanOrEqual(notice.y);
     expect(await controlsUnderNotices(page)).toEqual([]);
+  });
+});
+
+test.describe('phone 390, one scale', () => {
+  test.use(PHONE);
+
+  test('no text on Card Home, Patterns, Playlist or Layout is off the phone scale', async ({ page }) => {
+    await openInstalled(page);
+    await page.locator('.app > .screen details').evaluateAll(all => all.forEach(d => { (d as HTMLDetailsElement).open = true; }));
+    expect(await offScale(page), 'card home').toEqual([]);
+    for (const screen of ['pattern', 'playlist', 'layout']) {
+      await page.evaluate(h => { location.hash = h; }, `#screen=${screen}`);
+      await page.waitForTimeout(600);
+      expect(await offScale(page), screen).toEqual([]);
+    }
+  });
+
+  test('the LED count box is the same scale as the text around it', async ({ page }) => {
+    test.setTimeout(90_000);
+    await guardRealCard(page);
+    const card = createCardSimulator(cardState('factory-blank'));
+    await card.install(page);
+    await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+    await page.getByTestId('setup-lights-action').click({ timeout: 20_000 });
+    await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
+    await page.getByTestId('discovery-start').click();
+    await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('discovery-color-red').click();
+    await page.getByTestId('discovery-color-green').click();
+    const count = page.getByTestId('discovery-count-18');
+    await count.fill('41');
+    const box = await count.boundingBox();
+    expect(box!.height).toBeLessThanOrEqual(46);
+    expect(box!.width).toBeLessThanOrEqual(120);
+    expect(await offScale(page)).toEqual([]);
   });
 });
 
