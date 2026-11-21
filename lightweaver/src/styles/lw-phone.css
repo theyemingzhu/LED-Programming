@@ -83,7 +83,9 @@
   .status-bar:has(.sb-offline) {
     grid-area: stat;
     display: flex;
-    flex-wrap: wrap;
+    /* Always one row: a long firmware line shortens with an ellipsis
+       (its full text stays in the title and the accessible name). */
+    flex-wrap: nowrap;
     align-items: center;
     gap: 0 10px;
     height: auto;
@@ -114,7 +116,9 @@
     text-decoration-color: var(--accent-line);
     text-underline-offset: 3px;
   }
-  .status-bar .sb-firmware { padding-inline: 0; white-space: nowrap; }
+  .status-bar .sb-firmware { padding-inline: 0; white-space: nowrap; display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; line-height: 34px; }
+  .status-bar .sb-card { flex: 0 0 auto; max-width: 60%; min-width: 0; }
+  .status-bar .sb-freshness { flex: 0 0 auto; }
   /* The short-strip preview is a bench tool with its own row of
      controls; there is no room for it beside three facts. */
   .status-bar .sb-teststrip { display: none; }
@@ -126,18 +130,31 @@
     bottom: calc(var(--lw-bottom-chrome-h, 54px) + 8px);
   }
 
+  /* ── Pattern Lab's control sheet stops above the tab bar ─────
+     Its peek and half detents are non-modal and were anchored to the
+     viewport bottom, over the old footer; on a phone that is now the tab
+     bar, and covering it stranded the owner in Lab. The full detent is
+     modal and may still cover it. */
+  .app .plab-screen { --plab-sheet-peek: min(34dvh, 290px); }
+  .app .plab-screen[data-sheet-detent="peek"] .plab-controls,
+  .app .plab-screen[data-sheet-detent="half"] .plab-controls { bottom: var(--lw-tabbar-h); }
+  .app .plab-screen[data-sheet-detent="peek"] .plab-preview,
+  .app .plab-screen[data-sheet-detent="half"] .plab-preview { padding-bottom: var(--plab-sheet-h); }
+
   /* ── Card setup sheet: edge to edge, ends where a notice begins ── */
   .card-setup-backdrop:not(.is-minimized) {
     padding: 0 0 var(--lw-notice-reserve, 0px);
-    place-items: stretch;
+    /* Edge to edge and from the top, but only as tall as its step
+       (strip-discovery.spec: "content-sized"). */
+    place-items: start stretch;
     /* The sheet fills the phone, so nothing behind it needs to show
        through the strip a notice reserves. */
     background: var(--bg-app);
   }
   .card-setup-backdrop:not(.is-minimized) .card-setup-overlay {
     width: 100%;
-    max-height: none;
-    height: 100%;
+    max-height: 100%;
+    height: auto;
     border: 0;
     border-radius: 0;
   }
