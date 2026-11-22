@@ -159,6 +159,29 @@ page with lights and controls, "Open Studio on this card"). Drift check
 against the physical card, read-only, on demand: `npm run practice:contract`
 in `lightweaver/`.
 
+## Where tests run — GitHub before merge, not the laptop
+
+Several agents running browser suites on one laptop overload it and produce
+failures that are not real. So the heavy proof runs on GitHub's machines:
+
+- **Every pull request is tested by `Branch tests`** (`.github/workflows/branch-tests.yml`):
+  the source/build gate and all browser lanes, on GitHub-hosted runners. Push
+  the branch, open the pull request (a draft is fine), and read the result with
+  `gh pr checks <number> --watch`. Only the newest push of a pull request runs.
+- **On the laptop, run only what you are working on**: the one spec or unit
+  file you changed, plus `node scripts/ci-preflight.mjs`. Do not run
+  `ci:browser-smoke`, `test:release-ui`, `launch:check` or any whole browser
+  suite locally to "prove" a branch — that is what `Branch tests` is for.
+- **Stays local**: anything that needs the physical card (one session at a
+  time, see the three test tools rule) and the Practice card.
+- **`Tests` on `main` is unchanged** and still gates the deploy. A green
+  `Branch tests` is evidence about the pull request, not about `main`.
+- **This is free only while the repository is public.** Never register a
+  self-hosted runner while it is public: any outside pull request could then
+  run code on that machine. When the repository goes private, hosted minutes
+  become a metered allowance — move `Branch tests` to a self-hosted runner in
+  the same change that flips visibility, and add the meter rule.
+
 ## Agent ownership boundaries
 - `led-art-mapper/app/src/` — owned by led-art-mapper agent; do not edit
 - `lightweaver/src/` — owned by lightweaver-app agent; do not edit

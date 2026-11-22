@@ -26,6 +26,7 @@ const isAnyPath = (path, prefixes) => prefixes.some(prefix => isPath(path, prefi
 const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.yml'
   || path === '.github/workflows/deploy-site.yml'
   || path === '.github/workflows/exhaustive.yml'
+  || path === '.github/workflows/branch-tests.yml'
   || path === 'scripts/ci-changed-lanes.mjs'
   || path === 'scripts/ci-changed-lanes.test.mjs';
 // Browser updater code is exercised by card/production validation, but these

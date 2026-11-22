@@ -175,6 +175,41 @@ test('generator advances the required release without raising the trusted firmwa
   }
 });
 
+test('Branch tests proves pull requests on hosted runners and can never deploy', async () => {
+  const read = async name => (await readFile(resolve(repoRoot, '.github/workflows', name), 'utf8')).replace(/\r\n/g, '\n');
+  const branch = await read('branch-tests.yml');
+  const merged = await read('test.yml');
+  // Deploy and signer start from a completed "Tests" run. A pull-request run
+  // must never be able to satisfy that trigger.
+  assert.match(branch, /^name: Branch tests$/m);
+  for (const downstream of ['deploy-site.yml', 'build-firmware.yml']) {
+    assert.doesNotMatch(await read(downstream), /Branch tests/, downstream);
+  }
+  assert.match(branch, /^on:\n  pull_request:/m);
+  assert.doesNotMatch(branch, /^  (push|merge_group|workflow_run|workflow_dispatch|pull_request_target):/m);
+  assert.match(branch, /^permissions:\n  contents: read$/m);
+  assert.doesNotMatch(branch, /secrets\./, 'pull requests from forks must not reach repository secrets');
+  // This repository is public: a self-hosted runner would let any outside
+  // pull request run code on a private machine.
+  assert.doesNotMatch(branch, /self-hosted/);
+  for (const line of branch.match(/^    runs-on: .*$/gm)) assert.equal(line, '    runs-on: ubuntu-24.04');
+  assert.match(branch, /cancel-in-progress: true/);
+  // Each lane is a copy of the merged-source gate's lane; fail when one drifts.
+  const jobBlock = (text, name) => {
+    const start = text.indexOf(`\n  ${name}:\n`);
+    assert.notEqual(start, -1, name);
+    const rest = text.slice(start + 1);
+    const next = rest.slice(1).search(/\n  [a-z_]+:\n/);
+    return (next === -1 ? rest : rest.slice(0, next + 1)).trimEnd();
+  };
+  for (const name of ['source', 'browser', 'browser_windowless', 'browser_firmware_update', 'cloud', 'production']) {
+    assert.equal(jobBlock(branch, name), jobBlock(merged, name), `${name} drifted from test.yml`);
+  }
+  for (const name of ['firmware', 'artifact']) {
+    assert.doesNotMatch(branch, new RegExp(`^  ${name}:$`, 'm'), `${name} stays after merge`);
+  }
+});
+
 test('fast Tests workflow relies on selected lane conclusions without a runner-only aggregate', async () => {
   const workflow = (await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8')).replace(/\r\n/g, '\n');
   assert.doesNotMatch(workflow, /^\s{2}pull_request:/m, 'Tests must not spend minutes on every PR update');
