@@ -127,7 +127,9 @@
   .lw-notice-layer {
     left: 8px;
     right: 8px;
-    bottom: calc(var(--lw-bottom-chrome-h, 54px) + 8px);
+    /* 12px, as on desktop: a notice arrives sliding up 10px (lw-notice-in),
+       so an 8px gap let it cross the tab bar for a few frames. */
+    bottom: calc(var(--lw-bottom-chrome-h, 54px) + 12px);
   }
 
   /* ── Pattern Lab's control sheet stops above the tab bar ─────

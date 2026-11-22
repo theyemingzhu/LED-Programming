@@ -123,7 +123,7 @@ function useBottomChromeHeight() {
 // card setup sheet where the stack begins. Screens are top-anchored, so only
 // their bottom edge rises; nothing under the finger moves.
 const GAP = 8;
-function usePublishedStackGround(ref, active) {
+function usePublishedStackGround(ref, active, bottomChrome) {
   useEffect(() => {
     const root = document.documentElement;
     const clear = () => {
@@ -134,25 +134,30 @@ function usePublishedStackGround(ref, active) {
     if (!active || !layer) { clear(); return undefined; }
     const publish = () => {
       const r = layer.getBoundingClientRect();
-      root.style.setProperty('--lw-notice-stack-h', `${Math.ceil(r.height + GAP)}px`);
+      // Everything between the stack's top edge and the bottom chrome: the
+      // stack plus its dock gap, whatever the stylesheet sets that gap to.
+      root.style.setProperty('--lw-notice-stack-h', `${Math.max(0, Math.ceil((window.innerHeight || 0) - r.top + GAP - bottomChrome))}px`);
       root.style.setProperty('--lw-notice-reserve', `${Math.ceil((window.innerHeight || 0) - r.top + GAP)}px`);
     };
     publish();
     window.addEventListener('resize', publish);
+    // A notice arrives sliding up (lw-notice-in); a transform fires no
+    // ResizeObserver, so measure again where it comes to rest.
+    layer.addEventListener('animationend', publish);
     let observer;
     if (typeof ResizeObserver === 'function') {
       observer = new ResizeObserver(publish);
       observer.observe(layer);
     }
-    return () => { window.removeEventListener('resize', publish); observer?.disconnect(); clear(); };
-  }, [ref, active]);
+    return () => { window.removeEventListener('resize', publish); layer.removeEventListener('animationend', publish); observer?.disconnect(); clear(); };
+  }, [ref, active, bottomChrome]);
 }
 
 export function NoticeLayer() {
   const notices = useSyncExternalStore(subscribeToNotices, readNotices, readNotices);
   const bottomChrome = useBottomChromeHeight();
   const layerRef = useRef(null);
-  usePublishedStackGround(layerRef, notices.length > 0);
+  usePublishedStackGround(layerRef, notices.length > 0, bottomChrome);
   if (!notices.length) return null;
   // Newest wins the visible slots, and being last in DOM order it paints
   // closest to the bottom chrome — so "newest" and "nearest" agree.
