@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
+import { BlankCardFirstInstall } from './BlankCardFirstInstall.jsx';
 import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
@@ -123,6 +124,17 @@ export function CardInstallAction({
     ? new URLSearchParams(window.location.hash.slice(1))
     : new URLSearchParams();
   const continueToPatterns = cardRoute.get('next') === 'patterns';
+  // Holds the blank-card panel on screen from the first-install click until it
+  // has finished. Without it the card stops reading blank mid-install, the
+  // ordinary install control below mounts, and next=patterns auto-starts a
+  // second install of the same project as a wiring candidate (practice card,
+  // tests/blank-card-first-install.spec.ts).
+  const [firstInstall, setFirstInstall] = useState('');
+  // Once the card no longer reads blank, a finished first install hands the
+  // panel back to the ordinary branches (it then reads as installed).
+  useEffect(() => {
+    if (firstInstall === 'done' && !cardNeedsStripDiscovery) setFirstInstall('');
+  }, [firstInstall, cardNeedsStripDiscovery]);
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
@@ -199,6 +211,38 @@ export function CardInstallAction({
           standaloneController={installController}
           disabled={!installGate.allowed}
         />
+      ) : firstInstall === 'done' ? (
+        // Installed; never offer the blank-card save again on a card that is no
+        // longer blank (a second press would be refused as a false failure).
+        <p className="lww-flow-message" role="status" data-testid="blank-card-installed">Installed on card. Next, check the lights.</p>
+      ) : (cardNeedsStripDiscovery || firstInstall) && !needsLayoutFinish ? (
+        // The draft's wiring is complete, so the blank card can take it as its
+        // first project in one save (see BlankCardFirstInstall). Find my strips
+        // stays here for an owner who does not know their strips yet.
+        <>
+          <h3 className="lww-flow-title">This card is blank</h3>
+          <p className="lww-flow-message" data-testid="wire-blank-card-message">Save your project to it, or find its strips first.</p>
+          <BlankCardFirstInstall
+            host={cardHost || cardLink.host}
+            transport={cardLink.transport}
+            board={cardTransportBoard}
+            controller={installController}
+            className={cta}
+            onStart={() => setFirstInstall('running')}
+            onSettled={ok => {
+              setFirstInstall(ok ? 'done' : '');
+              if (ok && continueToPatterns) window.location.hash = '#screen=pattern';
+            }}
+          />
+          <button
+            type="button"
+            className="btn lww-cta"
+            data-testid="wire-find-strips"
+            title="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            data-tooltip="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            onClick={openStripDiscovery}
+          >{STRIP_DISCOVERY_LABEL}</button>
+        </>
       ) : cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
