@@ -62,12 +62,30 @@ constexpr size_t NVS_STRING_LIMIT = 3968;
 // string cannot be relied on). NVS_KNOWN_GOOD_CONFIG_KEY is the string an
 // older firmware left; it is read until the first save replaces it.
 constexpr const char* NVS_KNOWN_GOOD_BLOB_KEY = "kgConfigBlob";
+// The staged wiring candidate is a blob for the same reason as the project:
+// a string must fit whole in one NVS page, and beside a saved project there
+// may be no page with room for it ("candidate storage failed", real card
+// lw-b0fe81f61b44, 2026-11-22). NVS_CANDIDATE_CONFIG_KEY is the string an
+// older firmware left; it is read until the next staging replaces it.
+constexpr const char* NVS_CANDIDATE_BLOB_KEY = "cdConfigBlob";
 
 String readKnownGood(Preferences& prefs) {
   return lightweaver::readProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
 }
 size_t writeKnownGood(Preferences& prefs, const String& json) {
   return lightweaver::writeProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY, json);
+}
+String readCandidate(Preferences& prefs) {
+  return lightweaver::readProject(prefs, NVS_CANDIDATE_BLOB_KEY, NVS_CANDIDATE_CONFIG_KEY);
+}
+size_t writeCandidate(Preferences& prefs, const String& json) {
+  return lightweaver::writeProject(prefs, NVS_CANDIDATE_BLOB_KEY, NVS_CANDIDATE_CONFIG_KEY, json);
+}
+bool removeCandidate(Preferences& prefs) {
+  return lightweaver::removeProject(prefs, NVS_CANDIDATE_BLOB_KEY, NVS_CANDIDATE_CONFIG_KEY);
+}
+bool hasCandidateConfig(Preferences& prefs) {
+  return prefs.isKey(NVS_CANDIDATE_BLOB_KEY) || prefs.isKey(NVS_CANDIDATE_CONFIG_KEY);
 }
 bool hasKnownGood(Preferences& prefs) {
   return lightweaver::projectStored(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
@@ -77,6 +95,9 @@ bool removeKnownGood(Preferences& prefs) {
 }
 bool isKnownGoodKey(const char* key) {
   return strcmp(key, NVS_KNOWN_GOOD_CONFIG_KEY) == 0;
+}
+bool isCandidateKey(const char* key) {
+  return strcmp(key, NVS_CANDIDATE_CONFIG_KEY) == 0;
 }
 // Entries in the NVS partition not holding live data, or 0 when unreadable.
 size_t nvsFreeEntries() {
@@ -1492,6 +1513,21 @@ ProvisioningStorageState readNvsString(Preferences& prefs,
     }
     return ProvisioningStorageState::Present;
   }
+  if (isCandidateKey(key)) {
+    if (!hasCandidateConfig(prefs)) return ProvisioningStorageState::Absent;
+    if (prefs.isKey(NVS_CANDIDATE_BLOB_KEY)
+            ? prefs.getType(NVS_CANDIDATE_BLOB_KEY) != PT_BLOB
+            : prefs.getType(key) != PT_STR) {
+      message = String("nvs value has invalid type: ") + key;
+      return ProvisioningStorageState::Error;
+    }
+    value = readCandidate(prefs);
+    if (!value.length()) {
+      message = String("nvs value read failed or empty: ") + key;
+      return ProvisioningStorageState::Error;
+    }
+    return ProvisioningStorageState::Present;
+  }
   if (!prefs.isKey(key)) return ProvisioningStorageState::Absent;
   if (prefs.getType(key) != PT_STR) {
     message = String("nvs value has invalid type: ") + key;
@@ -1531,6 +1567,7 @@ ProvisioningStorageState loadNvsConfigKeyStrict(const char* key,
       return ProvisioningStorageState::Error;
     }
     if (isKnownGoodKey(key)) writeKnownGood(prefs, json);
+    else if (isCandidateKey(key)) writeCandidate(prefs, json);
     else prefs.putString(key, json);
     prefs.end();
     if (!prefs.begin(NVS_NAMESPACE, true)) {
@@ -1538,7 +1575,9 @@ ProvisioningStorageState loadNvsConfigKeyStrict(const char* key,
       message = "legacy wiring digest upgrade readback unavailable";
       return ProvisioningStorageState::Error;
     }
-    String readback = isKnownGoodKey(key) ? readKnownGood(prefs) : prefs.getString(key, "");
+    String readback = isKnownGoodKey(key) ? readKnownGood(prefs)
+                      : isCandidateKey(key) ? readCandidate(prefs)
+                      : prefs.getString(key, "");
     prefs.end();
     if (readback != json) {
       configParsed = false;
@@ -1593,7 +1632,7 @@ bool restorePreviousKnownGood(Preferences& prefs) {
 bool finalizeCommittedPromotion(Preferences& prefs) {
   if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) return false;
   String knownGood = readKnownGood(prefs);
-  String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
+  String candidate = readCandidate(prefs);
   String candidateId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
   String confirmedId = prefs.getString(NVS_CONFIRMED_ID_KEY, "");
   bool rollbackResidue = (candidate.length() && knownGood != candidate) ||
@@ -1607,8 +1646,7 @@ bool finalizeCommittedPromotion(Preferences& prefs) {
   if (!confirmationCleared) return false;
   bool previousCleared = !prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY) ||
                          prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY);
-  bool candidateCleared = !prefs.isKey(NVS_CANDIDATE_CONFIG_KEY) ||
-                          prefs.remove(NVS_CANDIDATE_CONFIG_KEY);
+  bool candidateCleared = removeCandidate(prefs);
   bool candidateIdCleared = !prefs.isKey(NVS_CANDIDATE_ID_KEY) ||
                             prefs.remove(NVS_CANDIDATE_ID_KEY);
   return previousCleared && candidateCleared && candidateIdCleared;
@@ -1616,6 +1654,10 @@ bool finalizeCommittedPromotion(Preferences& prefs) {
 
 bool validateCandidateMetadataForBoot(Preferences& prefs, WiringCandidateState state,
                                       String& message) {
+  if (prefs.isKey(NVS_CANDIDATE_BLOB_KEY) && prefs.getType(NVS_CANDIDATE_BLOB_KEY) != PT_BLOB) {
+    message = "candidate metadata corrupt: invalid candidate blob type";
+    return false;
+  }
   for (const char* key : {NVS_CANDIDATE_CONFIG_KEY, NVS_CANDIDATE_ID_KEY,
                           NVS_CONFIRMED_ID_KEY, NVS_PREVIOUS_KNOWN_GOOD_KEY}) {
     if (prefs.isKey(key) && prefs.getType(key) != PT_STR) {
@@ -1636,7 +1678,7 @@ bool validateCandidateMetadataForBoot(Preferences& prefs, WiringCandidateState s
   bool armed = prefs.getBool(NVS_PROMOTION_ARMED_KEY, false);
   bool journalPresent = prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY);
   String knownGood = readKnownGood(prefs);
-  String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
+  String candidate = readCandidate(prefs);
   String candidateId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
   String confirmedId = prefs.getString(NVS_CONFIRMED_ID_KEY, "");
 
@@ -2442,8 +2484,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   bool cleanupOk = true;
   if (committed) {
     cleanupOk = writeCandidateState(prefs, WIRING_CANDIDATE_NONE) && cleanupOk;
-    cleanupOk = (!prefs.isKey(NVS_CANDIDATE_CONFIG_KEY) ||
-                 prefs.remove(NVS_CANDIDATE_CONFIG_KEY)) && cleanupOk;
+    cleanupOk = (removeCandidate(prefs)) && cleanupOk;
     cleanupOk = (!prefs.isKey(NVS_CANDIDATE_ID_KEY) ||
                  prefs.remove(NVS_CANDIDATE_ID_KEY)) && cleanupOk;
     cleanupOk = (!prefs.isKey(NVS_SD_AUTORUN_SUPPRESSED_KEY) ||
@@ -2529,6 +2570,7 @@ bool clearRuntimeProjectStorage(String& message) {
     NVS_CONFIRMED_ID_KEY,
     NVS_CANDIDATE_ID_KEY,
     NVS_CANDIDATE_CONFIG_KEY,
+    NVS_CANDIDATE_BLOB_KEY,
     NVS_PREVIOUS_KNOWN_GOOD_KEY,
     NVS_LEGACY_CONFIG_KEY,
     NVS_KNOWN_GOOD_CONFIG_KEY,
@@ -2542,7 +2584,7 @@ bool clearRuntimeProjectStorage(String& message) {
     if (prefs.isKey(key) && !prefs.remove(key)) ok = false;
   }
   bool projectGone = !hasKnownGood(prefs) &&
-                     !prefs.isKey(NVS_CANDIDATE_CONFIG_KEY);
+                     !hasCandidateConfig(prefs);
   prefs.end();
   if (!ok || !projectGone) {
     message = "clear-project could not remove all project keys";
@@ -2661,19 +2703,19 @@ bool stageRuntimeConfigJson(const String& json, String& activationId, String& me
     return false;
   }
   activationId = makeActivationId();
-  prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json);
+  writeCandidate(prefs, json);
   prefs.end();
   if (!prefs.begin(NVS_NAMESPACE, false)) {
     message = "nvs candidate readback reopen failed";
     return false;
   }
-  bool stored = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "") == json;
+  bool stored = readCandidate(prefs) == json;
   bool idStored = stored && prefs.putString(NVS_CANDIDATE_ID_KEY, activationId) == activationId.length();
   bool confirmationCleared = idStored &&
     (!prefs.isKey(NVS_CONFIRMED_ID_KEY) || prefs.remove(NVS_CONFIRMED_ID_KEY));
   bool marked = confirmationCleared && writeCandidateState(prefs, WIRING_CANDIDATE_STAGED);
   if (!marked) {
-    prefs.remove(NVS_CANDIDATE_CONFIG_KEY);
+    removeCandidate(prefs);
     prefs.remove(NVS_CANDIDATE_ID_KEY);
     writeCandidateState(prefs, WIRING_CANDIDATE_NONE);
   }
@@ -2688,7 +2730,7 @@ bool activateStagedRuntimeConfig(const String& activationId, String& message) {
     message = "nvs write open failed";
     return false;
   }
-  String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
+  String candidate = readCandidate(prefs);
   WiringCandidateState state = readCandidateState(prefs);
   if (!candidate.length() || state != WIRING_CANDIDATE_STAGED ||
       !candidateIdMatches(prefs, activationId)) {
@@ -2716,7 +2758,7 @@ bool confirmCandidateRuntimeConfig(const String& activationId, String& message) 
     prefs.end();
     return false;
   }
-  String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
+  String candidate = readCandidate(prefs);
   if (state == WIRING_CANDIDATE_NONE &&
       activationId.length() > 0 &&
       prefs.getString(NVS_CONFIRMED_ID_KEY, "") == activationId) {
@@ -2788,7 +2830,7 @@ bool rollbackCandidateRuntimeConfig(const String& activationId, String& message)
   bool safe = writeCandidateState(prefs, WIRING_CANDIDATE_NONE);
   if (safe) {
     prefs.remove(NVS_CONFIRMED_ID_KEY);
-    prefs.remove(NVS_CANDIDATE_CONFIG_KEY);
+    removeCandidate(prefs);
     prefs.remove(NVS_CANDIDATE_ID_KEY);
   }
   prefs.end();
@@ -2803,8 +2845,8 @@ WiringSafetyStatus getRuntimeWiringSafetyStatus() {
   status.candidateState = readCandidateState(prefs);
   status.hasKnownGood = hasKnownGood(prefs) &&
                         readKnownGood(prefs).length() > 0;
-  status.hasCandidate = prefs.isKey(NVS_CANDIDATE_CONFIG_KEY) &&
-                        prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "").length() > 0;
+  status.hasCandidate = hasCandidateConfig(prefs) &&
+                        readCandidate(prefs).length() > 0;
   if (status.hasCandidate) status.activationId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
   status.bootedCandidate = status.candidateState == WIRING_CANDIDATE_AWAITING_CONFIRMATION;
   status.discoveryActive = prefs.getBool(NVS_DISCOVERY_ACTIVE_KEY, false);
@@ -2830,7 +2872,7 @@ String runtimeWiringSafetyStatusJson() {
   if (status.hasCandidate && status.activationId.length()) {
     Preferences prefs;
     if (prefs.begin(NVS_NAMESPACE, true)) {
-      String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
+      String candidate = readCandidate(prefs);
       prefs.end();
       JsonDocument candidateDoc;
       if (candidate.length() && !deserializeJson(candidateDoc, candidate)) {

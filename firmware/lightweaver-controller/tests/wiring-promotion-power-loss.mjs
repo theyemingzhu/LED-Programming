@@ -101,7 +101,7 @@ const finalizeBody = functionBody('finalizeCommittedPromotion', 'makeActivationI
 const finalizeActions = orderedActions(finalizeBody, [
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
   ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
-  ['drop-candidate', 'prefs.remove(NVS_CANDIDATE_CONFIG_KEY'],
+  ['drop-candidate', 'removeCandidate(prefs'],
   ['drop-candidate-id', 'prefs.remove(NVS_CANDIDATE_ID_KEY'],
 ]);
 assert.deepEqual(finalizeActions, ['disarm', 'drop-journal', 'drop-candidate', 'drop-candidate-id'],
@@ -286,7 +286,7 @@ const rollbackBody = functionBody('rollbackCandidateRuntimeConfig', 'getRuntimeW
 const rollbackCleanupActions = orderedActions(rollbackBody, [
   ['state-none', 'writeCandidateState(prefs, WIRING_CANDIDATE_NONE)'],
   ['drop-confirmed', 'prefs.remove(NVS_CONFIRMED_ID_KEY)'],
-  ['drop-candidate', 'prefs.remove(NVS_CANDIDATE_CONFIG_KEY)'],
+  ['drop-candidate', 'removeCandidate(prefs)'],
   ['drop-candidate-id', 'prefs.remove(NVS_CANDIDATE_ID_KEY)'],
 ]);
 assert.deepEqual(rollbackCleanupActions,
@@ -371,7 +371,7 @@ const stageBody = functionBody('stageRuntimeConfigJson', 'activateStagedRuntimeC
 const stageValidateMetadata = stageBody.indexOf('validateCandidateMetadataForBoot');
 const stageCleanupPrior = stageBody.indexOf('finalizeCommittedPromotion');
 const stagePruneLegacy = stageBody.indexOf('prefs.remove(NVS_LEGACY_CONFIG_KEY)');
-const stageStoreCandidate = stageBody.indexOf('prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json)');
+const stageStoreCandidate = stageBody.indexOf('writeCandidate(prefs, json)');
 const stageClearConfirmation = stageBody.indexOf('prefs.remove(NVS_CONFIRMED_ID_KEY)');
 const stageMarkCandidate = stageBody.indexOf('writeCandidateState(prefs, WIRING_CANDIDATE_STAGED)');
 assert.ok(stageValidateMetadata >= 0 && stageCleanupPrior > stageValidateMetadata,
@@ -382,7 +382,7 @@ assert.match(stageBody.slice(stagePruneLegacy, stageStoreCandidate),
   /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)/,
   'staging must commit legacy pruning before allocating a full candidate config');
 assert.match(stageBody.slice(stageStoreCandidate),
-  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*prefs\.getString\(NVS_CANDIDATE_CONFIG_KEY/,
+  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*readCandidate\(prefs/,
   'staging must exactly read back the candidate before assigning an activation id');
 assert.ok(stageClearConfirmation >= 0 && stageMarkCandidate > stageClearConfirmation,
   'staging must clear the prior confirmation fence before making candidate A bootable');
@@ -390,7 +390,7 @@ assert.match(stageBody, /confirmationCleared/,
   'staging must check confirmation-fence removal before committing candidate state');
 
 const stageActions = orderedActions(stageBody, [
-  ['store-candidate', 'prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json)'],
+  ['store-candidate', 'writeCandidate(prefs, json)'],
   ['store-candidate-id', 'prefs.putString(NVS_CANDIDATE_ID_KEY, activationId)'],
   ['drop-confirmed', 'prefs.remove(NVS_CONFIRMED_ID_KEY)'],
   ['mark-staged', 'writeCandidateState(prefs, WIRING_CANDIDATE_STAGED)'],

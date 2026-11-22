@@ -513,6 +513,29 @@ void removeClearsBothForms() {
 
 }  // namespace
 
+
+void candidateBesideASavedProjectNeedsTheBlob() {
+  // Real card lw-b0fe81f61b44, 2026-11-22: with a saved project on the card,
+  // staging a wiring change answered 400 "candidate storage failed". The
+  // candidate was a string beside the saved project; it must be a blob.
+  Nvs nvs;
+  seedUsedCard(nvs, 3400, 30);
+  Preferences prefs(nvs);
+  const std::string saved = project(3514, 'b');
+  assert(lightweaver::writeProject(prefs, BLOB_KEY, STRING_KEY, String(saved)) == saved.size());
+  const char* CANDIDATE_STRING_KEY = "candidateConfig";
+  const char* CANDIDATE_BLOB_KEY = "cdConfigBlob";
+  const std::string candidate = project(3514, 'w');
+  // As a string it finds no page (the defect).
+  assert(prefs.putString(CANDIDATE_STRING_KEY, String(candidate)) == 0);
+  // As a blob it fits beside the saved project, and both read back whole.
+  assert(lightweaver::writeProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY, String(candidate)) == candidate.size());
+  assert(same(lightweaver::readProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY), candidate));
+  assert(same(lightweaver::readProject(prefs, BLOB_KEY, STRING_KEY), saved));
+  // Rolling it back frees the room again for the next attempt.
+  assert(lightweaver::removeProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY));
+  assert(lightweaver::writeProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY, String(candidate)) == candidate.size());
+}
 int main() {
   costsMatchThePageArithmetic();
   stringProjectIsRefusedOnAUsedCard();
@@ -521,5 +544,6 @@ int main() {
   guardedRecordsKeepTheFullLimitAvailable();
   powerLossAtEveryStepKeepsOneWholeProject();
   removeClearsBothForms();
+  candidateBesideASavedProjectNeedsTheBlob();
   return 0;
 }

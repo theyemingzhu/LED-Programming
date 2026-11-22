@@ -19,7 +19,7 @@ const readStateAt = stage.indexOf('WiringCandidateState priorState = readCandida
 const validateAt = stage.indexOf('validateCandidateMetadataForBoot(prefs, priorState, message)');
 const rejectAt = stage.indexOf('if (priorState != WIRING_CANDIDATE_NONE)');
 const cleanupAt = stage.indexOf('finalizeCommittedPromotion(prefs)');
-const writeAt = stage.indexOf('prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json)');
+const writeAt = stage.indexOf('writeCandidate(prefs, json)');
 
 assert.ok(readStateAt >= 0 && validateAt > readStateAt,
   'staging should read and validate the persisted transaction before acting');
