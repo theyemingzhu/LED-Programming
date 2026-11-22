@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
+import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { useProject } from '../../state/ProjectContext.jsx';
-import { pushConfigToCard, readCardProjectEvidence } from '../../lib/cardPushClient.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
+import { pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
+import { prepareCardDeployment, waitForCardDeploymentVerification, correlateCardDeploymentReadinessEvidence, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../lib/cardWriteLease.js';
@@ -30,16 +31,19 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
     projectId, projectName, strips, wiring, compiledWiring,
     projectLifecycle, markProjectInstalled,
   } = useProject();
-  const [state, setState] = useState({ status: 'idle', message: '' });
+  // Shared, so a panel rebuilt while the card restarts keeps it (firstInstallState.js).
+  const state = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState);
+  const setState = ({ status, message }) => setFirstInstallState({ status, message });
   const busy = state.status === 'pending';
 
   const save = async () => {
-    if (busy) return;
+    if (busy || getFirstInstallState().phase === 'running') return;
     const cleanHost = String(host || getCardLinkState().host || 'lightweaver.local').trim().toLowerCase();
     const cardId = readPersistedCardIdentity()?.id || cleanHost;
     const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
     if (!claim.ok) { setState({ status: 'failed', message: claim.message }); return; }
     setState({ status: 'pending', message: 'Saving your project to the blank card…' });
+    setFirstInstallState({ cardId });
     onStart?.();
     let ok = false;
     try {
@@ -55,7 +59,15 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
           wiring,
           compiledWiring,
           standaloneController: controller,
-        });
+        }, (() => {
+          // The read-back below checks the exact paired card. Without its
+          // identity it threw "Exact card identity is required before
+          // installation" after a write that had landed (practice card,
+          // tests/blank-card-one-write.spec.ts; D10 on the real card).
+          const identity = readPersistedCardIdentity();
+          const card = getCardLinkState().card || {};
+          return { cardId: identity?.id || card.cardId || '', buildId: identity?.buildId || card.buildId || '' };
+        })());
         prepareCardStoragePayload(prepared.runtimePackage);
         const link = getCardLinkState();
         const fromBootId = link.validatedBootId || link.readiness?.bootId || '';
@@ -72,7 +84,15 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
           });
           setState({ status: 'pending', message: 'Restarting the card…' });
           const verification = await waitForCardDeploymentVerification(prepared, {
-            readEvidence: () => readCardProjectEvidence({ host: cleanHost, transport: transport || link.transport }),
+            // Project evidence joined with the card's status, as the ordinary
+            // install reads it (CardPushControl readReadyDeploymentEvidence):
+            // project evidence alone carries no readiness, so requireReady
+            // could never pass and a landed install read as failed.
+            readEvidence: async () => {
+              const route = { host: cleanHost, transport: transport || link.transport };
+              const [project, status] = await Promise.all([readCardProjectEvidence(route), readCardStatusEnvelope(route)]);
+              return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
+            },
             restartWaitMs: CARD_RESTART_WAIT_MS,
             restartFromBootId: fromBootId,
             requireReady: true,
@@ -92,6 +112,7 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
       ok = true;
     } catch (error) {
       setState({ status: 'failed', message: error?.message || 'Studio could not save the project to this blank card.' });
+      setFirstInstallState({ reason: String(error?.reason || '') });
     } finally {
       claim.release();
       onSettled?.(ok);
