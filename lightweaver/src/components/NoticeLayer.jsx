@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   MAX_VISIBLE_NOTICES,
   dismissNotice,
@@ -84,41 +84,86 @@ function NoticeCard({ notice }) {
   );
 }
 
-// The status bar is 32px tall by its stylesheet and 91px on a phone, because
-// its contents wrap. Docking the stack against the CSS number put a notice
-// 51px inside the bar on a 375px viewport — measured, not guessed. So the bar
-// is measured live instead: this is the one number the layer cannot assume.
-function useStatusBarHeight() {
+// The stack docks on whatever chrome sits along the bottom of the viewport:
+// the status bar on a desktop (32px by its stylesheet, more when it wraps),
+// the tab bar on a phone (styles/lw-phone.css). Docking against a CSS number
+// once put a notice 51px inside the bar on a 375px viewport, so the bottom
+// chrome is measured live instead.
+function bottomChromeHeight() {
+  const vh = window.innerHeight || 0;
+  let height = 0;
+  for (const el of document.querySelectorAll('.status-bar, .rail')) {
+    const r = el.getBoundingClientRect();
+    // Docked along the bottom edge, and a bar rather than a full-height column.
+    if (r.height > 0 && r.bottom >= vh - 1 && r.height < vh / 3) height = Math.max(height, Math.round(vh - r.top));
+  }
+  return height || 32;
+}
+
+function useBottomChromeHeight() {
   const [height, setHeight] = useState(32);
   useEffect(() => {
-    const bar = document.querySelector('.status-bar');
-    if (!bar) return undefined;
-    const read = () => setHeight(Math.round(bar.getBoundingClientRect().height) || 32);
+    const read = () => setHeight(bottomChromeHeight());
     read();
-    if (typeof ResizeObserver !== 'function') {
-      window.addEventListener('resize', read);
-      return () => window.removeEventListener('resize', read);
+    window.addEventListener('resize', read);
+    let observer;
+    if (typeof ResizeObserver === 'function') {
+      observer = new ResizeObserver(read);
+      document.querySelectorAll('.status-bar, .rail').forEach(el => observer.observe(el));
     }
-    const observer = new ResizeObserver(read);
-    observer.observe(bar);
-    return () => observer.disconnect();
+    return () => { window.removeEventListener('resize', read); observer?.disconnect(); };
   }, []);
   return height;
 }
 
+// Notices float, so a notice never moves a pixel of interface. On a phone that
+// alone was not enough: a full-width notice sat on top of whatever button was
+// at the bottom of the screen. So the layer also publishes the ground it
+// occupies, and the phone shell (styles/lw-phone.css) ends the screen and the
+// card setup sheet where the stack begins. Screens are top-anchored, so only
+// their bottom edge rises; nothing under the finger moves.
+const GAP = 8;
+function usePublishedStackGround(ref, active) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const clear = () => {
+      root.style.removeProperty('--lw-notice-stack-h');
+      root.style.removeProperty('--lw-notice-reserve');
+    };
+    const layer = ref.current;
+    if (!active || !layer) { clear(); return undefined; }
+    const publish = () => {
+      const r = layer.getBoundingClientRect();
+      root.style.setProperty('--lw-notice-stack-h', `${Math.ceil(r.height + GAP)}px`);
+      root.style.setProperty('--lw-notice-reserve', `${Math.ceil((window.innerHeight || 0) - r.top + GAP)}px`);
+    };
+    publish();
+    window.addEventListener('resize', publish);
+    let observer;
+    if (typeof ResizeObserver === 'function') {
+      observer = new ResizeObserver(publish);
+      observer.observe(layer);
+    }
+    return () => { window.removeEventListener('resize', publish); observer?.disconnect(); clear(); };
+  }, [ref, active]);
+}
+
 export function NoticeLayer() {
   const notices = useSyncExternalStore(subscribeToNotices, readNotices, readNotices);
-  const statusBarHeight = useStatusBarHeight();
+  const bottomChrome = useBottomChromeHeight();
+  const layerRef = useRef(null);
+  usePublishedStackGround(layerRef, notices.length > 0);
   if (!notices.length) return null;
   // Newest wins the visible slots, and being last in DOM order it paints
-  // closest to the status bar — so "newest" and "nearest" agree.
+  // closest to the bottom chrome — so "newest" and "nearest" agree.
   const visible = notices.slice(-MAX_VISIBLE_NOTICES);
   const hidden = notices.length - visible.length;
   return (
     <div
+      ref={layerRef}
       className="lw-notice-layer"
       data-testid="notice-layer"
-      style={{ '--lw-statusbar-h': `${statusBarHeight}px` }}
+      style={{ '--lw-statusbar-h': `${bottomChrome}px`, '--lw-bottom-chrome-h': `${bottomChrome}px` }}
     >
       {hidden > 0 && (
         <p className="lw-notice-overflow" data-testid="notice-layer-overflow">
