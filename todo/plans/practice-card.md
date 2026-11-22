@@ -1,5 +1,17 @@
 # Practice card — build log and decisions
 
+## Resume note (2026-11-22) — work complete, read this first
+**What exists (all on main):** the rule (CLAUDE.md "Which card to test against", `docs/practice-card.md`, #449); network guard so no test reaches the physical card (`lightweaver/tests/harness/networkGuard.ts`, #452, config-path fix + check #459); Fast and Real-timing profiles with trace-cited numbers (`tests/harness/practiceTiming.ts`, traces in `tests/harness/traces/`, #455); the practice card as a local HTTP card with a page (`tests/harness/practiceServer.ts`, `tests/harness/practice/index.html`); Studio in a routed window (`scripts/practice-studio.mjs`); read-only drift check (`scripts/practice-contract.mjs`); faithful bench-discovery state (`tests/harness/benchDiscoveryCard.ts`, #457).
+
+**How to run:** `lw practice` (Fast on 7101, Real-timing on 7102, page at http://127.0.0.1:7101/practice/, "Open Studio on this card"). In a spec: `createPracticeCard(spec, { timing: 'real' })` or `createBenchDiscoveryPracticeCard(...)`. Drift vs the physical card (GET only): `cd lightweaver && npm run practice:contract`. Real-timing run-wide: `LW_PRACTICE_TIMING=real` (direct `createCardSimulator` callers need the install() hook in D10 below, not committed).
+
+**Open items:**
+1. Playlist restart rule: make the practice card's playlist behaviour after a restart match the firmware (check firmware source first; the Real-timing reds in playlist-storage / playlist-timed point here).
+2. Looks read-back gap: `/api/config` carrying a new looks list leaves the simulator's `installedLooks` unchanged, so a second window re-adopts the old list (reported by the durability session).
+- Also queued: set `BENCH_DISCOVERY_STATE` firmwareControls/ledType/outputColor from the trace once claude/bench-count-set lands, and add them to `practice:contract`.
+
+**Rule:** merge nothing to main yourself; everything goes through the shipper, one batch at a time (coordinator, 2026-11-22).
+
 Brief (from the coordinating session, Adrian's words): "build the permanent practice card also, let's have two different modes and we can use the practice card in different modes simultaneously. One is for speed to run everything through as quick as possible. The other is to try to replicate the card as close as possible with the speed checks."
 
 ## Steps
