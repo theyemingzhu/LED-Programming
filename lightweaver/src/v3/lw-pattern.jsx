@@ -80,8 +80,8 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry } from '../lib/cardPushClient.js';
-import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
+import { noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
@@ -2325,8 +2325,10 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (staleCardConflict) setStaleCardConflict(false);
       setSavedAt(0);
       setInstallPreparing(true);
+      // While the save checks a slow card, the footer does not call it gone.
+      noteCardCheckHold();
       // The owner's "Save mine anyway" covers exactly one attempt, however it ends.
-      try { await savePreviewToCardRun(); } finally { setInstallPreparing(false); saveAnywayRef.current = false; }
+      try { await savePreviewToCardRun(); } finally { noteCardCheckRelease(); setInstallPreparing(false); saveAnywayRef.current = false; }
     };
     const savePreviewToCardRun = async () => {
       if (editingProjectOnly) {
@@ -2384,7 +2386,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         let checkingShown = false;
         const keepChecking = () => { checkingShown = true; setStatusKind('info'); setStatus('Checking card…'); };
         const before = await withCardReadRetry(
-          () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
           { onRetry: keepChecking },
         );
         if (!matchesCurrentCardProjectEvidence(before) && !matchesSameProjectCardEvidence(before)) {
@@ -2399,8 +2401,8 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
         saveAnywayRef.current = false;
         const [cardStatus, wiringStatus] = await withCardReadRetry(() => Promise.all([
-          readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
-          getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+          getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
         ]), { onRetry: keepChecking });
         assertCardDeploymentPreflightIdentity(before, cardStatus);
         if ((wiringStatus.cardId && wiringStatus.cardId !== before.cardId)
@@ -2541,9 +2543,15 @@ function writeSectionDisplayOrder(projectId, ids) {
           // so the owner is sent to do work that cannot succeed.
           setStatusKind('err');
           setStatus(error.message);
-        } else {
+        } else if (cardGaveNoAnswer(error) || !error?.message) {
           setStatusKind('err');
           setStatus('Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.');
+        } else {
+          // The card answered, and what it said stopped the save (a different
+          // project or boot than Studio adopted, an identity change). Say that,
+          // not "it did not answer" (F-D3, todo/plans/false-failures.md).
+          setStatusKind('err');
+          setStatus(`Not saved to the card: ${String(error.message).replace(/^Stopped before saving:\s*/i, '')}`);
         }
       } finally {
         if (restartPlanned) { noteCardRestartSettled(); setSaveRestarting(false); }

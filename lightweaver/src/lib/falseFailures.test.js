@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { initialCardLinkState, reduceCardLink, CARD_PLANNED_RESTART_MAX_MS } from './cardLink.js';
 import { deriveCardLifecycle, CARD_STARTING_GRACE_MS } from './cardLifecycle.js';
 import { waitForCardDeploymentVerification } from './cardDeployment.js';
-import { withCardReadRetry, isCardSilenceError, CardPushError } from './cardPushClient.js';
+import { withCardReadRetry, isCardSilenceError, CardPushError, CARD_READ_RETRY } from './cardPushClient.js';
 
 const HOST = 'lightweaver.local';
 const CARD_ID = 'lw-aabbccddeeff';
@@ -144,7 +144,7 @@ test('a quiet card during an ordinary verification is waited for, not failed aft
   assert.ok(reads > 20);
 });
 
-test('pre-save reads: a silent card is asked twice more, 3 s apart; a refusal is not retried', async () => {
+test('pre-save reads: a silent card is asked twice more, 1 s apart, 6 s each; a refusal is not retried', async () => {
   const waits = [];
   let calls = 0;
   const value = await withCardReadRetry(async () => {
@@ -153,7 +153,8 @@ test('pre-save reads: a silent card is asked twice more, 3 s apart; a refusal is
     return 'answered';
   }, { sleep: async ms => { waits.push(ms); } });
   assert.equal(value, 'answered');
-  assert.deepEqual(waits, [3000, 3000]);
+  assert.deepEqual(waits, [1000, 1000]);
+  assert.equal(CARD_READ_RETRY.timeoutMs, 6000, 'each try gives a busy card (3.4 s measured) room to answer');
 
   let refused = 0;
   await assert.rejects(withCardReadRetry(async () => {
@@ -214,4 +215,39 @@ test('a .local name that does not resolve is asked once; a quiet card address is
   assert.equal(await run('192.168.18.70'), 3);
   const timeout = Object.assign(new Error('aborted'), { name: 'AbortError' });
   assert.equal(isUnresolvedMdnsFailure('lightweaver.local', timeout), false, 'a slow .local card is still asked again');
+});
+
+test('while a save checks a slow card, missed keepalives do not say "stopped responding" (F-C1)', () => {
+  const at = 3_000_000;
+  const held = reduceCardLink(connectedDirect(), { type: 'card-check-hold', holdMs: 22000, at });
+  const missedTwice = reduceCardLink(reduceCardLink(held, { type: 'direct-ping-missed', host: HOST, at: at + 7000 }),
+    { type: 'direct-ping-missed', host: HOST, at: at + 14000 });
+  assert.equal(missedTwice.state, 'connected-direct');
+  const released = reduceCardLink(missedTwice, { type: 'card-check-release' });
+  const afterRelease = reduceCardLink(released, { type: 'direct-ping-missed', host: HOST, at: at + 15000 });
+  assert.equal(afterRelease.state, 'reconnecting', 'once the save stops checking, the miss rule applies again');
+});
+
+test('a card that never restarted is never told it "has not come back after restarting" (F-D2)', async () => {
+  const time = clock();
+  const error = await waitForCardDeploymentVerification(prepared, {
+    restartWaitMs: 45000, restartFromBootId: 'boot-1', intervalMs: 800, now: time.now, sleep: time.sleep,
+    readEvidence: async () => ({ cardId: CARD_ID, bootId: 'boot-1' }),
+  }).catch(caught => caught);
+  assert.equal(error.reason, 'save-not-applied');
+  assert.doesNotMatch(error.message, /come back|restart/i);
+});
+
+test('an old rollback record on a bench card running the restored build is history (F-D1)', () => {
+  const benchReadiness = {
+    ...readyReadiness, commandReady: false, playbackReady: false, provisionalSetup: true, uptimeMs: 49 * 60000,
+    buildId: 'b'.repeat(40), buildNumber: 2464,
+    firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'new-slot-rollback-detected', restoredBuildNumber: 2464, lastError: '' },
+  };
+  const lifecycle = deriveCardLifecycle({ link: link(benchReadiness), project: PROJECT });
+  assert.notEqual(lifecycle.state, 'update-rolled-back');
+  assert.notEqual(lifecycle.label, 'Update rolled back');
+  assert.equal(lifecycle.pastUpdateRolledBack, true);
+  const own = deriveCardLifecycle({ link: link(benchReadiness), project: PROJECT, update: { phase: 'rolled-back' } });
+  assert.equal(own.state, 'update-rolled-back', 'an update this browser ran still stops the owner');
 });

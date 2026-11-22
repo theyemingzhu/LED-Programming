@@ -1,5 +1,13 @@
 # False failures on a slow, healthy card
 
+## Now (crash rule: read this first)
+
+_Updated 2026-11-22._ Everything is committed and pushed; nothing lives only in a scratch folder.
+
+- Shipper's queue, stacked, Studio only: 1. `claude/stale-rollback-2` @ 9d325c26 (batches C+D, shipping now), 2. `claude/step3-activate-2` @ 9134ce64 (F-E1 with the F14 correction; replaces `claude/step3-activate`), 3. `claude/bench-count-set-2` (F-E2 on top of 2; replaces `claude/bench-count-set`). Shipping branch 3 ships 2 and 3.
+- Next step: none of mine is open. When the shipper reports its lane, fix any failure in these files; then watch one real Save to card and one Card Home light count Set on the gallery card (needs Adrian or the card-holding session).
+- Rule while the shipper's lane runs: no browser tests from this session (check `bash ~/builds/macload.sh`).
+
 Branch `claude/false-failures-e2a7fd`. Studio only; nothing under `firmware/`, no `VERSION` bump. Simulator only — nothing was sent to the real card.
 
 Adrian, 2026-11-21: "The places where it reports failed when it actually passes and the unresponsiveness and the delays … will lead to confusion and frustration."
@@ -100,3 +108,34 @@ All in `ci:browser-smoke` and `test:release-ui`. Each browser spec except the tw
 - **F-B4 Show.** A stream that stops reaching the lights shows "Waiting for the lights to answer…" with a spinner after 3 s (was an error), and pauses itself after 20 s (was 15 s). The pre-show card check asks 3 times, 4 s each (was 2 × 2.5 s). No browser test (needs the frame stream); reviewed in code only.
 
 Still open: watch one real Save on the gallery card (Adrian).
+
+## Batch C — a card that answers, slowly (2026-11-21, branch `claude/slow-card-reads`)
+
+Real-card finding on Studio build 2559 (coordinator): with the card answering status in about 3.4 s, Save to card showed "Checking card…", then after 6.8 s "Not saved to the card: it did not answer" and the footer "Card stopped responding", with no write attempted. Every Studio read gave the card 3 s or less, and the keepalive 2.5 s, so a busy card failed every try.
+
+- **D11.** Each card read gets 6 s (`CARD_READ_RETRY.timeoutMs`, and the defaults of `readCardProjectEvidence`, `readCardStatusEnvelope`, `readCardFirmwareInfoEnvelope`, `getCardWiringStatus`). Pre-save checks are asked 3 times, 1 s apart: about 20 s of "Checking card…" before Studio says the card did not answer, and the first answer goes straight on.
+- **D12.** The keepalive gets 6 s (`CARD_LINK_PING_TIMEOUT_MS`, was 2.5 s). Two consecutive misses (now about 25 s) still report the card gone.
+- **D13.** While a save is checking the card (Patterns, Card Home/Layout install, footer), the link holds "stopped responding" (`noteCardCheckHold`, up to 22 s); the save itself says what happened if the card never answers.
+
+Test: `tests/slow-card-reads.spec.ts` on the Real-timing practice card — direct and bridge, reply delay 3.5 s and a 10 s silence. Direct at 3.5 s was red on the code then live ("Not saved to the card: it did not answer", "Card stopped responding") and is green now; the other three were already green in the simulator and stay as guards. Unit: `falseFailures.test.js` check-hold rule.
+
+## Batch D — stale rollback, false restart timeout, mismatch named (2026-11-21, branch `claude/stale-rollback`)
+
+From the physical card on live build 2559 (coordinator and durability run):
+
+- **F-D1.** A bench/provisional card (never command-ready) repeating an old `firmwareUpdate.phase: 'rolled-back'` was "Update rolled back" and "The last card operation failed" in every fresh browser. A past rollback this browser did not start is now history when the card runs exactly the build the record says it restored (`restoredBuildId` or `restoredBuildNumber`), ready or not. An update this browser ran still stops the owner. Test: `stale-rollback-bench-card.spec.ts` (red before, green now) and `falseFailures.test.js`.
+- **F-D2.** "The card has not come back after restarting (45 s)" was shown about a card that never restarted (Layout count change; the one candidate POST went nowhere). The restart wait now runs only when the card's reply said it is restarting. A lost reply is read back as it is; and if the card answered from the same boot all along, Studio says it "did not take this save", never "has not come back". Unit test in `falseFailures.test.js`.
+- **F-D3.** A card that answered at once, but with a project/boot/build Studio had not adopted, was reported as "Not saved to the card: it did not answer". "Did not answer" now appears only when no answer came (`cardGaveNoAnswer`); otherwise the reason the card's answer stopped the save is shown. Guard spec in `stale-rollback-bench-card.spec.ts` (green on the old code too; the exact durability case awaits its request records).
+- **Open:** Card Home "Light count" Set on the bench card sent only `GET /api/wiring/status` on the real card. The practice card's `provisional` state is not faithful (no fingerprint, outputs not named `bench-18`), so the count write cannot be reproduced yet; a faithful bench state was asked of the practice-card session.
+- **F-D4.** The shipper held batch C on a 0.8 s "no sign of work" gap in the Layout spec. Measured under 8-way CPU load (3 of 3 reproduced), it had two parts: (a) real — Layout's "Check and install" opens Card Home's install task, which ran its preflight reads before showing anything; it now shows "Checking card…" with a spinner from the moment the task opens with an install queued, and from the first instant of a press; (b) a measuring artifact after success — arriving on Patterns with the card holding the project. The watch now records the screen at the start of the longest gap and stops counting once the save's success is shown; the 600 ms limit is unchanged. 6 of 6 under the same load after the fix.
+
+## Batch E — the staged wiring the owner could never test (2026-11-21, branch `claude/step3-activate`)
+
+Real card, live 2559 (durability run): moving the bench card (256 lights) to a 5-section 41-light project from Layout's "Check and install" posted the wiring candidate (70 s after the press), the card staged it, and "Start light test" never appeared. Card Home sat at "Step 2 of 3" with step 3 locked, the install banner said "The card has not come back after restarting (45 s)", the footer "Update rolled back", and the staged change expired with the card still at 256.
+
+- **F-E1 (cause).** The candidate's "staged" reply was late or lost. Studio filed the write as "unconfirmed" and waited for a project read-back and a restart, neither of which a staged wiring change ever gives, and never asked the card what it held. Now, after any uncertain write, Studio reads `/api/wiring/status` (up to five looks, 2 s apart, 6 s each); if the card holds this exact staged change it shows "Start light test", exactly as if the reply had arrived. Test: `step3-activate.spec.ts` "the staged reply arrives late" — red on this branch before the fix with the real card's screen (Step 2 of 3, step 3 locked, no light test), green after.
+- **The 70 s wait.** On 2559 every read gave the card 3 s or less; a busy card (~3.4 s) failed each try and its retries before the candidate went out. Batch C's 6 s reads fix it: the Real-timing card answering in 3.5 s gets its candidate 18 s after the press (test bound 20 s). The remaining ~18 s is five sequential pre-checks at 3.5 s each.
+- The false labels on that screen ("Update rolled back", "has not come back after restarting") were fixed in batch D. "Card is not connected" never appeared in the simulator with this branch.
+- Fixtures: the durability run's real-card read-back and the 5-strip project, `tests/fixtures/real-card-bench-2026-11-21/`. Its handover spec (`staged-candidate-activates.spec.ts`, never pressing "Start light test") is superseded by `step3-activate.spec.ts` and not committed.
+- **F-E1 correction (shipper, 2026-11-22).** The first F-E1 commit (0455adaf) broke F14 (`journey-count-save.spec.ts`, 3/3 red): after any uncertain write it made up to five 6 s wiring-status reads, and a length-only save restarts the card, so every read failed and "Verifying the exact project…" was held back ~40 s and overwritten. Staging never restarts the card, so the look now stops at the first read that gets no answer, asks an answering card with no candidate only once more (2 s), and no longer replaces the status line. The lost-reply test now uses `respondThenDrop` (stored, reply lost), the real shape; `answerAfter` also delayed storing it. F14 3/3 green; `step3-activate.spec.ts` 4/4; the lost-reply case is red with the look disabled.
+- **F-E2 (Card Home "Light count" Set on the bench card).** On the real card (live 2559, hosted https Studio) Set 41 went "Setting…" then "Count saved here. The card did not take it yet" and no write was sent. Cause: `applyLedCountOnCard` forced every read to `transport: 'direct'`, which the browser blocks on the https page before it leaves, so the card never saw the request. It now follows the card link's route. Two more on the same path: a count change restarts the card and its reply is lost, which read as "The card did not answer" (now the card is read back and accepted if it holds the new count), and my own batch-1 restart wait in Card Home forced `'direct'` too (fixed). Simulator: firmware-info now carries the real card's `ledType` and `outputColor`, and `controls` opt-in (`state.firmwareControls`); the bench practice state should carry `controls` (asked of the practice-card session). Test: `bench-count-set.spec.ts`, direct and hosted; the hosted case is red with the forced route and green with the link's route.

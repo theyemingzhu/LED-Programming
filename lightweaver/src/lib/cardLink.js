@@ -48,7 +48,10 @@ import {
 
 export const CARD_LINK_PING_INTERVAL_MS = 5000;
 export const CARD_LINK_DIRECT_PING_INTERVAL_MS = 20000;
-export const CARD_LINK_PING_TIMEOUT_MS = 2500;
+// A busy real card answers status in ~3.4 s (2026-11-21). At 2.5 s every
+// keepalive to it failed and the footer said "Card stopped responding" about a
+// card that was answering (F-C1).
+export const CARD_LINK_PING_TIMEOUT_MS = 6000;
 export const CARD_LINK_PING_MISS_LIMIT = 2;
 export const CARD_LINK_CONNECT_TIMEOUT_MS = 15000;
 /**
@@ -358,6 +361,10 @@ export const CARD_PLANNED_RESTART_MAX_MS = 45000;
 // Studio asked the card to restart (every accepted project save does). Until
 // the deadline, silence is the restart Studio is waiting for, not a card that
 // "stopped responding" (todo/plans/false-failures.md).
+function checkHoldActive(prev, event) {
+  return (Number(prev.checkHoldUntil) || 0) > (Number(event.at) || Date.now());
+}
+
 function plannedRestartActive(prev, event) {
   const until = Number(prev.plannedRestartUntil) || 0;
   const now = Number(event.at) || Date.now();
@@ -382,6 +389,17 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
         }),
         plannedRestartUntil: now + waitMs,
       };
+    }
+    // A save is checking the card (up to ~20 s, F-C1). Missed keepalives in
+    // that window are the same slowness the save is already waiting out; the
+    // save itself says what happened if the card never answers.
+    case 'card-check-hold': {
+      const now = Number(event.at) || Date.now();
+      return { ...prev, checkHoldUntil: now + Math.max(0, Number(event.holdMs) || 0) };
+    }
+    case 'card-check-release': {
+      if (!prev.checkHoldUntil) return prev;
+      return { ...prev, checkHoldUntil: 0 };
     }
     case 'card-restart-settled': {
       if (!prev.plannedRestartUntil) return prev;
@@ -708,6 +726,9 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (prev.state === 'connected-bridge' && missedPings < missLimit && !explicitIdentityError) {
         return { ...prev, missedPings };
       }
+      if (prev.state === 'connected-bridge' && checkHoldActive(prev, event) && !explicitIdentityError) {
+        return { ...prev, missedPings };
+      }
       if (prev.state === 'revalidating' && plannedRestartActive(prev, event) && !explicitIdentityError) {
         return prev.missedPings === missedPings ? prev : { ...prev, missedPings };
       }
@@ -742,7 +763,7 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       // one. A real card goes quiet for 4–12 s while its Wi-Fi re-associates;
       // demoting on the first miss told the owner a healthy card had
       // "stopped responding". Only consecutive misses up to the limit count.
-      if (prev.state === 'connected-direct' && missedPings < missLimit) {
+      if (prev.state === 'connected-direct' && (missedPings < missLimit || checkHoldActive(prev, event))) {
         return { ...prev, missedPings };
       }
       if (prev.state === 'revalidating' && plannedRestartActive(prev, event)) {
@@ -1767,6 +1788,15 @@ export function getCardLinkState() {
  */
 export function noteCardRestartPlanned({ waitMs = CARD_PLANNED_RESTART_MAX_MS, link = getSharedCardLink() } = {}) {
   link.dispatch({ type: 'card-restart-planned', waitMs, at: Date.now() });
+}
+
+/** A save is checking the card; hold "stopped responding" for up to `holdMs`. */
+export function noteCardCheckHold({ holdMs = 22000, link = getSharedCardLink() } = {}) {
+  link.dispatch({ type: 'card-check-hold', holdMs, at: Date.now() });
+}
+
+export function noteCardCheckRelease({ link = getSharedCardLink() } = {}) {
+  link.dispatch({ type: 'card-check-release' });
 }
 
 /** The save that planned a restart has finished waiting, however it ended. */

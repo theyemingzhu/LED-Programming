@@ -541,7 +541,7 @@ test('firmware workflow builds, signs, commits, and uploads one release set', as
   );
   assert.equal(
     packageJson.scripts['test:core:source'],
-    'npm run test:installer-core && node --test src/lib/firmwareRelease.test.js && node scripts/run-core-source-tests.mjs',
+    'npm run test:installer-core && node --test src/lib/firmwareRelease.test.js && node --test tests/playwright-configs-guarded.test.mjs && node scripts/run-core-source-tests.mjs',
   );
   assert.equal(
     packageJson.scripts['test:installer-core'],

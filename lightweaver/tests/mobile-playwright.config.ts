@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 import { testPort as port, testBaseURL } from './testPort.mjs';
 import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
@@ -24,7 +25,8 @@ import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; //
 // the mobile controls sheet, so their locators sit behind an inert boundary.
 export default defineConfig({
   testIgnore: guardTestIgnore,
-  globalTeardown: './harness/networkGuard.ts',
+  // Absolute: configs that spread this one from another folder resolve relative paths from THEIR folder.
+  globalTeardown: fileURLToPath(new URL('./harness/networkGuard.ts', import.meta.url)),
   testDir: '.',
   // Only the specs actually converted to work at both widths. Without this the
   // phone lens picks up all 57 spec files and reports ~700 tests, most of them

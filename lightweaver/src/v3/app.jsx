@@ -35,6 +35,8 @@ import {
   getCardLinkState,
   isCardLinkConnected,
   isCardTransportConnected,
+  noteCardCheckHold,
+  noteCardCheckRelease,
   reportCardStatusEnvelope,
   reportDirectCardStatus,
   subscribeCardLink,
@@ -115,7 +117,7 @@ import { applyTypedLedCountToCard } from '../lib/applyLedCountToCard.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { syncRuntimePackageToCard } from '../lib/cardSectionSync.js';
-import { readCardProjectEvidence } from '../lib/cardPushClient.js';
+import { CARD_READ_RETRY, readCardProjectEvidence, withCardReadRetry } from '../lib/cardPushClient.js';
 import { createCardProjectRepository } from '../lib/cardProjectRepository.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import {
@@ -1584,7 +1586,11 @@ function Shell({ offlineUpdateController = null }) {
         });
         prepareCardStoragePayload(prepared.runtimePackage);
         const packageForCard = runtimePackageForCardOperation(prepared.runtimePackage, { operation: 'save' });
-        const before = await readCardProjectEvidence({ host, transport: cardLink.transport });
+        // A slow or briefly quiet card is asked again (F-C1), and the footer
+        // does not call it gone while this save is checking it.
+        noteCardCheckHold();
+        const before = await withCardReadRetry(() => readCardProjectEvidence({ host, transport: cardLink.transport, timeoutMs: CARD_READ_RETRY.timeoutMs }))
+          .finally(() => noteCardCheckRelease());
         await syncRuntimePackageToCard({
           host,
           transport: cardLink.transport,
