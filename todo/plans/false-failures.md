@@ -4,7 +4,7 @@
 
 _Updated 2026-11-22._ Everything is committed and pushed; nothing lives only in a scratch folder.
 
-- Shipper's queue, stacked, Studio only: 1. `claude/stale-rollback-2` @ 9d325c26 (batches C+D), 2. `claude/step3-activate` @ 0455adaf (F-E1), 3. `claude/bench-count-set` (F-E2, this file's latest commit). Shipping branch 3 ships all three.
+- Shipper's queue, stacked, Studio only: 1. `claude/stale-rollback-2` @ 9d325c26 (batches C+D, shipping now), 2. `claude/step3-activate-2` @ 9134ce64 (F-E1 with the F14 correction; replaces `claude/step3-activate`), 3. `claude/bench-count-set-2` (F-E2 on top of 2; replaces `claude/bench-count-set`). Shipping branch 3 ships 2 and 3.
 - Next step: none of mine is open. When the shipper reports its lane, fix any failure in these files; then watch one real Save to card and one Card Home light count Set on the gallery card (needs Adrian or the card-holding session).
 - Rule while the shipper's lane runs: no browser tests from this session (check `bash ~/builds/macload.sh`).
 
