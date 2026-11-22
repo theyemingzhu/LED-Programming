@@ -188,3 +188,27 @@ Branch `claude/mobile-ux` (on top of `claude/simpler-journeys-build`). One style
 **Last verified (before the hold):** `tests/phone-shell.spec.ts` 8/8; 22 related specs compared with base, no regressions; mobile config has the same 2 reds as base (pattern-lab-isolation:239, setup-phone:75).
 
 **Resume point:** if the simpler-journeys branch has moved, rebase onto it. Then re-run `tests/phone-shell.spec.ts`, `notice-layer`, `playlist-timed`, `strip-discovery:407` and the mobile config. Then open the PR, or let the audit session ship it.
+
+## Measured on Studio build 2623 (live), 2026-11-22
+
+Re-measured on `origin/main` 7565de7b (nine cuts merged as #458, the mobile batch as #467), practice card Fast, `--workers=1`, alone on the lane. Phone 390 and desktop 1280 gave the same counts for every journey.
+
+| Journey | Before | Predicted | Measured |
+|---|---|---|---|
+| First setup from a blank card | 16 / 15 | 10 | **10** |
+| Change the LED count | 4 | 2 | **2** |
+| Fresh browser picks up the card | 3 | 2 | **2** |
+| Update the card | 3 | 2 | **2** |
+| Rename and save | 4 | 3 | **3** |
+| USB Wi-Fi setup (blank card) | 6 | 6 | 6 |
+| Connect a remembered card | 0 | 0 | 0 |
+| Card back after Wi-Fi drop | 0 | 0 | 0 |
+| Pick a look | 2 | 2 | 2 |
+| Save a look | 2 | 2 | 2 |
+| Change and delete a look | 6 | 6 | 6 |
+| Build and reorder a playlist | 6 | 6 | 6 |
+| **All twelve** | **52 / 51** | **41** | **41 phone, 41 desktop** |
+
+No measured count missed its target. One driver needed a fix on main: "Save a look" pressed "Install on card", which main now calls "Save to card" (glossary); the press count is unchanged.
+
+Page: https://claude.ai/artifact/MLSTjcKs785q9zFF82hZcJ (real after-screenshots from build 2623).
