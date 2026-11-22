@@ -1,0 +1,251 @@
+/* ============================================================
+   Lightweaver — the phone shell (≤ 640px)
+   ============================================================
+   One arrangement for the whole of Studio on a phone, decided once
+   (todo/plans/simpler-journeys.md → "Mobile UI/UX"):
+
+     top bar        what this is, project actions
+     status line    is the card answering, which builds   (read-only feel)
+     the screen     the work — full width
+     tab bar        where to go                            (thumb reach)
+
+   - The left rail becomes the tab bar. On a 390px phone the rail
+     took 58px (15%) of every screen's width.
+   - The footer becomes the status line under the top bar. At the
+     bottom it sat directly under the screen's own buttons, styled as
+     boxes, so it read as part of the work. Up top, in plain text,
+     it reads as the machine reporting on itself.
+   - Notices dock directly above the tab bar, and the screen (and the
+     card setup sheet) end where the notice begins. Nothing slides:
+     every screen is top-anchored, so only its bottom edge rises. A
+     notice therefore never sits on top of a control.
+
+   Tokens only (v3-styles.css). Loaded last in main.jsx so it wins
+   the cascade; never loaded by card-main.jsx, so the signed card
+   bundle is untouched.
+   ============================================================ */
+
+@media (max-width: 640px) {
+  .app {
+    --studio-rail-width: 0px;
+    --lw-tabbar-h: calc(54px + env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top"
+      "stat"
+      "body"
+      "rail";
+  }
+  .app > .screen {
+    grid-column: 1 / -1;
+    grid-row: 3 / 4;
+    /* The notice stack's height, published by NoticeLayer while a
+       notice shows. The screen gives that ground up at its bottom. */
+    margin-bottom: var(--lw-notice-stack-h, 0px);
+  }
+
+  /* ── Tab bar (was the left rail) ─────────────────────────── */
+  .rail {
+    grid-area: rail;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
+    min-height: var(--lw-tabbar-h);
+    padding: 0 4px env(safe-area-inset-bottom);
+    overflow: visible;
+    border-right: 0;
+    border-top: 1px solid var(--border-hair);
+  }
+  .rail .spring,
+  /* Batch production flashes cards over USB, which phone browsers
+     cannot do. The workshop door stays on desktop. */
+  .rail .rail-workshop { display: none; }
+  .rail-item {
+    flex: 1 1 0;
+    width: auto;
+    max-width: 76px;
+    height: 54px;
+    min-height: 44px;
+    border-radius: var(--r-sm);
+  }
+  .rail-item .lbl { font-size: 10.5px; }
+  .rail-item.active::before {
+    left: 50%; top: 0;
+    transform: translateX(-50%);
+    width: 24px; height: 2px;
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* ── Status line (was the footer) ────────────────────────── */
+  .status-bar,
+  .status-bar:has(.sb-offline) {
+    grid-area: stat;
+    display: flex;
+    /* Always one row: a long firmware line shortens with an ellipsis
+       (its full text stays in the title and the accessible name). */
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0 10px;
+    height: auto;
+    min-height: 34px;
+    padding: 0 10px;
+    border-top: 0;
+    border-bottom: 1px solid var(--border-hair);
+  }
+  .status-bar .sb-spring { display: block; flex: 1; }
+  /* Read as status, not as boxed buttons. Still pressable: the card
+     word opens the Connection Center, the firmware line the update. */
+  .status-bar .card-status-control,
+  .status-bar .card-status-control.is-connected,
+  .status-bar .card-status-control.is-needs-attention {
+    height: 34px; min-height: 34px;
+    padding-inline: 0;
+    background: transparent;
+    border-color: transparent;
+  }
+  .status-bar button.sb-firmware {
+    min-height: 34px;
+    padding-inline: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-hi);
+    text-decoration: underline;
+    text-decoration-color: var(--accent-line);
+    text-underline-offset: 3px;
+  }
+  .status-bar .sb-firmware { padding-inline: 0; white-space: nowrap; display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; line-height: 34px; }
+  .status-bar .sb-card { flex: 0 0 auto; max-width: 60%; min-width: 0; }
+  .status-bar .sb-freshness { flex: 0 0 auto; }
+  /* The short-strip preview is a bench tool with its own row of
+     controls; there is no room for it beside three facts. */
+  .status-bar .sb-teststrip { display: none; }
+
+  /* ── Notices: above the tab bar, never over a control ───────── */
+  .lw-notice-layer {
+    left: 8px;
+    right: 8px;
+    /* 12px, as on desktop: a notice arrives sliding up 10px (lw-notice-in),
+       so an 8px gap let it cross the tab bar for a few frames. */
+    bottom: calc(var(--lw-bottom-chrome-h, 54px) + 12px);
+  }
+
+  /* ── Pattern Lab's control sheet stops above the tab bar ─────
+     Its peek and half detents are non-modal and were anchored to the
+     viewport bottom, over the old footer; on a phone that is now the tab
+     bar, and covering it stranded the owner in Lab. The full detent is
+     modal and may still cover it. */
+  .app .plab-screen { --plab-sheet-peek: min(34dvh, 290px); }
+  .app .plab-screen[data-sheet-detent="peek"] .plab-controls,
+  .app .plab-screen[data-sheet-detent="half"] .plab-controls { bottom: var(--lw-tabbar-h); }
+  .app .plab-screen[data-sheet-detent="peek"] .plab-preview,
+  .app .plab-screen[data-sheet-detent="half"] .plab-preview { padding-bottom: var(--plab-sheet-h); }
+
+  /* ── Card setup sheet: edge to edge, ends where a notice begins ── */
+  .card-setup-backdrop:not(.is-minimized) {
+    padding: 0 0 var(--lw-notice-reserve, 0px);
+    /* Edge to edge and from the top, but only as tall as its step
+       (strip-discovery.spec: "content-sized"). */
+    place-items: start stretch;
+    /* The sheet fills the phone, so nothing behind it needs to show
+       through the strip a notice reserves. */
+    background: var(--bg-app);
+  }
+  .card-setup-backdrop:not(.is-minimized) .card-setup-overlay {
+    width: 100%;
+    max-height: 100%;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+  }
+  /* The sheet's safety row was three stacked rows (150px). One row of two
+     buttons with the reminder under it gives the step back ~70px. */
+  .card-setup-overlay-foot {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  }
+  .card-setup-overlay-foot > p { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
+  .card-setup-overlay-foot > .btn { justify-self: end; }
+}
+
+/* ============================================================
+   Phone density (≤ 640px)
+   ============================================================
+   Adrian, 2026-11-21: "far too big … We're trying to get as much
+   vertical room and horizontal room as possible." Desktop sizes
+   were carried onto the phone unchanged: 24px headings, 18px card
+   padding, 20px button side-padding, 86px-tall door buttons.
+
+   One scale for every phone screen:
+     screen title 17 · section title 15 · body 13 · labels 11
+     panel padding 10–12 · button side-padding 12
+   Buttons keep the 44px height: it is the phone tap minimum the
+   suite enforces (~38 checks). Everything around them shrinks.
+   ============================================================ */
+@media (max-width: 640px) {
+  /* Titles */
+  .app > .screen h1 { font-size: 17px; line-height: 1.25; }
+  .app > .screen h2 { font-size: 15px; line-height: 1.3; }
+  .app > .screen h3 { font-size: 14px; }
+  /* A title the screen focuses for screen readers is not a control;
+     the focus ring drew a box round it that read as a button. */
+  .app > .screen :is(h1, h2)[tabindex="-1"]:focus { outline: none; }
+
+  /* Buttons: same height, less padding and type */
+  .app > .screen .btn,
+  .card-setup-overlay .btn { padding-inline: 12px; font-size: 13px; }
+  .app > .screen .btn-lg { padding: 0 12px; font-size: 13px; min-height: 44px; }
+  .app > .screen .btn.primary { box-shadow: none; }
+
+  /* Panels: Card workspace, install and update */
+  .app > .screen .card-workspace-body { padding: 10px 8px 24px; }
+  .app > .screen .card,
+  .app > .screen .install-action-card { padding: 10px 12px; }
+  .app > .screen .lw-mod { padding: 12px; }
+  .app > .screen .lw-mod-head { padding: 8px 12px; }
+  .app > .screen .lw-fact { padding: 8px 12px; }
+  .app > .screen .card-page-fold-body { padding: 10px 12px 12px; }
+  .app > .screen .card-page-fold-body > summary,
+  .app > .screen details > summary { padding-inline: 12px; }
+  .app > .screen .lw-setup-identity-door { padding: 6px 10px; }
+  .app > .screen .card-page-fold-body button:not(.btn) { padding: 8px 10px; }
+  .app > .screen .lwb-quiz { padding: 10px 12px; }
+  .app > .screen .lw-fact b,
+  .app > .screen .lwb-quiz b { font-size: 18px; line-height: 1.2; }
+
+  /* Gaps: 18–20px between blocks became 8–10px */
+  .app > .screen .card-workspace-header { margin-bottom: 10px; }
+  .app > .screen .card-overview { gap: 10px; }
+  .app > .screen .lw-mod { gap: 8px; margin-top: 10px; }
+  .app > .screen .lw-mod:first-child { margin-top: 0; }
+  .app > .screen .lw-fact { gap: 6px; }
+  .app > .screen .lw-fact-v { gap: 6px; }
+  .app > .screen .install-action-card { gap: 8px; }
+  .app > .screen .install-action-card dl,
+  .app > .screen .install-action-card dl > div { gap: 2px 10px; margin-block: 0; }
+  .app > .screen .btn-lg { box-shadow: none; }
+
+  /* Off-scale parts. Each component sheet set its own sizes, so nothing
+     shared a scale: a 32px count box, 24px stat numbers, 80–109px door
+     buttons, 69px output buttons. Measured by tests/ux/_scale.measure.spec.ts;
+     guarded by tests/phone-shell.spec.ts ("one scale"). */
+  .strip-discovery .strip-discovery-counts label { display: inline-flex; align-items: center; gap: 10px; }
+  .strip-discovery .strip-discovery-counts input {
+    width: 88px; min-height: 44px; height: 44px;
+    font-size: 15px; font-family: var(--font-mono);
+  }
+  .strip-discovery .strip-discovery-counts input::placeholder { font-size: 13px; }
+  .strip-discovery .strip-discovery-grid .strip-discovery-port { min-height: 44px; height: auto; padding: 6px; }
+  .app > .screen .set .set-stat b { font-size: 15px; }
+  .app > .screen .pm .pl-stat .v { font-size: 15px; }
+  .app > .screen .card-support-grid { gap: 6px; }
+  .app > .screen .card-support-grid > button { min-height: 0; padding: 8px 10px; gap: 2px; }
+  .app > .screen .lw-setup-identity-door { min-height: 0; gap: 2px; }
+
+  /* Card setup sheet */
+  .card-setup-overlay h2 { font-size: 16px; }
+  .card-setup-overlay-head { padding: 8px 12px; }
+}
