@@ -255,12 +255,7 @@ for (const viewport of VIEWPORTS) {
           else document.documentElement.style.removeProperty('--font-ui');
         }, useFallbackFont);
         const firstRow = (await page.locator('.pl-row').first().boundingBox())!;
-        // The bottom chrome: the status bar on desktop, the tab bar on a phone
-        // (styles/lw-phone.css moves the status line under the top bar).
-        const footer = await page.evaluate(() => ({ y: Math.min(...[...document.querySelectorAll('.status-bar, .rail')]
-          .map(el => el.getBoundingClientRect())
-          .filter(r => r.height > 0 && r.bottom >= innerHeight - 1 && r.height < innerHeight / 3)
-          .map(r => r.top), innerHeight) }));
+        const footer = (await page.locator('.status-bar').boundingBox())!;
         for (const control of [
           page.getByRole('button', { name: 'Install playlist on card' }),
           page.getByTestId('playlist-fade-seconds'),
