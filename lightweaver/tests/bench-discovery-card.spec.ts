@@ -33,6 +33,9 @@ test('the bench-discovery practice card answers what the physical card answered'
     if (p === '/api/firmware-info') expect(sim.piece?.id).toBe(want.piece?.id);
     expect(outputsOf(sim), `${p} outputs`).toEqual(outputsOf(want));
   }
+  const info = await get('/api/firmware-info');
+  const wantInfo = real('firmware-info');
+  expect(pick(info, ['ledType', 'outputColor', 'controls'])).toEqual(pick(wantInfo, ['ledType', 'outputColor', 'controls']));
   const status = await get('/api/status');
   expect(pick(status.firmwareUpdate, ['phase', 'rollbackReason', 'restoredFirmwareVersion', 'restoredBuildNumber', 'lastError']))
     .toEqual(pick(real('status').firmwareUpdate, ['phase', 'rollbackReason', 'restoredFirmwareVersion', 'restoredBuildNumber', 'lastError']));

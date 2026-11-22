@@ -22,6 +22,9 @@ const opt = (name, fallback) => {
 const cardHost = opt('card', '192.168.18.70');
 const jsonOut = opt('json', '');
 const practicePort = Number(opt('port', '7199'));
+// Which practice state to compare against: the one the physical card holds.
+// It has held the factory bench-discovery project since 2026-11-21.
+const stateId = opt('state', 'bench-discovery');
 const TIMEOUT_MS = 4_000;
 const SPACING_MS = 700;
 
@@ -34,6 +37,20 @@ const SCRIPT = [
   ...Array(2).fill('/api/zones'),
   ...Array(3).fill('/api/wiring/status'),
 ];
+
+// Values that must match exactly, not just in shape: the card's fixed
+// hardware facts. Live fields (pressed flags, event counts, aLow) are left out.
+const VALUE_CHECKS = {
+  '/api/firmware-info': [
+    'ledType', 'outputColor',
+    'controls.encoder.a', 'controls.encoder.b', 'controls.encoder.press',
+    'controls.encoder.configuredAlternatePress', 'controls.encoder.effectiveAlternatePress',
+    'controls.encoder.rotateDirection', 'controls.encoder.brightnessStep',
+    'controls.previous', 'controls.next', 'controls.blackout', 'controls.statusLed',
+    'controls.brightnessAnalog',
+  ],
+};
+const at = (o, dotted) => dotted.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
 
 // A timing is drift when it differs by more than BOTH of these.
 const TOLERANCE = { ratio: 0.5, ms: 40 };
@@ -93,20 +110,24 @@ function compare(real, practice) {
     const practiceMs = median(qOk.map(x => x.ms));
     const diff = Math.abs(realMs - practiceMs);
     const timingDrift = Number.isFinite(diff) && diff > TOLERANCE.ms && diff > TOLERANCE.ratio * realMs;
+    const valueDiff = (VALUE_CHECKS[p] || []).flatMap(k => {
+      const a = JSON.stringify(at(rOk[0]?.body, k));
+      const b = JSON.stringify(at(qOk[0]?.body, k));
+      return rOk.length && qOk.length && a !== b ? [`${k}: card ${a}, practice ${b}`] : [];
+    });
     return {
       path: p,
       real: { answered: rOk.length, asked: r.length, medianMs: Math.round(realMs), statuses: [...new Set(r.map(x => x.status))] },
       practice: { answered: qOk.length, asked: q.length, medianMs: Math.round(practiceMs), statuses: [...new Set(q.map(x => x.status))] },
-      timingDrift, missing, extra, typeDiff,
+      timingDrift, missing, extra, typeDiff, valueDiff,
       statusDrift: String(r.map(x => x.status).sort()) !== String(q.map(x => x.status).sort()),
     };
   });
 }
 
 const harness = await loadPracticeHarness();
-const { REAL_CARD_STATE } = harness;
 const server = harness.startPracticeServer({
-  port: practicePort, mode: 'real', stateId: REAL_CARD_STATE?.id || 'real-card-as-found',
+  port: practicePort, mode: 'real', stateId,
   // Spontaneous silences are random; a contract run compares ordinary replies.
   overrides: { spontaneousSilence: null },
   pagePath: path.join(lightweaverRoot, 'tests', 'harness', 'practice', 'index.html'),
@@ -114,7 +135,7 @@ const server = harness.startPracticeServer({
 });
 await new Promise(r => server.server.on('listening', r));
 
-console.log(`Replaying ${SCRIPT.length} read-only requests against the physical card (${cardHost}) and the Real-timing practice card…`);
+console.log(`Replaying ${SCRIPT.length} read-only requests against the physical card (${cardHost}) and the Real-timing practice card (${stateId})…`);
 const [real, practice] = await Promise.all([replay(`http://${cardHost}`), replay(`http://127.0.0.1:${practicePort}`)]);
 server.server.close();
 
@@ -133,6 +154,7 @@ for (const row of rows) {
   if (row.statusDrift) flags.push(`answers: card ${row.real.statuses.join('/')}, practice ${row.practice.statuses.join('/')}`);
   if (row.missing.length) flags.push(`practice lacks ${row.missing.length} field(s): ${row.missing.slice(0, 8).join(', ')}${row.missing.length > 8 ? ', …' : ''}`);
   if (row.extra.length) flags.push(`practice adds ${row.extra.length} field(s): ${row.extra.slice(0, 8).join(', ')}${row.extra.length > 8 ? ', …' : ''}`);
+  if (row.valueDiff.length) flags.push(`value differs: ${row.valueDiff.join('; ')}`);
   if (row.typeDiff.length) flags.push(`type differs: ${row.typeDiff.slice(0, 5).join('; ')}`);
   drift += flags.length;
   const head = `${flags.length ? '✗' : '✓'} ${row.path.padEnd(20)} card ${String(row.real.medianMs).padStart(5)} ms (${row.real.answered}/${row.real.asked})   practice ${String(row.practice.medianMs).padStart(5)} ms (${row.practice.answered}/${row.practice.asked})`;
