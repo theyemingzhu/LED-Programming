@@ -126,3 +126,58 @@ test('a landed first install whose read-back fails stops offering the blank-card
   const clearAt = card.requests.findIndex(r => r.path === '/api/clear-project');
   expect(card.requests.slice(clearAt).filter(r => r.method === 'POST' && r.path === '/api/wiring/candidate')).toHaveLength(0);
 });
+
+test('a second blank card does not show the previous card\'s "Installed on card"', async ({ page }) => {
+  // Real card, Studio 2666 (2026-11-23): after one blank-card install, the
+  // card was cleared again; the new blank panel showed "This card is blank"
+  // beside the previous install's "Installed on card. Next, check the
+  // lights." — a success for a card that holds nothing.
+  const { card } = createBenchDiscoveryPracticeCard({
+    timing: 'real',
+    seed: 7,
+    restartAfterSaveMs: 14200,
+    overrides: {
+      spontaneousSilence: { meanIntervalMs: 1e9, minMs: 0, maxMs: 0 },
+      unsettledAfterRestart: { durationMs: 0, probability: 0, minMs: 0, maxMs: 0 },
+    },
+  });
+  await card.install(page);
+  await page.addInitScript(({ id, firmwareVersion, buildId }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+  }, { id: card.state.cardId, firmwareVersion: card.state.firmwareVersion, buildId: card.state.buildId });
+  await page.goto('/#screen=card', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => linkConnected(page), { timeout: 40000 }).toBe(true);
+  await page.evaluate(() => { window.location.hash = '#screen=pattern'; });
+  await page.getByTestId('project-file-input').setInputFiles(PROJECT, { timeout: 20000 });
+  await expect.poll(() => page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.layout?.strips?.length || 0; } catch { return 0; }
+  }), { timeout: 20000 }).toBeGreaterThan(1);
+  card.refuse('/api/wiring/candidate', { status: 400, body: { ok: false, state: 'known-good', error: 'candidate storage failed', rebooting: false, nextStep: 'none' }, times: 20 });
+  await page.evaluate(() => { window.location.hash = '#screen=layout'; });
+  await page.getByTestId('layout-check-and-install').first().click({ timeout: 30000 });
+  await expect(page.getByText(/no room/i).first()).toBeVisible({ timeout: 90000 });
+  await page.getByTestId('card-install-clear-temporary').click();
+  await expect.poll(() => card.state.pixels, { timeout: 60000 }).toBe(0);
+  await page.getByTestId('blank-card-save').click({ timeout: 90000 });
+  // First install done: Studio moves on to Patterns.
+  await expect.poll(() => page.url(), { timeout: 120000 }).toContain('screen=pattern');
+  expect(card.state.pixels).toBe(41);
+
+  // The card is cleared again, as on the real card between runs.
+  await page.evaluate(async () => {
+    const { clearCardProject } = await import('/src/lib/cardClearProject.js');
+    await clearCardProject({ host: 'lightweaver.local', transport: 'direct' });
+  });
+  await expect.poll(() => card.state.pixels, { timeout: 60000 }).toBe(0);
+  await expect.poll(() => page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    return getSharedCardLink().getState()?.cardBlank === true;
+  }), { timeout: 90000 }).toBe(true);
+  await page.evaluate(() => { window.location.hash = '#screen=layout'; });
+  await page.getByTestId('layout-check-and-install').first().click({ timeout: 30000 });
+  await expect(page.getByText('This card is blank')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(/Installed on card\. Next, check the lights/)).toHaveCount(0);
+  await expect(page.getByTestId('blank-card-save')).toHaveText('Save to card');
+});
