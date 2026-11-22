@@ -4,6 +4,7 @@ import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
+import { BlankCardFirstInstall } from './BlankCardFirstInstall.jsx';
 import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
@@ -199,6 +200,29 @@ export function CardInstallAction({
           standaloneController={installController}
           disabled={!installGate.allowed}
         />
+      ) : cardNeedsStripDiscovery && !needsLayoutFinish ? (
+        // The draft's wiring is complete, so the blank card can take it as its
+        // first project in one save (see BlankCardFirstInstall). Find my strips
+        // stays here for an owner who does not know their strips yet.
+        <>
+          <h3 className="lww-flow-title">This card is blank</h3>
+          <p className="lww-flow-message" data-testid="wire-blank-card-message">Save your project to it, or find its strips first.</p>
+          <BlankCardFirstInstall
+            host={cardHost || cardLink.host}
+            transport={cardLink.transport}
+            board={cardTransportBoard}
+            controller={installController}
+            className={cta}
+          />
+          <button
+            type="button"
+            className="btn lww-cta"
+            data-testid="wire-find-strips"
+            title="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            data-tooltip="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            onClick={openStripDiscovery}
+          >{STRIP_DISCOVERY_LABEL}</button>
+        </>
       ) : cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
