@@ -672,10 +672,14 @@ export function SetupScreen({
     // project here, and the status row / Install door carry the difference.
     const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
     const host = cardTakesCount ? (cardLink?.host || cardHost || '') : '';
-    const nextStatus = cardState.status
-      ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
-      : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
     try {
+      // Inside the try: cardStatusWithPixelCount refuses a count for an output
+      // split into more than one run (a wiring change, not a length). Thrown
+      // outside it, that refusal escaped and left the row on "Saving…" for
+      // good (real card, 2026-11-22; tests/count-row-release.spec.ts).
+      const nextStatus = cardState.status
+        ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
+        : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
       await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
       if (!cardTakesCount) {
         setLedCountDraft('');
