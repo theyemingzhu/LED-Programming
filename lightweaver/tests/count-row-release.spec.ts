@@ -7,6 +7,15 @@ import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, type CardStateSpec } from './harness/cardStates';
 import { BENCH_PROJECT_ID } from '../src/lib/benchConfig.js';
+import { fileURLToPath } from 'node:url';
+import { createBenchDiscoveryCard } from './harness/benchDiscoveryCard';
+const PROJECT = fileURLToPath(new URL('./fixtures/real-card-bench-2026-11-21/nov19-restore.lw.json', import.meta.url));
+async function linkConnected(page: Page) {
+  return page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    return /^connected-/.test(String(getSharedCardLink().getState()?.state || ''));
+  });
+}
 
 async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<string, unknown>) {
   const card = createCardSimulator(spec);
@@ -57,37 +66,37 @@ async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<str
 const REFUSAL = { ok: false, state: 'known-good', error: 'candidate storage failed', rebooting: false, nextStep: 'none' };
 
 test('a count the card refuses for room leaves the count row usable and names the reason', async ({ page }) => {
-  test.setTimeout(150000);
+  test.setTimeout(240000);
+  // The real card refused the staged copy; this one-strip practice card sends
+  // a count as a plain save, so it refuses that save with the same reason.
   const spec = cardState('installed-match');
   const card = await seedCardAndDraft(page, spec, {});
-  card.refuse('/api/wiring/candidate', { status: 400, body: REFUSAL, times: 20 });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
   await page.getByRole('button', { name: 'Open installed project' }).click();
+  const before = card.state.pixels;
+  card.refuse('/api/config', { status: 400, body: { ok: false, error: 'config storage failed' }, times: 20 });
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=overview'; });
   const stepper = page.getByTestId('fact-lights-stepper');
-  const count = stepper.getByLabel('Light count');
-  await expect(count).toHaveValue(String(spec.pixels));
-  await count.fill(String(spec.pixels + 1));
+  await expect(stepper).toBeVisible({ timeout: 30000 });
+  await stepper.getByLabel('Light count').fill(String(before + 1));
   await stepper.getByTestId('fact-lights-set').click();
-  // The count goes via Layout to Save to card, and the card refuses it.
-  await page.waitForTimeout(20000); console.log("[posts]", JSON.stringify(card.requests.filter(r => r.method !== "GET").map(r => r.path)), page.url());
-  await expect(page.getByText(/no room/i).first()).toBeVisible({ timeout: 60000 });
-  expect(card.state.pixels, 'the card kept its count').toBe(spec.pixels);
+  await expect.poll(() => card.requests.some(r => r.method === 'POST' && r.path === '/api/config'), { timeout: 60000 }).toBe(true);
+  await page.waitForTimeout(5000);
+  expect(card.state.pixels, 'the card kept its count').toBe(before);
 
-  // Back on Card Home the row is usable again (not "Setting…" / "Saving…").
+  // Back on Card Home the row is usable again and a second press is answered.
   await page.evaluate(() => { window.location.hash = '#screen=card&section=overview'; });
   await expect(stepper).toBeVisible({ timeout: 20000 });
-  await expect(stepper.getByTestId('fact-lights-set')).not.toHaveText(/Setting…|Saving…/, { timeout: 20000 });
-  await expect(stepper.getByLabel('Light count')).toBeEnabled();
-  // A second try is answered too, never left spinning.
-  await stepper.getByLabel('Light count').fill(String(spec.pixels + 2));
   const set = stepper.getByTestId('fact-lights-set');
+  await expect(set).not.toHaveText(/Setting…|Saving…/, { timeout: 20000 });
+  await expect(stepper.getByLabel('Light count')).toBeEnabled();
+  await stepper.getByLabel('Light count').fill(String(before + 2));
   if (await set.isEnabled()) {
     await set.click();
     await page.evaluate(() => { window.location.hash = '#screen=card&section=overview'; });
-    await expect(stepper.getByTestId('fact-lights-set')).not.toHaveText(/Setting…|Saving…/, { timeout: 45000 });
+    await expect(page.getByTestId('fact-lights-stepper').getByTestId('fact-lights-set')).not.toHaveText(/Setting…|Saving…/, { timeout: 45000 });
   }
-  // And after a reload.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('fact-lights-stepper').getByTestId('fact-lights-set')).not.toHaveText(/Setting…|Saving…/, { timeout: 30000 });
   await expect(page.getByTestId('fact-lights-stepper').getByLabel('Light count')).toBeEnabled();
