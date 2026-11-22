@@ -15,7 +15,7 @@
 //
 // Plan: todo/plans/practice-card-interruptions.md.
 import { expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { CARD_HOSTS } from './cardSimulator';
 import type { CardSimulator } from './cardSimulator';
 import type { CardStateSpec } from './cardStates';
@@ -67,12 +67,14 @@ export async function linkState(page: Page) {
 }
 
 /** Seed the card's identity, open Studio, wait until it is connected and holds the card's project. */
-export async function bootConnected(page: Page, practice: InterruptionCard, options: { hash?: string; projectId?: string } = {}) {
+export async function bootConnected(page: Page, practice: InterruptionCard, options: { hash?: string; projectId?: string; context?: BrowserContext } = {}) {
   const { card } = practice;
-  await card.install(page);
+  // On the browser context the card outlives a closed tab (spec 2's "reopen").
+  const target = (options.context || page) as Page;
+  await card.install(target);
   for (const other of CARD_HOSTS) {
     if (other === 'lightweaver.local') continue;
-    await page.route(`http://${other}/**`, route => route.abort('connectionrefused'));
+    await target.route(`http://${other}/**`, route => route.abort('connectionrefused'));
   }
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
     if (window !== window.top) return;

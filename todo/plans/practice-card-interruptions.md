@@ -19,7 +19,7 @@ Rule kept: a red spec is a finding. Studio source untouched.
 | # | Spec | Result |
 |---|---|---|
 | 1 | `interruption-save-drop.spec.ts` | 20 s ✓, 45 s ✓, never ✓, back at 75 s ✗ (D1) |
-| 2 | `interruption-reload-during-restart.spec.ts` | ✗ (D2) |
+| 2 | `interruption-reload-during-restart.spec.ts` | reload ✗ (D2), reopen 30 s later ✗ (D2b) |
 
 ## Findings (Studio defects unless marked)
 
@@ -39,3 +39,8 @@ Rule kept: a red spec is a finding. Studio source untouched.
   written only by the in-page verification (`markProjectInstalled`,
   `src/v3/lw-pattern.jsx` ~2493); `src/lib/projectLifecycle.js:242` /
   `src/lib/cardSessionView.js:25` then have no record to match.
+- **D2b** Tab closed during the restart, Studio reopened 30 s later, card
+  answering and holding exactly the save: "Previously installed",
+  "On the card · Draft kept separately". Same cause as D2. (First version of
+  this test was a wrong test — the card was routed on the closed tab only;
+  now installed on the browser context.)

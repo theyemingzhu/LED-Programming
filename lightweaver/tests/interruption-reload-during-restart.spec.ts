@@ -4,6 +4,7 @@
 // card" — and never invite the owner to save again as if it had not landed.
 // Real-timing practice card. Plan: todo/plans/practice-card-interruptions.md.
 import { test, expect } from '@playwright/test';
+import type { BrowserContext } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import {
   realPracticeCard, bootConnected, nextWrite, holds, lastSent, configWrites,
@@ -21,40 +22,52 @@ test.afterEach(async ({ page }, info) => { await reportWords(page, practice, inf
 // saying where the project stands.
 const SETTLED = 'Installed on card|Unsaved changes|Draft kept separately|Not on (the )?card|differs';
 
-test('reload while the card restarts after Save, then reopen Studio: it knows the save landed', async ({ page, context }) => {
-  practice = realPracticeCard(cardState('playing'));
-  await bootConnected(page, practice, { hash: '#screen=pattern' });
+async function saveAndWaitForRestart(page, p: InterruptionCard, context?: BrowserContext) {
+  await bootConnected(page, p, { hash: '#screen=pattern', context });
   const button = page.getByTestId('pattern-install-on-card');
   await expect(button).toBeEnabled({ timeout: 30_000 });
   await page.locator('[data-pattern-id="aurora"]').first().click();
   await page.waitForTimeout(2_500);
-  const write = nextWrite(practice.card);
+  const write = nextWrite(p.card);
   await button.click();
   await write;
   await expect(page.getByText(/Restarting (the )?card/).first()).toBeVisible({ timeout: 10_000 });
-  const sent = lastSent(practice.card);
-  expect(holds(practice.card).projectFingerprint, 'the card holds the save').toBe(sent.projectFingerprint);
-
-  // 4 s into the ~14 s restart, the owner reloads.
+  const sent = lastSent(p.card);
+  expect(holds(p.card).projectFingerprint, 'the card holds the save').toBe(sent.projectFingerprint);
+  // 4 s into the ~14 s restart.
   await page.waitForTimeout(4_000);
+  return sent;
+}
+
+test('reload while the card restarts after Save: Studio then knows the save landed', async ({ page }) => {
+  practice = realPracticeCard(cardState('playing'));
+  const sent = await saveAndWaitForRestart(page, practice);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await startWordsLog(page);
   await startNotTakenWatch(page);
   await startQuietWatch(page, SETTLED);
   await expect(page.getByText('Installed on card', { exact: true }), 'after the reload, Studio knows').toBeVisible({ timeout: 45_000 });
   const quiet = await stopQuietWatch(page);
-  await expect(button).not.toHaveText(/Try saving again/);
+  await expect(page.getByTestId('pattern-install-on-card')).not.toHaveText(/Try saving again/);
   expect(await notTakenSeen(page)).toEqual([]);
   expect(quiet.gapMs, `longest wait with nothing on screen began at: ${quiet.gapText}`).toBeLessThan(QUIET_LIMIT_MS);
+  expect(configWrites(practice.card), 'no second save').toHaveLength(1);
+  expect(holds(practice.card).projectFingerprint).toBe(sent.projectFingerprint);
+});
 
-  // Later: the owner closes the tab and opens Studio again.
+test('tab closed while the card restarts after Save, Studio reopened 30 s later: it knows the save landed', async ({ page, context }) => {
+  practice = realPracticeCard(cardState('playing'));
+  const sent = await saveAndWaitForRestart(page, practice, context);
   await page.close();
+  await new Promise(resolve => setTimeout(resolve, 30_000));
   const again = await context.newPage();
   await again.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await startWordsLog(again);
+  await startNotTakenWatch(again);
   try {
     await expect(again.getByText('Installed on card', { exact: true }), 'reopened Studio knows').toBeVisible({ timeout: 45_000 });
     await expect(again.getByTestId('pattern-install-on-card')).not.toHaveText(/Try saving again/);
+    expect(await notTakenSeen(again)).toEqual([]);
   } finally {
     console.log(`  reopened tab said: ${JSON.stringify((await wordsSeen(again)).map(w => `${(w.t / 1000).toFixed(1)}s ${w.text}`))}`);
   }
