@@ -133,7 +133,10 @@ export function CardInstallAction({
   // Once the card no longer reads blank, a finished first install hands the
   // panel back to the ordinary branches (it then reads as installed).
   useEffect(() => {
-    if (firstInstall === 'done' && !cardNeedsStripDiscovery) setFirstInstall('');
+    // Reset the whole state, not only the phase: its "Installed on card"
+    // message otherwise reappears on the next blank card, a success for a card
+    // that holds nothing (real card, Studio 2666, 2026-11-23).
+    if (firstInstall === 'done' && !cardNeedsStripDiscovery) resetFirstInstallState();
   }, [firstInstall, cardNeedsStripDiscovery]);
   // A failed first install whose write landed anyway (the read-back timed out,
   // say): once the card answers as something other than blank, the blank
