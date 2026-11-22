@@ -78,12 +78,15 @@ test('bench card, Real-timing: the same move, with real restart and reply times'
   await moveCardToProject(page, card);
 });
 
-test('bench card: the staged reply arrives late (after Studio gave up), and the owner still reaches the light test', async ({ page }) => {
+test('bench card: the card stages the wiring but its reply is lost, and the owner still reaches the light test', async ({ page }) => {
   // The card stages the wiring, but its "staged" reply lands after Studio's
   // 6 s write timeout. Studio must ask the card what it holds, find the staged
   // change, and offer "Start light test", never a restart wait (F-E1).
   const card = createBenchDiscoveryCard();
-  card.answerAfter('/api/wiring/candidate', 8000, 1);
+  // The card stores the staged change, and its reply never arrives (the
+  // honest shape of "staged, but Studio never heard"): respondThenDrop
+  // applies the request for real and withholds only the reply.
+  card.respondThenDrop('/api/wiring/candidate');
   await moveCardToProject(page, card);
 });
 
