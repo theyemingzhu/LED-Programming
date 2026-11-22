@@ -1787,7 +1787,11 @@ for (const width of [320, 390]) {
     const railBox = await page.locator('.rail').boundingBox();
     expect(noticeBox).not.toBeNull();
     expect(railBox).not.toBeNull();
-    expect(noticeBox!.x).toBeGreaterThanOrEqual(railBox!.x + railBox!.width);
+    // The rail is a left column on desktop and the bottom tab bar on a phone
+    // (styles/lw-phone.css): the notice must not overlap it, wherever it is.
+    const overlapsRail = noticeBox!.x < railBox!.x + railBox!.width && noticeBox!.x + noticeBox!.width > railBox!.x
+      && noticeBox!.y < railBox!.y + railBox!.height && noticeBox!.y + noticeBox!.height > railBox!.y;
+    expect(overlapsRail).toBe(false);
     expect(noticeBox!.x + noticeBox!.width).toBeLessThanOrEqual(width);
     for (const box of boxes) {
       expect(noticeBox!.y).toBeGreaterThanOrEqual(box.y + box.height);
