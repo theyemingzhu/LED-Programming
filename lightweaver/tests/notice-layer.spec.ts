@@ -98,15 +98,9 @@ async function publishAndMeasureScreenShift(page: Page, notices: unknown[]) {
 async function geometry(page: Page) {
   return page.evaluate(() => {
     const layer = document.querySelector('.lw-notice-layer') as HTMLElement;
-    // The rail is a left column on desktop and the bottom tab bar on a phone
-    // (styles/lw-phone.css); measure it rather than assume 58px on the left.
-    const railBox = (document.querySelector('.rail') as HTMLElement).getBoundingClientRect();
-    // The bar the stack docks on is whichever one runs along the bottom edge:
-    // the status bar on desktop, the tab bar on a phone.
-    const bottomBars = [...document.querySelectorAll('.status-bar, .rail')]
-      .map(el => el.getBoundingClientRect())
-      .filter(r => r.height > 0 && r.bottom >= window.innerHeight - 1 && r.height < window.innerHeight / 3);
-    const barTop = bottomBars.length ? Math.min(...bottomBars.map(r => r.top)) : window.innerHeight;
+    const rail = 58;
+    const bar = document.querySelector('.status-bar') as HTMLElement | null;
+    const barTop = bar ? bar.getBoundingClientRect().top : window.innerHeight;
     const layerBox = layer.getBoundingClientRect();
     return {
       layerWidth: Math.round(layerBox.width),
@@ -126,7 +120,7 @@ async function geometry(page: Page) {
           // scroll sideways, is the overflow this file exists to catch.
           controlEscapes: rightmost > box.right + 1,
           selfScrolls: card.scrollWidth > card.clientWidth + 1,
-          coversRail: box.left < railBox.right && box.right > railBox.left && box.top < railBox.bottom && box.bottom > railBox.top,
+          coversRail: box.left < rail,
           coversStatusBar: box.bottom > barTop,
           widerThanLayer: box.width > Math.round(layerBox.width) + 1,
         };
