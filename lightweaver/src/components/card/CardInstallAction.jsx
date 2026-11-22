@@ -130,6 +130,11 @@ export function CardInstallAction({
   // second install of the same project as a wiring candidate (practice card,
   // tests/blank-card-first-install.spec.ts).
   const [firstInstall, setFirstInstall] = useState('');
+  // Once the card no longer reads blank, a finished first install hands the
+  // panel back to the ordinary branches (it then reads as installed).
+  useEffect(() => {
+    if (firstInstall === 'done' && !cardNeedsStripDiscovery) setFirstInstall('');
+  }, [firstInstall, cardNeedsStripDiscovery]);
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
@@ -206,6 +211,10 @@ export function CardInstallAction({
           standaloneController={installController}
           disabled={!installGate.allowed}
         />
+      ) : firstInstall === 'done' ? (
+        // Installed; never offer the blank-card save again on a card that is no
+        // longer blank (a second press would be refused as a false failure).
+        <p className="lww-flow-message" role="status" data-testid="blank-card-installed">Installed on card. Next, check the lights.</p>
       ) : (cardNeedsStripDiscovery || firstInstall) && !needsLayoutFinish ? (
         // The draft's wiring is complete, so the blank card can take it as its
         // first project in one save (see BlankCardFirstInstall). Find my strips

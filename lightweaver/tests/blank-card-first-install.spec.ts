@@ -79,5 +79,10 @@ test('full store on the temporary setup: Clear temporary setup, then Save to car
     .slice(card.requests.findIndex(r => r.path === '/api/clear-project'))
     .filter(r => r.method === 'POST' && r.path === '/api/wiring/candidate');
   expect(candidatesAfterClear, 'the first install is not staged as a candidate').toHaveLength(0);
+  // Once installed, the blank-card panel is gone: no "This card is blank"
+  // heading and no second blank-card save (shipper review of fcf80c80).
+  await expect(page.getByText('This card is blank')).toHaveCount(0, { timeout: 30000 });
+  await expect(page.getByTestId('blank-card-save')).toHaveCount(0);
   expect(await falseFailures(page)).toEqual([]);
 });
+
