@@ -153,7 +153,7 @@ with an exact press-count assertion at 390 and 1280 px in
 Measured on `742ee685` in a clean worktree: `card-home-compact` U1a/U1b/U1d/U1e, `studio-hardening` 574/612/867, `setup-led-count` 145, `connect-simple` 90/135, `connection-center-quality` 221/266/283/336/364/384, `first-action-walk` 212/327/347, `patterns-playlist-compact` 154, `patterns-v3` 764, `multiple-output-journey` (fails at line 67 on base; this branch gets past it to line 120), `journey-count-save` F14 (fails under parallel load on base too), and `test:core:source` (`tests/card-bridge-handoff.mjs`, identical assertion on base).
 ## Measured on Studio build 2623 (live), 2026-11-22
 
-Re-measured on `origin/main` 7565de7b (nine cuts merged as #458; the mobile batch #467 was in that build and was reverted afterwards in #469, which touches no press count measured here), practice card Fast, `--workers=1`, alone on the lane. Phone 390 and desktop 1280 gave the same counts for every journey.
+Re-measured on `origin/main` 7565de7b (nine cuts merged as #458; the mobile batch #467 was in that build and was reverted afterwards in #469, so the phone row describes that build; the revert changes only phone CSS, and desktop counts are unaffected), practice card Fast, `--workers=1`, alone on the lane. Phone 390 and desktop 1280 gave the same counts for every journey.
 
 | Journey | Before | Predicted | Measured |
 |---|---|---|---|
