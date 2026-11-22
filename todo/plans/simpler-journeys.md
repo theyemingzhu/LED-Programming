@@ -151,3 +151,40 @@ with an exact press-count assertion at 390 and 1280 px in
 ### Specs red on the base branch (not caused by this batch)
 
 Measured on `742ee685` in a clean worktree: `card-home-compact` U1a/U1b/U1d/U1e, `studio-hardening` 574/612/867, `setup-led-count` 145, `connect-simple` 90/135, `connection-center-quality` 221/266/283/336/364/384, `first-action-walk` 212/327/347, `patterns-playlist-compact` 154, `patterns-v3` 764, `multiple-output-journey` (fails at line 67 on base; this branch gets past it to line 120), `journey-count-save` F14 (fails under parallel load on base too), and `test:core:source` (`tests/card-bridge-handoff.mjs`, identical assertion on base).
+
+## Mobile UI/UX
+
+Branch `claude/mobile-ux` (on top of `claude/simpler-journeys-build`). One stylesheet, `lightweaver/src/styles/lw-phone.css`, loaded only by public Studio (`main.jsx`), so the signed card bundle is untouched. Desktop is unchanged; `tests/phone-shell.spec.ts` checks 390 px and 1280 px.
+
+**Measured before (390×844, practice card, `tests/ux/phone-shell.measure.spec.ts`):** the rail took 58 px (15%) of every screen's width; top bar plus footer took 116–136 px of height, so screens got ~70% of the phone. During counting, a warning notice covered "Stop lights" inside the setup sheet. The footer's "Connected" repeated Card Home's status row, and its boxed "Card firmware 1432 → 2464" was a third door to the update.
+
+**Approved by Adrian (2026-11-21), as one direction for the phone:**
+1. The left rail becomes a bottom tab bar (Card, Layout, Patterns, Lab, Playlist, Show). Screens get the full 390 px.
+2. The footer becomes one plain status line under the top bar: connection, card firmware, Studio build. No boxes, so it reads as status. Both build numbers stay visible.
+3. Notices dock above the tab bar, and the screen (and the setup sheet) end where the stack begins. Screens are top-anchored, so only the bottom edge rises; nothing under the finger moves. `NoticeLayer.jsx` publishes `--lw-notice-stack-h` / `--lw-notice-reserve`.
+4. The card setup sheet fills the phone; its safety footer is one row (was 150 px, now ~80).
+5. Added by Adrian mid-build ("far too big … I'm not blind"): one smaller scale on every phone screen. Titles 17/15, panel padding 10–12, block gaps 8–10, button side-padding 12, no primary glow, no focus box around a focused title. The update screen now fits on one screen above the tab bar.
+
+**Decisions:**
+- Buttons keep the 44 px tap height. About 38 existing checks across 18 specs enforce it, and it is the phone tap minimum. Going lower (36 px) is Adrian's call, not done.
+- Not on the phone: Workshop (Batch production needs USB, which phone browsers lack) and "Preview short strip" (a bench tool with its own row of controls).
+
+**Rejected:**
+- Hiding the footer on the phone entirely. `footer-build-status` protects both build numbers being visible on a phone, and Adrian reads them to check freshness.
+- Moving notices into page flow. That was the original defect (the page shoved down under the finger); reserving ground at the bottom edge gets the same "never covers" result without moving anything.
+- A hamburger menu for navigation. It hides where you are; tabs show it.
+
+### Mobile UI/UX — resume note (held overnight, 2026-11-21)
+
+**State:** branch `claude/mobile-ux`, pushed, tip `c422ef9e`, 7 commits on `claude/simpler-journeys-build` @ `74178281`. No PR. Not merged, not shipped. The audit session was told it is ready, to ship after the simpler-journeys batch. Held by the coordinator: no browser test runs or Studio-wide builds until it says so.
+
+**Exactly what Adrian approved, in this session:**
+1. "Yes, build it". This was his answer to the four-point direction shown as before/after phone screenshots: bottom tab bar instead of the rail; footer → one plain status line under the top bar with both build numbers visible; notices above the tabs with the screen ending where they begin; the light-check sheet edge to edge with a one-row Stop lights footer. Desktop unchanged; Workshop and "Preview short strip" not on the phone.
+2. His correction mid-build: "some of the boxes and icons are far too big, and buttons far too big, and fonts … We're trying to get as much vertical room and horizontal room as possible … Look at update the card." He then said "go" to the read-back: one smaller scale on every phone screen, buttons kept at 44px, update screen to fit one screen.
+3. "Why does the number 41 take up half the screen? … things that are very out of scale and alignment." Fixed with the one-scale pass and a test that guards it.
+
+**Still open (Adrian's call):** shrinking buttons below the 44px tap height (38 checks enforce 44px). Asked, not answered.
+
+**Last verified (before the hold):** `tests/phone-shell.spec.ts` 8/8; 22 related specs compared with base, no regressions; mobile config has the same 2 reds as base (pattern-lab-isolation:239, setup-phone:75).
+
+**Resume point:** if the simpler-journeys branch has moved, rebase onto it. Then re-run `tests/phone-shell.spec.ts`, `notice-layer`, `playlist-timed`, `strip-discovery:407` and the mobile config. Then open the PR, or let the audit session ship it.
