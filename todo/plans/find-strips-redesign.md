@@ -130,3 +130,35 @@ Full-screen steps, one large picture, one short line, at most two buttons. Count
 
 ## 5. Recommendation
 Build **B, with A1 as its fallback**: the owner never has to know which pin they used, and six presses with five decisions is the shortest path that keeps every safety check. Test it first with a non-technical person holding a blank card with one strip on a pin they do not know, no instructions: time to "Save to card", and whether their Stop lands within two LEDs of the end before the nudge.
+
+## 6. Combined flow (Adrian, 2026-11-22: "a combination of many would work")
+
+Each part was judged against Adrian's three asks: far less writing, no pin numbers when the card knows them, and the picture as the selector.
+
+| Part | A · Tap the card | B · It finds them | C · One thing at a time |
+|---|---|---|---|
+| Find the pin | Fallback: the owner must know where the wire goes | **Use**: the card lights each pin in turn, so no number is shown | Drop: same as A, no way back |
+| Did it light? | Fallback only | **Use**: "That's mine" already says it | Drop |
+| Colour order | Drop: nothing says which lights to look at | Use part: the desktop picture of where it was found | **Use**: lights 1-3 drawn above the six rows |
+| Count | Drop: colour key plus typing | **Use**: a running light and one Stop press | Drop: a 256-step slider is fiddly on a phone |
+| Check the end | Drop: asks the wrong question | **Use**: "Is the next light dark?" with − / + | Drop: folded into the slider |
+| Save | Same | Same | **Use**: the big number reads fastest |
+| Every screen | Use part: one "Why?" link | Use part: step 1 runs on open | **Use**: one line, big type, one main button |
+
+**Main path, five screens:** 1 Watch your strip (B, runs on open, pin drawn with no number) → 2 Tap what you see (C's strip plus swatches; desktop also shows where it was found) → 3 Press Stop at the end (B) → 4 Is the next light dark? with − / + (B) → 5 the number 41 and Save to card (C).
+Totals are 28 words, 5 presses (plus any nudges) and 5 decisions, against today's 724 words, 8 presses and 7 decisions.
+
+**Way back:**
+- F1 appears after two quiet rounds and says "Nothing lit? Check power and ground." It offers Watch again or Pick the pin.
+- A card that already has a project answers the pin call with 409, so it never sweeps and opens on F2 instead.
+- F2 is A's tap-the-card screen and F3 asks whether it lit. Yes on F3 rejoins the main path at step 2.
+- This path costs 38 words, 6 presses and 6 decisions.
+
+**Other failures:**
+- Pressed a beat late: "Not lit" on step 2 steps back one pin.
+- Stop lands off: − and + fix it.
+- No colour row matches: falls back to today's two-question check.
+
+**Firmware: none.** Studio drives the sweep with the existing `POST /api/beacon/port`, about 2 s per pin inside the 20 s hold. `GET` lists the pins the card can light, and 409 marks a card that already has a project. Counting and Save reuse calls today's flow already makes.
+
+Page: https://claude.ai/artifact/RYq3ii4NvNyYiyhMhDXowq (version 2).
