@@ -77,7 +77,11 @@ async function saveFromPatterns(page: Page, card: CardSimulator, slow: (card: Ca
   await startFalseFailureWatch(page);
   slow(card);
   await button.click();
-  await expect(button).toHaveText(/Checking card/, { timeout: 2000 });
+  // The press shows work at once. Through the bridge a 3.5 s card can pass
+  // its pre-save check on the first try, so the button may go straight to
+  // "Sending…" — that is still work shown, not a silent wait. (CI on
+  // 71296a1c saw Sending… → Saved, 3 of 3.)
+  await expect(button).toHaveText(/Checking card|Sending/, { timeout: 2000 });
   await expect(button).toHaveText(/Saved/, { timeout: 90000 });
   card.setReplyDelay(0);
   expect(await falseFailures(page)).toEqual([]);
