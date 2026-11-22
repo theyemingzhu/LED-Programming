@@ -50,8 +50,10 @@ test('light count Set, Wi-Fi drops 10 s after the card took the write: the card 
   await expect(input).toBeEnabled({ timeout: 30_000 });
   await page.waitForTimeout(2_000);
   await startWordsLog(page);
-  await startNotTakenWatch(page, ['did not take it yet', 'could not take that length', 'did not answer', 'not saved', 'update rolled back']);
-  await startQuietWatch(page, 'did not take|could not|41 lights|Count (is )?on the card|on the strip');
+  // Also: a normal restart into the new count is not a fault to recover from.
+  await startNotTakenWatch(page, ['did not take it yet', 'could not take that length', 'did not answer', 'not saved', 'update rolled back',
+    'recover lights is the check to run first']);
+  await startQuietWatch(page, 'Lights counted|did not take|could not take');
   await input.fill('41');
   const write = nextWrite(practice.card);
   await page.getByTestId('fact-lights-set').click();
@@ -62,9 +64,10 @@ test('light count Set, Wi-Fi drops 10 s after the card took the write: the card 
   // Restart (~14 s) plus the drop overlap; give Studio until 60 s.
   await page.waitForTimeout(REAL_RESTART_MS + 20_000);
   const quiet = await stopQuietWatch(page);
-  expect(practice.card.state.pixels, 'the card holds the count').toBe(41);
-  expect(await notTakenSeen(page), 'Studio said the card did not take a count it holds').toEqual([]);
-  expect(quiet.endedAtMs, 'Studio said how the Set ended').not.toBeNull();
-  expect(quiet.gapMs, `longest wait with nothing on screen began at: ${quiet.gapText}`).toBeLessThan(QUIET_LIMIT_MS);
-  expect(configWrites(practice.card), 'one write, not a resend').toHaveLength(1);
+  expect.soft(practice.card.state.pixels, 'the card holds the count').toBe(41);
+  expect.soft(await notTakenSeen(page), 'Studio said the card did not take a count it holds').toEqual([]);
+  expect.soft(quiet.endedAtMs, 'Studio said how the Set ended ("Lights counted")').not.toBeNull();
+  console.log(`  count Set ended on screen at ${quiet.endedAtMs} ms`);
+  expect.soft(quiet.gapMs, `longest wait with nothing on screen began at: ${quiet.gapText}`).toBeLessThan(QUIET_LIMIT_MS);
+  expect.soft(configWrites(practice.card), 'one write, not a resend').toHaveLength(1);
 });

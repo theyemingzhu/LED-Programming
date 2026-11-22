@@ -20,6 +20,8 @@ Rule kept: a red spec is a finding. Studio source untouched.
 |---|---|---|
 | 1 | `interruption-save-drop.spec.ts` | 20 s ✓, 45 s ✓, never ✓, back at 75 s ✗ (D1) |
 | 2 | `interruption-reload-during-restart.spec.ts` | reload ✗ (D2), reopen 30 s later ✗ (D2b) |
+| 3 | `interruption-self-restart.spec.ts` | idle Card Home ✓, editing a look ✓ |
+| 4 | `interruption-wifi-drop.spec.ts` | quick-path look ✓, count Set ✗ (D3) |
 
 ## Findings (Studio defects unless marked)
 
@@ -44,3 +46,14 @@ Rule kept: a red spec is a finding. Studio source untouched.
   "On the card · Draft kept separately". Same cause as D2. (First version of
   this test was a wrong test — the card was routed on the closed tab only;
   now installed on the browser context.)
+- **D3** Card Home light count Set on the bench card, Wi-Fi drops 10 s after
+  the write. The card holds 41 and Studio ends "Lights counted" (29 s, no
+  silent wait). But during the planned restart the health row says "This card
+  is answering but is not reporting a ready runtime. Recover lights is the
+  check to run first — the card accepts it in this state." — sending the owner
+  to recovery during a normal restart. `src/v3/lw-card.jsx:805` (no
+  restart-pending case). Also shown in the same window: "Project not
+  installed" (true — Studio's draft; not a finding).
+- Observation (spec 3, idle): during an unplanned 14 s restart Card Home kept
+  "Connected" the whole time; it then said "Card restarted — verifying…". Not
+  a lie, but nothing tells the owner the card was briefly gone.
