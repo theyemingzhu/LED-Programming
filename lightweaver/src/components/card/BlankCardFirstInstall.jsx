@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
+import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { pushConfigToCard, readCardProjectEvidence } from '../../lib/cardPushClient.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
@@ -30,11 +31,13 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
     projectId, projectName, strips, wiring, compiledWiring,
     projectLifecycle, markProjectInstalled,
   } = useProject();
-  const [state, setState] = useState({ status: 'idle', message: '' });
+  // Shared, so a panel rebuilt while the card restarts keeps it (firstInstallState.js).
+  const state = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState);
+  const setState = ({ status, message }) => setFirstInstallState({ status, message });
   const busy = state.status === 'pending';
 
   const save = async () => {
-    if (busy) return;
+    if (busy || getFirstInstallState().phase === 'running') return;
     const cleanHost = String(host || getCardLinkState().host || 'lightweaver.local').trim().toLowerCase();
     const cardId = readPersistedCardIdentity()?.id || cleanHost;
     const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
@@ -55,7 +58,15 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
           wiring,
           compiledWiring,
           standaloneController: controller,
-        });
+        }, (() => {
+          // The read-back below checks the exact paired card. Without its
+          // identity it threw "Exact card identity is required before
+          // installation" after a write that had landed (practice card,
+          // tests/blank-card-one-write.spec.ts; D10 on the real card).
+          const identity = readPersistedCardIdentity();
+          const card = getCardLinkState().card || {};
+          return { cardId: identity?.id || card.cardId || '', buildId: identity?.buildId || card.buildId || '' };
+        })());
         prepareCardStoragePayload(prepared.runtimePackage);
         const link = getCardLinkState();
         const fromBootId = link.validatedBootId || link.readiness?.bootId || '';
@@ -92,6 +103,7 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
       ok = true;
     } catch (error) {
       setState({ status: 'failed', message: error?.message || 'Studio could not save the project to this blank card.' });
+      setFirstInstallState({ reason: String(error?.reason || '') });
     } finally {
       claim.release();
       onSettled?.(ok);

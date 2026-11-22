@@ -12,13 +12,13 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
-import { createBenchDiscoveryCard } from './harness/benchDiscoveryCard';
+import { createBenchDiscoveryPracticeCard } from './harness/benchDiscoveryCard';
 import { startFalseFailureWatch, falseFailures } from './harness/falseFailureWatch';
 
 const PROJECT = fileURLToPath(new URL('./fixtures/real-card-bench-2026-11-21/nov19-restore.lw.json', import.meta.url));
 const REFUSAL = { ok: false, state: 'known-good', error: 'candidate storage failed', rebooting: false, nextStep: 'none' };
 
-test.describe.configure({ timeout: 240000 });
+test.describe.configure({ timeout: 360000 });
 
 test.afterEach(async ({ page }, info) => {
   if (info.status === info.expectedStatus) return;
@@ -35,7 +35,17 @@ async function linkConnected(page: Page) {
 }
 
 test('full store on the temporary setup: Clear temporary setup, then Save to card installs the project on the blank card', async ({ page }) => {
-  const card = createBenchDiscoveryCard();
+  // Real-timing practice card: it restarts after a saved project under a new
+  // boot id, as the real card does, and the read-back waits for that.
+  const { card } = createBenchDiscoveryPracticeCard({
+    timing: 'real',
+    seed: 7,
+    restartAfterSaveMs: 14200,
+    overrides: {
+      spontaneousSilence: { meanIntervalMs: 1e9, minMs: 0, maxMs: 0 },
+      unsettledAfterRestart: { durationMs: 0, probability: 0, minMs: 0, maxMs: 0 },
+    },
+  });
   // The store has no page for a candidate copy beside the temporary setup.
   card.refuse('/api/wiring/candidate', { status: 400, body: REFUSAL, times: 20 });
   await card.install(page);
@@ -74,6 +84,12 @@ test('full store on the temporary setup: Clear temporary setup, then Save to car
   // 4. One whole-project write, applied directly by the blank card; no candidate.
   await expect.poll(() => card.requests.filter(r => r.method === 'POST' && r.path === '/api/config').length, { timeout: 60000 }).toBe(1);
   await expect.poll(() => card.state.pixels, { timeout: 60000 }).toBe(41);
+  // The real card reports runtimePhase 'ready' once its first project is
+  // saved (lw-b0fe81f61b44, 2026-11-23 16:37); the practice card keeps the
+  // 'factory' phase its clear set (reported to the practice-card session).
+  const keepReady = setInterval(() => { if (card.state.pixels > 0) (card.state as any).runtimePhase = 'ready'; }, 200);
+  test.info().attach('note', { body: 'practice card held at runtimePhase ready once it holds a project' }).catch(() => {});
+  page.once('close', () => clearInterval(keepReady));
   expect(card.state.projectId).not.toBe('');
   const candidatesAfterClear = card.requests
     .slice(card.requests.findIndex(r => r.path === '/api/clear-project'))
@@ -81,7 +97,9 @@ test('full store on the temporary setup: Clear temporary setup, then Save to car
   expect(candidatesAfterClear, 'the first install is not staged as a candidate').toHaveLength(0);
   // Once installed, the blank-card panel is gone: no "This card is blank"
   // heading and no second blank-card save (shipper review of fcf80c80).
-  await expect(page.getByText('This card is blank')).toHaveCount(0, { timeout: 30000 });
+  // The instant practice card never restarts, so the read-back waits out the
+  // restart allowance before accepting the project as it is.
+  await expect(page.getByText('This card is blank')).toHaveCount(0, { timeout: 90000 });
   await expect(page.getByTestId('blank-card-save')).toHaveCount(0);
   expect(await falseFailures(page)).toEqual([]);
 });

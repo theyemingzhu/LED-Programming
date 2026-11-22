@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -129,7 +130,9 @@ export function CardInstallAction({
   // ordinary install control below mounts, and next=patterns auto-starts a
   // second install of the same project as a wiring candidate (practice card,
   // tests/blank-card-first-install.spec.ts).
-  const [firstInstall, setFirstInstall] = useState('');
+  // Shared across every install panel and every rebuild of one (lib/firstInstallState.js).
+  const firstInstall = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState).phase;
+  const setFirstInstall = phase => setFirstInstallState({ phase });
   // Once the card no longer reads blank, a finished first install hands the
   // panel back to the ordinary branches (it then reads as installed).
   useEffect(() => {
@@ -230,7 +233,9 @@ export function CardInstallAction({
             className={cta}
             onStart={() => setFirstInstall('running')}
             onSettled={ok => {
-              setFirstInstall(ok ? 'done' : '');
+              // A failed first install keeps the hold (phase 'failed'): the owner
+              // sees why, and no other install control writes again on its own.
+              setFirstInstall(ok ? 'done' : 'failed');
               if (ok && continueToPatterns) window.location.hash = '#screen=pattern';
             }}
           />
