@@ -42,6 +42,8 @@ import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
+import { clearCardProject } from '../../../lib/cardClearProject.js';
+import { BENCH_PROJECT_ID } from '../../../lib/benchConfig.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
@@ -179,6 +181,29 @@ export function CardPushControl({
   // shows it is working at once: the preflight reads come before the send's
   // own status, and on a busy page that left about a second of a screen with
   // no sign of work (F-D4, todo/plans/false-failures.md).
+  // The card said it has no room for the change (F-F1). When it is holding the
+  // temporary Find-my-strips setup, clearing that setup is the way out, so it
+  // is offered right where the save failed.
+  const [storageFull, setStorageFull] = useState(false);
+  const [clearState, setClearState] = useState('');
+  const cardHoldsTemporarySetup = (() => {
+    const readiness = getCardLinkState().readiness || {};
+    return readiness.provisionalSetup === true || String(readiness.projectId || readiness.piece?.id || '') === BENCH_PROJECT_ID;
+  })();
+  const clearTemporarySetupHere = async () => {
+    if (clearState === 'busy') return;
+    setClearState('busy');
+    setPushStatus('Clearing the temporary Find-my-strips setup…');
+    try {
+      await clearCardProject({ host: pushHost.trim().toLowerCase() || 'lightweaver.local', transport: getCardLinkState().transport });
+      setStorageFull(false);
+      setClearState('done');
+      setPushStatus('The temporary setup was cleared. The card is restarting blank and keeps its Wi-Fi; save to card again in a few seconds.');
+    } catch (error) {
+      setClearState('');
+      setPushStatus(error?.message || 'The card did not confirm the clear. Keep it powered, then try again.');
+    }
+  };
   const [pushStatus, setPushStatus] = useState(() => (autoStart && !disabled ? 'Checking card…' : ''));
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
   const [pushFallbackJson, setPushFallbackJson] = useState('');
@@ -237,6 +262,7 @@ export function CardPushControl({
     if (installInFlightRef.current) return;
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
+    setStorageFull(false);
     setPushStatus(current => current || 'Checking card…');
     // While the install checks a slow card, the footer does not call it gone.
     noteCardCheckHold();
@@ -584,6 +610,7 @@ export function CardPushControl({
         setPushFallbackPackage(attempt.pkg);
       } else if (err instanceof CardPushError) {
         setPushStatus(err.message);
+        if (err.reason === 'card-storage-full') setStorageFull(true);
       } else {
         setPushStatus(`Push failed: ${err.message || err}`);
       }
@@ -879,8 +906,14 @@ export function CardPushControl({
             ? { 'data-testid': 'card-install-already-current' }
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
-          {(action.status === 'pending' || pushStatus === 'Checking card…') && <span className="lw-notice-spinner" aria-hidden="true" />}
+          {(action.status === 'pending' || pushStatus === 'Checking card…' || clearState === 'busy') && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
+          {storageFull && cardHoldsTemporarySetup && (
+            <button type="button" className="btn primary" data-testid="card-install-clear-temporary" disabled={clearState === 'busy'}
+              title="Remove the temporary Find-my-strips setup from the card so your project has room." data-tooltip="Remove the temporary Find-my-strips setup from the card so your project has room." onClick={() => void clearTemporarySetupHere()}>
+              Clear temporary setup
+            </button>
+          )}
           {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (
             <div className="lw-wire-recovery" role="group" aria-label="Mixed-content recovery">
