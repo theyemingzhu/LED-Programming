@@ -14,7 +14,7 @@ import { useProject } from '../state/ProjectContext.jsx';
 import { REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook } from './v3-data.js';
 import { getCardPatternById } from '../lib/cardPatternBank.js';
 import { DEFAULT_CARD_PATTERN_BANK } from '../lib/cardRuntimeContract.js';
-import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry } from '../lib/cardPushClient.js';
+import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry, CARD_READ_RETRY } from '../lib/cardPushClient.js';
 import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
@@ -743,7 +743,7 @@ function realPatternShape(patternId) {
         packageForCard = runtimePackageForCardOperation(validRuntimePackage, { operation: 'save' });
         prepareCardStoragePayload(packageForCard);
         // A quiet card is asked again before Studio says anything.
-        const before = await withCardReadRetry(() => readCardProjectEvidence({ host, transport: cardLink?.transport }));
+        const before = await withCardReadRetry(() => readCardProjectEvidence({ host, transport: cardLink?.transport, timeoutMs: CARD_READ_RETRY.timeoutMs }));
         let replyLost = false;
         const response = await syncRuntimePackageToCard({
           host,

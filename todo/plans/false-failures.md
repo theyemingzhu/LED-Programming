@@ -100,3 +100,23 @@ All in `ci:browser-smoke` and `test:release-ui`. Each browser spec except the tw
 - **F-B4 Show.** A stream that stops reaching the lights shows "Waiting for the lights to answer…" with a spinner after 3 s (was an error), and pauses itself after 20 s (was 15 s). The pre-show card check asks 3 times, 4 s each (was 2 × 2.5 s). No browser test (needs the frame stream); reviewed in code only.
 
 Still open: watch one real Save on the gallery card (Adrian).
+
+## Batch C — a card that answers, slowly (2026-11-21, branch `claude/slow-card-reads`)
+
+Real-card finding on Studio build 2559 (coordinator): with the card answering status in about 3.4 s, Save to card showed "Checking card…", then after 6.8 s "Not saved to the card: it did not answer" and the footer "Card stopped responding", with no write attempted. Every Studio read gave the card 3 s or less, and the keepalive 2.5 s, so a busy card failed every try.
+
+- **D11.** Each card read gets 6 s (`CARD_READ_RETRY.timeoutMs`, and the defaults of `readCardProjectEvidence`, `readCardStatusEnvelope`, `readCardFirmwareInfoEnvelope`, `getCardWiringStatus`). Pre-save checks are asked 3 times, 1 s apart: about 20 s of "Checking card…" before Studio says the card did not answer, and the first answer goes straight on.
+- **D12.** The keepalive gets 6 s (`CARD_LINK_PING_TIMEOUT_MS`, was 2.5 s). Two consecutive misses (now about 25 s) still report the card gone.
+- **D13.** While a save is checking the card (Patterns, Card Home/Layout install, footer), the link holds "stopped responding" (`noteCardCheckHold`, up to 22 s); the save itself says what happened if the card never answers.
+
+Test: `tests/slow-card-reads.spec.ts` on the Real-timing practice card — direct and bridge, reply delay 3.5 s and a 10 s silence. Direct at 3.5 s was red on the code then live ("Not saved to the card: it did not answer", "Card stopped responding") and is green now; the other three were already green in the simulator and stay as guards. Unit: `falseFailures.test.js` check-hold rule.
+
+## Batch D — stale rollback, false restart timeout, mismatch named (2026-11-21, branch `claude/stale-rollback`)
+
+From the physical card on live build 2559 (coordinator and durability run):
+
+- **F-D1.** A bench/provisional card (never command-ready) repeating an old `firmwareUpdate.phase: 'rolled-back'` was "Update rolled back" and "The last card operation failed" in every fresh browser. A past rollback this browser did not start is now history when the card runs exactly the build the record says it restored (`restoredBuildId` or `restoredBuildNumber`), ready or not. An update this browser ran still stops the owner. Test: `stale-rollback-bench-card.spec.ts` (red before, green now) and `falseFailures.test.js`.
+- **F-D2.** "The card has not come back after restarting (45 s)" was shown about a card that never restarted (Layout count change; the one candidate POST went nowhere). The restart wait now runs only when the card's reply said it is restarting. A lost reply is read back as it is; and if the card answered from the same boot all along, Studio says it "did not take this save", never "has not come back". Unit test in `falseFailures.test.js`.
+- **F-D3.** A card that answered at once, but with a project/boot/build Studio had not adopted, was reported as "Not saved to the card: it did not answer". "Did not answer" now appears only when no answer came (`cardGaveNoAnswer`); otherwise the reason the card's answer stopped the save is shown. Guard spec in `stale-rollback-bench-card.spec.ts` (green on the old code too; the exact durability case awaits its request records).
+- **Open:** Card Home "Light count" Set on the bench card sent only `GET /api/wiring/status` on the real card. The practice card's `provisional` state is not faithful (no fingerprint, outputs not named `bench-18`), so the count write cannot be reproduced yet; a faithful bench state was asked of the practice-card session.
+- **F-D4.** The shipper held batch C on a 0.8 s "no sign of work" gap in the Layout spec. Measured under 8-way CPU load (3 of 3 reproduced), it had two parts: (a) real — Layout's "Check and install" opens Card Home's install task, which ran its preflight reads before showing anything; it now shows "Checking card…" with a spinner from the moment the task opens with an install queued, and from the first instant of a press; (b) a measuring artifact after success — arriving on Patterns with the card holding the project. The watch now records the screen at the start of the longest gap and stops counting once the save's success is shown; the 600 ms limit is unchanged. 6 of 6 under the same load after the fix.

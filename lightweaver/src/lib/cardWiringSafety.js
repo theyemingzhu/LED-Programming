@@ -189,7 +189,7 @@ async function requestCardWiring(type, payload = {}, options = {}) {
   if (statusTransport?.route === 'direct' && !isLocalCardHost(host)) {
     throw wiringError('invalid-host', 'A local Lightweaver card host is required.');
   }
-  const timeoutMs = Math.max(1, Number(options.timeoutMs) || 3000);
+  const timeoutMs = Math.max(1, Number(options.timeoutMs) || 6000);
   try {
     if (transport === 'bridge') {
       const bridgeRequestImpl = options.bridgeRequestImpl || sendCardBridgeRequest;

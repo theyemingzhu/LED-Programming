@@ -270,9 +270,16 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   const uptimeMs = Number(readiness.uptimeMs);
   const justBooted = Number.isFinite(uptimeMs) && uptimeMs >= 0 && uptimeMs < CARD_STARTING_GRACE_MS;
   const stillStarting = !commandReady && (link.state === 'revalidating' || justBooted || evidenceIncomplete);
+  // The record names the build the rollback restored. A card running exactly
+  // that build has finished recovering, whatever else it is doing: a bench or
+  // provisional card is never command-ready, and its old record used to block
+  // every write and label it "Update rolled back" forever (2026-11-21, F-D1).
+  const rollback = readiness.firmwareUpdate || {};
+  const runningRestoredBuild = (normalized(rollback.restoredBuildId) && normalized(rollback.restoredBuildId) === normalized(readiness.buildId))
+    || (Number(rollback.restoredBuildNumber) > 0 && Number(rollback.restoredBuildNumber) === Number(readiness.buildNumber));
   const pastUpdateRolledBack = !update
-    && readiness.firmwareUpdate?.phase === 'rolled-back'
-    && (commandReady || stillStarting || !verifiedTransport);
+    && rollback.phase === 'rolled-back'
+    && (commandReady || stillStarting || !verifiedTransport || runningRestoredBuild);
 
   let state = 'disconnected';
   if (updateEvidence?.phase === 'rolled-back' && !pastUpdateRolledBack) state = 'update-rolled-back';

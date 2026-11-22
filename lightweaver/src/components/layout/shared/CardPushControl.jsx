@@ -13,6 +13,8 @@ import {
   assignCardWiringIdentityForChange,
   assignExactCandidateWiringIdentity,
   cardConfigStructuralWiringChangedFromInfo,
+  withCardReadRetry,
+  CARD_READ_RETRY,
 } from '../../../lib/cardPushClient.js';
 import {
   prepareCardDeployment,
@@ -40,7 +42,7 @@ import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
-import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
+import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
@@ -173,7 +175,11 @@ export function CardPushControl({
     wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
     gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
   const [pushHost, setPushHost] = useState(() => getCardHostname());
-  const [pushStatus, setPushStatus] = useState('');
+  // An install queued by the URL (Layout's "Check and install") or a press
+  // shows it is working at once: the preflight reads come before the send's
+  // own status, and on a busy page that left about a second of a screen with
+  // no sign of work (F-D4, todo/plans/false-failures.md).
+  const [pushStatus, setPushStatus] = useState(() => (autoStart && !disabled ? 'Checking card…' : ''));
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
   const [pushFallbackJson, setPushFallbackJson] = useState('');
   const [pushFallbackPackage, setPushFallbackPackage] = useState(null);
@@ -231,6 +237,9 @@ export function CardPushControl({
     if (installInFlightRef.current) return;
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
+    setPushStatus(current => current || 'Checking card…');
+    // While the install checks a slow card, the footer does not call it gone.
+    noteCardCheckHold();
     try {
       return await withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
     setCardHostname(cleanHost);
@@ -265,11 +274,13 @@ export function CardPushControl({
         let wiringStatus;
         let handoffOnly = false;
         try {
-          [before, status, wiringStatus] = await Promise.all([
-            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport }),
-            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport }),
-            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport }),
-          ]);
+          // A busy card answers in ~3.4 s and can go quiet 4–12 s: each read
+          // gets 6 s and the set is asked up to three times (F-C1).
+          [before, status, wiringStatus] = await withCardReadRetry(() => Promise.all([
+            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
+          ]), { onRetry: () => setPushStatus('Checking card…') });
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
           if (!LOCAL_BRIDGE_RECOVERY_REASONS.has(preflightError?.reason)) throw preflightError;
@@ -374,9 +385,9 @@ export function CardPushControl({
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
           {
-            readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport }),
-            readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
-            readWiringStatus: () => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport }),
+            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
             lastSeen: (readProjectLifecycle?.() || projectLifecycle)?.installation || null,
             saveAnyway: saveAnywayRef.current,
             config: async () => {
@@ -486,7 +497,11 @@ export function CardPushControl({
       let verification;
       try {
         ({ verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host,
-          cardIsRestarting || response?.pendingVerification ? { fromBootId: bootBeforeSave } : null));
+          // Only a reply that said the card is restarting earns the restart
+          // wait. A lost reply proves nothing about a restart: it is read back
+          // as it is (F-D2: "has not come back after restarting" was shown
+          // about a card that never restarted).
+          cardIsRestarting ? { fromBootId: bootBeforeSave } : null));
         if (restartPlanned) { noteCardRestartSettled(); restartPlanned = false; }
       } catch (verifyError) {
         // Once a config may have reached the card, a failed read is
@@ -555,6 +570,8 @@ export function CardPushControl({
     }
     }));
     } finally {
+      noteCardCheckRelease();
+      setPushStatus(current => (current === 'Checking card…' ? '' : current));
       installInFlightRef.current = false;
       saveAnywayRef.current = false;
     }
@@ -842,7 +859,7 @@ export function CardPushControl({
             ? { 'data-testid': 'card-install-already-current' }
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
-          {action.status === 'pending' && <span className="lw-notice-spinner" aria-hidden="true" />}
+          {(action.status === 'pending' || pushStatus === 'Checking card…') && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
           {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (
