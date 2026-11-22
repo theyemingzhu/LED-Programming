@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 import { testPort } from './testPort.mjs';
 import { guardLaunchOptions, guardTestIgnore } from './harness/networkGuard'; // no test reaches the physical card: see networkGuard.ts
@@ -6,7 +7,8 @@ const windowlessPort = testPort + 1;
 
 export default defineConfig({
   testIgnore: guardTestIgnore,
-  globalTeardown: './harness/networkGuard.ts',
+  // Absolute: configs that spread this one from another folder resolve relative paths from THEIR folder.
+  globalTeardown: fileURLToPath(new URL('./harness/networkGuard.ts', import.meta.url)),
   // A flake used to be a hard stop. Because the Tests workflow gates Deploy
   // site, one wobbling test on main cancelled the deploy silently — the change
   // was merged, not live, and nothing said so. It happened twice in one day on
