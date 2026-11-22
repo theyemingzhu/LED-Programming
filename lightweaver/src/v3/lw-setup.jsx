@@ -696,7 +696,7 @@ export function SetupScreen({
           noteCardRestartPlanned();
           try {
             await waitForCardRestart({
-              readStatus: () => readCardStatusEnvelope({ host, transport: 'direct' }),
+              readStatus: () => readCardStatusEnvelope({ host, transport: cardLink?.transport }),
               fromBootId: cardLink?.validatedBootId || cardLink?.readiness?.bootId || '',
             });
           } catch (restartError) {

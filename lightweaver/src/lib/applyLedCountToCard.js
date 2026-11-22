@@ -4,12 +4,18 @@ import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import {
   pushConfigToCard,
   withCardReadRetry,
+  cardGaveNoAnswer,
   readCardFirmwareInfoEnvelope,
   readCardStatusEnvelope,
   shouldDirectApplyLedCountChange,
 } from './cardPushClient.js';
 import { reconcileWiringToStrips } from './wiringModel.js';
 import { getCardWiringStatus } from './cardWiringSafety.js';
+import { getCardLinkState } from './cardLink.js';
+
+function currentLinkTransport() {
+  try { return getCardLinkState()?.transport || undefined; } catch { return undefined; }
+}
 import { PORT_ROLE_STRIP } from './portRoles.js';
 
 function isOnlyLedLengthChange(current = {}, runtimePackage = {}) {
@@ -231,11 +237,31 @@ export async function applyTypedLedCountToCard({
     || !isOnlyLedLengthChange(evidence, runtimePackage)) {
     return { applied: false, reason: 'not-a-length-change' };
   }
-  const result = await pushConfig(runtimePackage, {
-    host,
-    reboot: 'if-needed',
-    autoDiscover: false,
-  });
+  let result;
+  try {
+    result = await pushConfig(runtimePackage, {
+      host,
+      reboot: 'if-needed',
+      autoDiscover: false,
+    });
+  } catch (error) {
+    // A length change saves and restarts the card at once, and the reply is
+    // what a restarting card loses. That is not "did not answer": read the
+    // card back through its restart and accept it if it holds the new count
+    // (F-E2, todo/plans/false-failures.md). A refusal still fails as before.
+    if (!cardGaveNoAnswer(error) || error?.delivery === 'not-sent' || error?.delivery === 'rejected') throw error;
+    const wanted = Number((runtimePackage.config || runtimePackage)?.led?.pixels) || 0;
+    const deadline = Date.now() + 45000;
+    let landed = false;
+    while (!landed && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const after = await readEvidence({ host }).catch(() => null);
+      const pixels = Number(after?.led?.pixels ?? after?.pixels);
+      landed = Boolean(after) && wanted > 0 && pixels === wanted;
+    }
+    if (!landed) throw error;
+    result = { ok: true, rebooting: true, replyLost: true };
+  }
   if (result?.state === 'staged' || result?.requiresConfirmation === true) {
     return { applied: false, reason: 'staged-candidate', result, runtimePackage };
   }
@@ -252,12 +278,17 @@ export async function applyLedCountOnCard({
   // A quiet card is asked again (3 tries, 3 s apart) before Studio says it
   // did not take the count. todo/plans/false-failures.md, sweep item S2.
   retry = {},
+  // The card link's own route. Forcing 'direct' here meant that on the hosted
+  // https Studio the browser blocked every read before it left the page, so
+  // the card never saw the request and the owner read "the card did not take
+  // it" (real card, 2026-11-21; F-E2 in todo/plans/false-failures.md).
+  transport = currentLinkTransport(),
   ...rest
 } = {}) {
   if (!host) return { applied: false, reason: 'disconnected' };
   let wiring;
   try {
-    wiring = await withCardReadRetry(() => readWiring({ host, transport: 'direct' }), retry);
+    wiring = await withCardReadRetry(() => readWiring({ host, transport }), retry);
   } catch {
     return { applied: false, reason: 'wiring-unreachable' };
   }
@@ -266,7 +297,7 @@ export async function applyLedCountOnCard({
   }
   let status;
   try {
-    status = await withCardReadRetry(() => readStatus({ host, transport: 'direct' }), retry);
+    status = await withCardReadRetry(() => readStatus({ host, transport }), retry);
   } catch {
     return { applied: false, reason: 'unreachable' };
   }
@@ -277,7 +308,7 @@ export async function applyLedCountOnCard({
     && (status.provisionalSetup === true || isLiveBenchHeadroom(status))) {
     let firmware;
     try {
-      firmware = await withCardReadRetry(() => readFirmwareInfo({ host, transport: 'direct' }), retry);
+      firmware = await withCardReadRetry(() => readFirmwareInfo({ host, transport }), retry);
     } catch {
       return { applied: false, reason: 'firmware-unreachable' };
     }
