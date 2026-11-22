@@ -1023,6 +1023,18 @@ export function createCardSimulator(
       case '/api/firmware-info':
         return ok({
           ...statusBody(state),
+          // The real card's firmware-info carries these two at top level
+          // (fixtures/real-card-bench-2026-11-21/firmware-info.json); the
+          // count write compares them with /api/status before it sends.
+          ledType: (statusBody(state) as { led?: { type?: string } }).led?.type || 'WS2812B',
+          outputColor: {
+            contract: 1,
+            colorOrder: (statusBody(state) as { led?: { colorOrder?: string } }).led?.colorOrder || 'GRB',
+            gammaEnabled: false, gammaValue: 2.2, calibration: { red: 1, green: 1, blue: 1 },
+          },
+          // The card's button/dial pins, as firmware-info reports them. Opt-in
+          // (state.firmwareControls) so fixtures without them keep today's shape.
+          ...((state as { firmwareControls?: unknown }).firmwareControls ? { controls: (state as { firmwareControls?: unknown }).firmwareControls } : {}),
           bridgeVersion: 6,
           build: state.buildId,
           pixels: state.pixels,

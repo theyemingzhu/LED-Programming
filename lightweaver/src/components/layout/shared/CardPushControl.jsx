@@ -431,6 +431,26 @@ export function CardPushControl({
         // path the success case takes below.
         if (!configPushAttempted || !isUncertainCardWriteFailure(configError)) throw configError;
         deploymentStart = { action: 'stage-new', status: null, response: { pendingVerification: true } };
+        // A wiring change is staged, not applied: if the card took it, it is
+        // waiting for this owner's light test, and only Studio can start it.
+        // Ask the card before deciding anything — its "staged" reply may
+        // simply have arrived late. Without this the owner never saw "Start
+        // light test" and the staged change expired (F-E1, real card 2026-11-21).
+        //
+        // Staging never restarts the card, so a look that gets no answer means
+        // this was not a staged change (a length-only save restarts at once):
+        // stop at once and go to the ordinary read-back, without replacing its
+        // "Verifying…" line. A card that answers with no candidate yet may
+        // still be storing a late write, so it is asked once more, 2 s later.
+        for (let look = 0; look < 5; look += 1) {
+          if (look > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+          const staged = await getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }).catch(() => null);
+          if (!staged) break;
+          if (!staged.hasCandidate) { if (look >= 1) break; continue; }
+          const action = classifyCardDeploymentResume(attempt.prepared, staged);
+          if (action && action !== 'stage-new') deploymentStart = { action, status: staged, response: null };
+          break;
+        }
       }
       attempt = { ...attempt, wiringStatus: deploymentStart.status, resumeAction: deploymentStart.action };
       if (attempt.resumeAction === 'candidate-conflict') {
