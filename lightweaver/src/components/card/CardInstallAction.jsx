@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
+import { getFirstInstallState, resetFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -131,13 +131,33 @@ export function CardInstallAction({
   // second install of the same project as a wiring candidate (practice card,
   // tests/blank-card-first-install.spec.ts).
   // Shared across every install panel and every rebuild of one (lib/firstInstallState.js).
-  const firstInstall = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState).phase;
+  const firstInstallState = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState);
+  const firstInstall = firstInstallState.phase;
   const setFirstInstall = phase => setFirstInstallState({ phase });
   // Once the card no longer reads blank, a finished first install hands the
   // panel back to the ordinary branches (it then reads as installed).
   useEffect(() => {
     if (firstInstall === 'done' && !cardNeedsStripDiscovery) setFirstInstall('');
   }, [firstInstall, cardNeedsStripDiscovery]);
+  // A failed first install whose write landed anyway (the read-back timed out,
+  // say): once the card answers as something other than blank, the blank
+  // panel must go, or its Save to card would push factory-blank at a card that
+  // is no longer blank and be refused. It hands over WITHOUT next=patterns, so
+  // the ordinary install control does not auto-start a second write.
+  useEffect(() => {
+    if (firstInstall !== 'failed' || !cardReadinessState || cardReadinessState === 'blank') return;
+    if (continueToPatterns) {
+      const route = new URLSearchParams(window.location.hash.slice(1));
+      route.delete('next');
+      window.location.hash = '#' + route.toString();
+    }
+    resetFirstInstallState();
+  }, [firstInstall, cardReadinessState, continueToPatterns]);
+  // The state belongs to one card: pairing another card starts clean.
+  const pairedCardId = cardLink.card?.cardId || cardLink.expectedCard?.id || '';
+  useEffect(() => {
+    if (firstInstallState.cardId && pairedCardId && pairedCardId !== firstInstallState.cardId) resetFirstInstallState();
+  }, [firstInstallState.cardId, pairedCardId]);
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();

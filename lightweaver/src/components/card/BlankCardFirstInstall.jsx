@@ -43,6 +43,7 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
     const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
     if (!claim.ok) { setState({ status: 'failed', message: claim.message }); return; }
     setState({ status: 'pending', message: 'Saving your project to the blank card…' });
+    setFirstInstallState({ cardId });
     onStart?.();
     let ok = false;
     try {
