@@ -22,7 +22,7 @@ for (const vp of WIDTHS) {
         await page.waitForTimeout(1500);
         await j.type(page.getByTestId('look-speed-slider'), '2', 'Set Speed slider to 2x (type counted as one decision)');
         await page.waitForTimeout(600);
-        await j.press(page.getByRole('button', { name: 'Install on card', exact: true }).first(), 'Install on card');
+        await j.press(page.getByRole('button', { name: 'Save to card', exact: true }).or(page.getByRole('button', { name: 'Install on card', exact: true })).first(), 'Save to card');
         // With the card holding the same wiring, Install posts the config straight away.
         // A wiring light test would only be offered if the layout differed.
         await expect.poll(() => card.requests.some(r => r.method === 'POST' && r.path === '/api/config'), { timeout: 20_000 }).toBe(true);
