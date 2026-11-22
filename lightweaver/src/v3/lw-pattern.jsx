@@ -57,6 +57,7 @@ import {
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
+import { promotePatternFirst } from '../lib/installController.js';
 import {
   cardConnectionOptionsFor,
   cardHostToUrl,
@@ -2226,29 +2227,8 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
 
     // ── handlers ────────────────────────────────────────────────────────
-    const promotePatternFirst = (controller, patternId) => {
-      const controllerLooks = normalizeSavedLooks(controller?.looks);
-      const currentPlaylist = normalizeCardPlaylist(controller?.playlist, {
-        savedLooks: controllerLooks,
-        fallbackPatternIds: [
-          patternId,
-          ...(Array.isArray(controller?.controls?.encoder?.patternCycleIds) ? controller.controls.encoder.patternCycleIds : []),
-        ],
-      });
-      const item = makePatternPlaylistItem(patternId);
-      const nextPlaylist = normalizeCardPlaylist([
-        item,
-        ...currentPlaylist.filter(entry => !(entry.type === 'pattern' && entry.patternId === patternId)),
-      ].filter(Boolean), { savedLooks: controllerLooks, fallbackPatternIds: [patternId] });
-      return {
-        ...(controller || {}),
-        playlist: nextPlaylist,
-        controls: {
-          ...(controller?.controls || {}),
-          encoder: { ...(controller?.controls?.encoder || {}), patternCycleIds: derivePlaylistLookIds(nextPlaylist) },
-        },
-      };
-    };
+    // promotePatternFirst lives in lib/installController.js so Layout's install
+    // builds the same body.
 
     const offerCardHandoff = (runtimePackageForCard, message) => {
       setHandoffUrl(buildCardConfigHandoffUrl(cardHost, runtimePackageForCard));

@@ -5,6 +5,7 @@ import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
+import { layoutInstallController } from '../../lib/installController.js';
 import { BlankCardFirstInstall } from './BlankCardFirstInstall.jsx';
 import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
@@ -46,17 +47,12 @@ export function CardInstallAction({
   // patch board supplies each section's playback and stable patch identity;
   // rebuilding patches from runs loses both and makes every saved mix Aurora.
   const cardTransportBoard = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
-  const installController = useMemo(() => ({
-    ...standaloneController,
-    outputs: compiledWiring.outputs.map(output => ({
-      id: output.id,
-      name: output.name,
-      pin: output.pin,
-      pixels: output.count,
-      direction: output.direction,
-      segments: output.segments,
-    })),
-  }), [standaloneController, compiledWiring.outputs]);
+  // Same body as Patterns' Save to card: the project's default look first
+  // (lib/installController.js).
+  const installController = useMemo(
+    () => layoutInstallController(standaloneController, compiledWiring.outputs),
+    [standaloneController, compiledWiring.outputs],
+  );
 
   const stripIds = new Set(strips.map(strip => strip.id));
   const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));

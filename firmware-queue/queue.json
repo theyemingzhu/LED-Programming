@@ -30,6 +30,16 @@
         "kind": "patch",
         "patch": "firmware-queue/patches/drop-stale-rollback-record.patch"
       }
+    },
+    {
+      "id": "candidate-blob",
+      "what": "Store the staged wiring candidate in a second project slot and confirm a wiring change by flipping which slot is live, so the card never needs room for another project copy.",
+      "why": "Every rewire on a card holding a full project answered candidate storage failed or candidate confirmation failed; on the bench card this build staged and confirmed 5 of 5 changes, including the blank-card Find my strips install.",
+      "added": "2026-11-22",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/candidate-blob"
+      }
     }
   ]
 }
