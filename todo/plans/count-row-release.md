@@ -30,3 +30,14 @@ with explicit outputs/segments matching a 5-strip draft), refuse
 /api/wiring/candidate, Card Home count +1 → Set, then press Set again.
 The card-side fix (candidate stored as a blob) removes the refusal that leads
 here; this Studio defect still matters for any other refused staged write.
+
+## Done (2026-11-23)
+Cause found with in-page markers: on a five-section installed card,
+`applyLedCount` (lightweaver/src/v3/lw-setup.jsx) computed
+`cardStatusWithPixelCount(...)` OUTSIDE its try. That function throws "This
+output is split into more than one run. That is a wiring change, not a length
+change." The rejection escaped (pageerror), busy stayed true → "Saving…"
+forever. Fix: compute it inside the try, so the existing catch releases the row
+and shows that message.
+tests/count-row-release.spec.ts: red on main, green with the fix. With
+card-home-facts, bench-count-set, simpler-journeys: 42/42.
