@@ -343,8 +343,8 @@ async function recordTwoGpioWalk(page: any, onFirstCount?: () => Promise<void>) 
   await onFirstCount?.();
   await page.getByTestId('discovery-count-16').fill('30');
   await page.getByTestId('discovery-counts-done').click();
-  await page.getByTestId('discovery-end-yes').click();
-  await page.getByTestId('discovery-add-strip').click();
+  // Keep this strip and count another (simpler-journeys C8).
+  await page.getByTestId('discovery-end-add-strip').click();
   await page.getByTestId('discovery-probe-17').click();
   await page.getByTestId('discovery-start').click();
   await expect(page.getByTestId('discovery-decade')).toBeVisible();
@@ -352,7 +352,6 @@ async function recordTwoGpioWalk(page: any, onFirstCount?: () => Promise<void>) 
   await page.getByTestId('discovery-counts-done').click();
   await page.getByTestId('discovery-end-yes').click();
   await page.getByTestId('discovery-end-yes').click();
-  await page.getByTestId('discovery-record-save').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
   // The Bench config reboot changes bootId. Direct keepalive can take a full
   // 20-second interval to notice it, then requires a second matching envelope
@@ -829,10 +828,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.getByTestId('discovery-counts-done').click();
     await page.getByTestId('discovery-end-yes').click();
 
-    await expect(page.getByTestId('discovery-record')).toBeVisible();
-    await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 47 LEDs');
-    await page.getByTestId('discovery-record-save').click();
     await expect(page.getByTestId('discovery-done')).toBeVisible();
+    await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 47 LEDs');
     await expect(page.getByTestId('discovery-pattern-audition')).toBeVisible();
     await expect(page.getByTestId('discovery-pattern-whole')).toBeVisible();
     await expect(page.getByTestId('discovery-pattern-16')).toBeVisible();
@@ -846,7 +843,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
     await expect(page.getByTestId('discovery-open-patterns')).toBeVisible();
     await expect(page.getByTestId('discovery-continue-layout')).toBeVisible();
-    await expect(page.getByTestId('discovery-done')).toContainText('Move this strip onto your artwork');
+    await expect(page.getByTestId('discovery-done')).toContainText('Placing this strip on your artwork is optional');
     await expect(page.getByTestId('card-setup-close')).toBeEnabled();
     await expect(page.getByTestId('card-setup-disconnect')).toBeEnabled();
 
@@ -884,8 +881,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await showCountingRuler(page);
     await page.getByTestId('discovery-count-16').fill('47');
     await page.getByTestId('discovery-counts-done').click();
-    await page.getByTestId('discovery-end-yes').click();
-    await page.getByTestId('discovery-add-strip').click();
+    // Keep this strip and count another (simpler-journeys C8).
+    await page.getByTestId('discovery-end-add-strip').click();
     await page.getByTestId('discovery-probe-17').click();
     await page.getByTestId('discovery-start').click();
     await expect(page.getByTestId('discovery-decade')).toBeVisible();
@@ -913,7 +910,6 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.getByTestId('discovery-counts-done').click();
     await page.getByTestId('discovery-end-yes').click();
     await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 256 LEDs');
-    await page.getByTestId('discovery-record-save').click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null')))
       .toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
     const recorded = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null'));
@@ -930,11 +926,11 @@ test.describe('a blank card whose firmware applies its first config', () => {
       await expect(page.getByTestId('discovery-decade')).toBeVisible();
       await page.getByTestId(`discovery-count-${pin}`).fill('20');
       await page.getByTestId('discovery-counts-done').click();
-      for (let confirmed = 0; confirmed <= index; confirmed++) {
+      for (let confirmed = 0; confirmed < index; confirmed++) {
         await page.getByTestId('discovery-end-yes').click();
       }
-      await expect(page.getByTestId('discovery-record')).toBeVisible();
-      await page.getByTestId('discovery-add-strip').click();
+      // The last confirm keeps every strip and counts another (simpler-journeys C8).
+      await page.getByTestId('discovery-end-add-strip').click();
     }
     await page.getByTestId('discovery-probe-21').click();
     await expect(page.getByTestId('discovery-output-limit')).toBeVisible();
@@ -1133,7 +1129,6 @@ test.describe('a reload mid-discovery (ui-repair B2)', () => {
     await page.getByTestId('discovery-count-16').fill('47');
     await page.getByTestId('discovery-counts-done').click();
     await page.getByTestId('discovery-end-yes').click();
-    await page.getByTestId('discovery-record-save').click();
     await expect(page.getByTestId('discovery-done')).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem('lw_discovery_run_v1'))).toBeNull();
   });

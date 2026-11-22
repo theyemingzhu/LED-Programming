@@ -8,6 +8,7 @@ import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx'
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 import { STRIP_DISCOVERY_BLANK_MESSAGE, STRIP_DISCOVERY_LABEL, STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../lib/cardAction.js';
+import { BENCH_PROJECT_ID } from '../../lib/benchConfig.js';
 import '../../styles/lw-wire.css';
 
 // Guided find-strips / finish-wire / LED check / color-order / install flow.
@@ -124,10 +125,16 @@ export function CardInstallAction({
   const continueToPatterns = cardRoute.get('next') === 'patterns';
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
-  const replaceProjectIntent = continueToPatterns && cardRoute.get('replace') === 'project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
+  // The temporary find-my-strips setup is Studio's own scaffolding, not an
+  // owner's project: replacing it is the whole point of saving after a light
+  // check, so it needs no "this card holds a different project" question
+  // (simpler-journeys C4). A real other project still asks.
+  const cardHoldsTemporarySetup = cardProjectId === BENCH_PROJECT_ID;
+  const replaceProjectIntent = continueToPatterns
+    && (cardRoute.get('replace') === 'project' || cardHoldsTemporarySetup);
   const differentProjectOnCard = Boolean(cardLink.card?.id && cardLink.readiness?.cardId === cardLink.card.id
-    && cardProjectId && projectId && cardProjectId !== projectId);
+    && cardProjectId && projectId && cardProjectId !== projectId && !cardHoldsTemporarySetup);
   const openProjectReplacement = () => {
     window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&replace=project';
   };

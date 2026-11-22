@@ -266,6 +266,7 @@ export function StripDiscoveryPanel({
   embedded = false,
   onLifecycleChange = null,
   onComplete = null,
+  onSaveToCard = null,
 }) {
   const host = normalizeCardHost(cardHost || cardLink?.host || readStoredCardHost());
   const flowIdRef = useRef('');
@@ -873,6 +874,24 @@ export function StripDiscoveryPanel({
   };
 
   const recordingRef = useRef(false);
+  // The last "Yes, that is the last one" also saves what was found
+  // (simpler-journeys C8). The record screen that followed repeated counts the
+  // owner had just confirmed one by one, and only existed to offer "Add
+  // another strip", which now sits beside the last confirm. Saving here
+  // writes nothing to the card; that is still Save to card.
+  const afterConfirmRef = useRef('');
+  const confirmEndMarker = intent => {
+    afterConfirmRef.current = intent;
+    dispatch({ type: 'end-marker-yes' });
+  };
+  const addAnotherStrip = () => {
+    setPortRoles(current => normalizePortRoles(current.map(entry => {
+      const found = session.ports.find(port => port.pin === entry.pin);
+      return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry;
+    })));
+    setSelectedPort(null);
+    setSession(null);
+  };
   const record = async () => {
     if (recordingRef.current) return;
     recordingRef.current = true;
@@ -1243,6 +1262,16 @@ export function StripDiscoveryPanel({
   const warnings = discoveryWarnings(session);
   const activePort = session?.ports.find(port => port.pin === session.activePin) || null;
   const phase = session?.phase || 'idle';
+  const lastEndMarker = phase === 'end-marker' && (session?.ports || [])
+    .filter(port => port.probed && !port.skipped && !port.confirmed).length <= 1;
+  useEffect(() => {
+    if (phase !== 'record' || !afterConfirmRef.current) return;
+    const intent = afterConfirmRef.current;
+    afterConfirmRef.current = '';
+    if (intent === 'save') void record();
+    else if (intent === 'add') addAnotherStrip();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
   const matchingBenchPatterns = BENCH_AUDITION_PATTERNS.filter(pattern => {
     const query = patternSearch.trim().toLowerCase();
     return !query || `${pattern.label} ${pattern.description}`.toLowerCase().includes(query);
@@ -1705,12 +1734,17 @@ export function StripDiscoveryPanel({
             last light on this strip.
           </p>
           <div className="strip-discovery-actions">
-            <button type="button" className="btn primary" data-testid="discovery-end-yes" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'end-marker-yes' })}>
+            <button type="button" className="btn primary" data-testid="discovery-end-yes" disabled={cardRestartedDuringLook || busy} onClick={() => confirmEndMarker(lastEndMarker ? 'save' : '')}>
               Yes, that is the last one
             </button>
             <button type="button" className="btn" data-testid="discovery-end-no" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'end-marker-no' })}>
               Adjust my count
             </button>
+            {lastEndMarker && (
+              <button type="button" className="btn" data-testid="discovery-end-add-strip" disabled={cardRestartedDuringLook || busy} onClick={() => confirmEndMarker('add')}>
+                Yes, and add another strip
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -1725,7 +1759,7 @@ export function StripDiscoveryPanel({
               </li>
             ))}
           </ul>
-          <button type="button" className="btn" data-testid="discovery-add-strip" onClick={() => { setPortRoles(current => normalizePortRoles(current.map(entry => { const found = session.ports.find(port => port.pin === entry.pin); return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry; }))); setSelectedPort(null); setSession(null); }}>Add another strip</button>
+          <button type="button" className="btn" data-testid="discovery-add-strip" onClick={addAnotherStrip}>Add another strip</button>
           <button type="button" className="btn primary" data-testid="discovery-record-save" onClick={record} disabled={busy}>
             Save what we found
           </button>
@@ -1734,6 +1768,17 @@ export function StripDiscoveryPanel({
 
       {phase === 'done' && (
         <section className="strip-discovery-step" data-testid="discovery-done">
+          {/* What the record screen used to show before its Save: the counts,
+              one line per strip (simpler-journeys C8). */}
+          {session?.ports?.some(port => port.confirmed && port.count > 0) && (
+            <ul className="strip-discovery-counts" data-testid="discovery-found">
+              {session.ports.filter(port => port.confirmed && port.count > 0).map(port => (
+                <li key={port.pin} data-testid={`discovery-result-${port.pin}`}>
+                  {portLabel(port)} · {port.count} LEDs
+                </li>
+              ))}
+            </ul>
+          )}
           {!installed && measuredOutputs.length > 0 && (
             <div className="strip-discovery-audition" data-testid="discovery-pattern-audition">
               <div className="strip-discovery-audition-heading">
@@ -1807,26 +1852,41 @@ export function StripDiscoveryPanel({
           )}
           {embedded ? (
             <>
-              <h3>Ready for Layout</h3>
+              <h3>Ready to save to the card</h3>
               <p>
                 Studio saved the output, color order, light count, and final-light boundary in this project.
-                The card is still running a temporary low-power setup; place the lights in the artwork before the final test and card install.
+                The card is still running a temporary low-power setup until you save.
               </p>
               {layoutPrepared && (
                 <p className="strip-discovery-note" data-testid="discovery-layout-guidance">
                   {Number(committedPartsRef.current?.strips?.length) > 1
-                    ? 'Move these strips onto your artwork. Their counts and GPIO wiring are already filled in.'
-                    : 'Move this strip onto your artwork. Its count and GPIO wiring are already filled in.'}
+                    ? 'Placing these strips on your artwork is optional. Their counts and GPIO wiring are already filled in.'
+                    : 'Placing this strip on your artwork is optional. Its count and GPIO wiring are already filled in.'}
                 </p>
               )}
-              <button
-                type="button"
-                className="btn primary"
-                data-testid="discovery-continue-layout"
-                onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
-              >
-                Continue to Layout
-              </button>
+              {/* Layout gates nothing (setupJourney.js phasesFor: layout is
+                  `optional`, never current), so the one primary here is the
+                  write the owner came for. Layout stays a door beside it. */}
+              <div className="strip-discovery-actions">
+                {onSaveToCard && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    data-testid="discovery-save-to-card"
+                    onClick={() => { void stopBenchAudition().then(restored => { if (restored) onSaveToCard(); }); }}
+                  >
+                    Save to card
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={onSaveToCard ? 'btn' : 'btn primary'}
+                  data-testid="discovery-continue-layout"
+                  onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
+                >
+                  {onSaveToCard ? 'Place on artwork' : 'Continue to Layout'}
+                </button>
+              </div>
             </>
           ) : installed ? (
             <div data-testid="discovery-installed">

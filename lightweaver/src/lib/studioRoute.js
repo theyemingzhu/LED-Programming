@@ -194,5 +194,20 @@ export function createStudioRouteStore(win = globalThis) {
     win.dispatchEvent(new Event(STUDIO_ROUTE_EVENT));
     return true;
   };
-  return { read, subscribe, replace };
+  // A move to a different screen adds a history entry, so the phone's Back
+  // returns to the screen before instead of leaving Studio. Section and
+  // parameter changes on one screen still replace (simpler-journeys G2).
+  const push = hash => {
+    const next = String(hash || '').startsWith('#') ? String(hash) : `#${hash || ''}`;
+    if (read() === next) return false;
+    try {
+      win.history.pushState(null, '', `${win.location.pathname}${win.location.search}${next}`);
+    } catch {
+      win.location.hash = next;
+      return true;
+    }
+    win.dispatchEvent(new Event(STUDIO_ROUTE_EVENT));
+    return true;
+  };
+  return { read, subscribe, replace, push };
 }

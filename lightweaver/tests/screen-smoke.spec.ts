@@ -498,12 +498,11 @@ test('background direct discovery stays unpaired until an explicit one-tap pair'
   await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found . pair/);
 
+  // The owner's one tap on "Found — pair" is the explicit pair
+  // (simpler-journeys C5): no dialog, no "Use this card instead".
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('Pair this Lightweaver card');
-  await expect(dialog.getByRole('button', { name: 'Use this card instead' })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-passive-card');
+  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
 });
 

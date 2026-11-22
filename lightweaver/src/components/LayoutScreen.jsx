@@ -26,6 +26,7 @@ import { stripPitchMm } from '../lib/wireBuildSheet.js';
 import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
 import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
+import { takeLedTotal } from '../lib/ledCountHandoff.js';
 import { displayStripName } from '../lib/stripLabels.js';
 
 function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }) {
@@ -83,6 +84,31 @@ function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }
 
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
+  // Card Home's Lights row hands a new total here (lib/ledCountHandoff.js):
+  // apply it with Layout's own setter, then, once the counted strips have
+  // rendered, continue to Save to card exactly as the button below does.
+  const [handoffSave, setHandoffSave] = useState(false);
+  const handoffTakenRef = useRef(false);
+  useEffect(() => {
+    if (handoffTakenRef.current) return;
+    handoffTakenRef.current = true;
+    const total = takeLedTotal();
+    if (total == null) return;
+    const result = state.setTotalLedCount?.(total);
+    if (result?.ok) setHandoffSave(true);
+  }, [state]);
+  useEffect(() => {
+    if (!handoffSave) return undefined;
+    // A new count re-derives the wiring runs over the next renders. Save only
+    // once Layout has gone quiet, or the install would be prepared from a
+    // project that is still changing (and cancel itself). `state` is a new
+    // object on every render, so each render restarts the wait.
+    const timer = setTimeout(() => {
+      setHandoffSave(false);
+      openCardFlow('install-project', { startProjectInstall: true });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [handoffSave, state]);
   const [shapesOpen, setShapesOpen] = useState(false);
   const [previewToolsOpen, setPreviewToolsOpen] = useState(false);
   const previewTrigger = useRef(null);

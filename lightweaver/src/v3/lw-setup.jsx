@@ -31,6 +31,7 @@ import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
+import { requestLedTotal } from '../lib/ledCountHandoff.js';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { projectFromCardParts } from '../lib/cardPickup.js';
 import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
@@ -641,7 +642,7 @@ export function SetupScreen({
     event?.preventDefault?.();
     return applyLedCount(Math.trunc(Number(ledCountDraft)));
   };
-  const applyLedCount = async pixels => {
+  const applyLedCount = async (pixels, { saveToCard = false } = {}) => {
     if (ledCountState.busy) return;
     if (!Number.isSafeInteger(pixels) || pixels < 1) {
       setLedCountState({ busy: false, message: 'Enter how many lights are on this strip.' });
@@ -650,6 +651,18 @@ export function SetupScreen({
     const pin = countPin;
     if (pin == null) {
       setLedCountState({ busy: false, message: 'Find the strip output first, then enter the count.' });
+      return;
+    }
+    // An installed card's row button is Save to card. Layout owns how a total
+    // is spread across drawn strips, so the count goes to Layout's own setter,
+    // which then opens the same Save to card every other door uses.
+    if (saveToCard) {
+      if (!requestLedTotal(pixels)) {
+        setLedCountState({ busy: false, message: 'Studio could not hand the count to Layout. Change it in Layout.' });
+        return;
+      }
+      setLedCountState({ busy: false, message: '' });
+      go('#screen=layout&mode=draw');
       return;
     }
     setLedCountState({ busy: true, message: '' });
@@ -741,8 +754,13 @@ export function SetupScreen({
   const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
   useEffect(() => {
     if (!onCountEditor) return undefined;
-    onCountEditor(countPin == null || !cardTakesCount ? null : {
-      apply: applyLedCount,
+    // Every card offers the count in its own row (THINKING 2026-09-11: every
+    // fact stays editable in its row). A card that takes the count straight
+    // away sets it; an installed card keeps its project until the owner saves,
+    // so its row button IS that save (simpler-journeys C3).
+    onCountEditor(countPin == null ? null : {
+      apply: cardTakesCount ? applyLedCount : pixels => applyLedCount(pixels, { saveToCard: true }),
+      saves: !cardTakesCount,
       busy: ledCountState.busy,
       message: ledCountState.message,
       pin: countPin,
@@ -853,6 +871,8 @@ export function SetupScreen({
       setDraftSave({ pending: false, message: result?.message || 'Result not confirmed. Read the card before trying again.' });
     } catch (error) { setDraftSave({ pending: false, message: error?.message || 'Result not confirmed. Read the card before trying again.' }); }
   };
+  const installedProjectId = String(cardLink?.readiness?.projectId || cardState.status?.projectId || '').trim();
+  const installedProjectOpen = Boolean(installedProjectId) && installedProjectId === String(currentProject?.id || '').trim();
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
     && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
     && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
@@ -1207,7 +1227,12 @@ export function SetupScreen({
                 </button>
                 <div className="lw-identity-project">
                   <span>{installedHome ? 'On the card' : 'Your draft'}</span>
-                  {installedHome ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
+                  {/* An installed card whose project is the one open here renames in
+                      place (simpler-journeys C7); the name reaches the card with
+                      Save to card like any other edit. A different open project
+                      keeps the card's name read-only, since renaming would rename
+                      the draft, not what the card holds. */}
+                  {installedHome && !installedProjectOpen ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
                     <input
                       className="lw-identity-rename"
                       data-testid="setup-project-name-input"

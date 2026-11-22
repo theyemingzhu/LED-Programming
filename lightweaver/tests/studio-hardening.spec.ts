@@ -611,8 +611,11 @@ test('staged light test restores the last Studio-confirmed look after a lost act
   await openCardInstall(page);
   await card.authorize();
   await page.getByTestId('layout-send-to-card').click();
-  await page.getByRole('button', { name: 'Start light test' }).click();
+  // The owner's own Save starts the light test (simpler-journeys C2); the
+  // activation response is still the one that is lost, so Studio must read
+  // the card's state to reach the verdict below.
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  expect(card.wiringOperations).toEqual(expect.arrayContaining(['activate', 'status']));
   await page.getByRole('button', { name: 'No, restore working setup' }).click();
 
   await expect(page.locator('.la-card-push-banner')).toContainText('Restored the last working setup');

@@ -424,12 +424,11 @@ test('[J08] a wiring confirm refuses while another tab holds the write lease, an
   });
 
   await page.getByTestId('layout-send-to-card').click();
-  await expect(
-    page.getByTestId('wiring-test-start'),
-    'fixture sanity: a wiring-changing push must stage a candidate, not apply directly',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  await page.getByTestId('wiring-test-start').click();
+  // A wiring-changing push stages a candidate and starts its light test on
+  // its own (simpler-journeys C2) — it never applies directly.
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate'),
+    'fixture sanity: a wiring-changing push must stage a candidate, not apply directly').toHaveLength(1);
 
   // Tab two never opens any Studio screen for this — it acquires the same
   // cross-tab write lease directly, exactly as the module's own doc comment

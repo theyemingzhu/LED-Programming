@@ -19,6 +19,7 @@ export function CardSetupOverlay({
   onDismiss,
   onDisconnect,
   onComplete,
+  onSaveToCard,
   onMinimizedChange,
   go,
 }) {
@@ -215,6 +216,7 @@ export function CardSetupOverlay({
             embedded
             onLifecycleChange={setLifecycle}
             onComplete={onComplete}
+            onSaveToCard={onSaveToCard}
           />
         </div>
 

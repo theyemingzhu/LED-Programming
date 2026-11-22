@@ -70,7 +70,7 @@ test('find my strips, on the real card', async ({ page }) => {
   await page.waitForTimeout(1500);
   console.log('FIND end marker: confirmed');
 
-  await page.getByTestId('discovery-record-save').click();
+  // The last end-marker confirm saves what was found (simpler-journeys C8).
   for (let i = 0; i < 80; i += 1) {
     if (await page.getByTestId('discovery-done').count()) break;
     if (await page.getByTestId('discovery-install-takeover').count()) {
