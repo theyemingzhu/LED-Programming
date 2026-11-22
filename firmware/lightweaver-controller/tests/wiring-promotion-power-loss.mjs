@@ -75,7 +75,7 @@ assert.match(armedRestoreBody,
 const restoreActions = orderedActions(armedRestoreBody, [
   ['restore-known-good', 'writeKnownGood(prefs'],
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
-  ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
+  ['drop-journal', 'removePrevious(prefs'],
 ]);
 assert.deepEqual(restoreActions, ['restore-known-good', 'disarm', 'drop-journal'],
   'rollback must durably disarm before deleting its only recovery payload');
@@ -100,7 +100,7 @@ for (let firstCut = 1; firstCut <= restoreActions.length; firstCut += 1) {
 const finalizeBody = functionBody('finalizeCommittedPromotion', 'makeActivationId');
 const finalizeActions = orderedActions(finalizeBody, [
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
-  ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
+  ['drop-journal', 'removePrevious(prefs'],
   ['drop-candidate', 'removeCandidate(prefs'],
   ['drop-candidate-id', 'prefs.remove(NVS_CANDIDATE_ID_KEY'],
 ]);
@@ -426,7 +426,7 @@ assert.match(storage, /knownGood == candidate &&\s*\(!candidateId\.length\(\)/,
   'only candidate bytes already equal to known-good require committed candidate identity');
 
 assert.match(restoreBody,
-  /if \(!prefs\.getBool\(NVS_PROMOTION_ARMED_KEY, false\)\) \{[\s\S]*NVS_PREVIOUS_KNOWN_GOOD_KEY[\s\S]*prefs\.remove/,
+  /if \(!prefs\.getBool\(NVS_PROMOTION_ARMED_KEY, false\)\) \{[\s\S]*removePrevious\(prefs\)/,
   'unarmed rollback must durably remove any pre-arm journal before continuing');
 
 const OLD = 'known-good-b';
@@ -528,7 +528,7 @@ const confirmWrites = [
 ];
 const confirmBody = functionBody('confirmCandidateRuntimeConfig', 'rollbackCandidateRuntimeConfig');
 const confirmPrefixWrites = orderedActions(confirmBody, [
-  ['journal-old', 'prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
+  ['journal-old', 'writePrevious(prefs'],
   ['arm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, true)'],
   ['promote-candidate', 'writeKnownGood(prefs, candidate)'],
   ['confirm-id', 'prefs.putString(NVS_CONFIRMED_ID_KEY, activationId)'],

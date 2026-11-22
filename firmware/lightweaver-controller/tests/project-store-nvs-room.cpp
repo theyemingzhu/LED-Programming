@@ -536,6 +536,31 @@ void candidateBesideASavedProjectNeedsTheBlob() {
   assert(lightweaver::removeProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY));
   assert(lightweaver::writeProject(prefs, CANDIDATE_BLOB_KEY, CANDIDATE_STRING_KEY, String(candidate)) == candidate.size());
 }
+
+void confirmFitsThreeCopiesAsBlobs() {
+  // Confirming a staged change holds three project copies at once: the saved
+  // project, the candidate, and the journal of the previous project. On the
+  // real card (2026-11-22) the journal as a string answered "candidate
+  // confirmation failed" once the candidate itself had fitted.
+  Nvs nvs;
+  seedUsedCard(nvs, 3400, 30);
+  Preferences prefs(nvs);
+  const std::string saved = project(3562, 'b');
+  const std::string candidate = project(3562, 'w');
+  assert(lightweaver::writeProject(prefs, BLOB_KEY, STRING_KEY, String(saved)) == saved.size());
+  assert(lightweaver::writeProject(prefs, "cdConfigBlob", "candidateConfig", String(candidate)) == candidate.size());
+  assert(prefs.putString("previousKnown", String(saved)) == 0);
+  assert(lightweaver::writeProject(prefs, "prevKnownBlob", "previousKnown", String(saved)) == saved.size());
+  // An in-place overwrite would need a fourth copy and is refused here:
+  // promotion erases the saved project first (the journal holds it).
+  assert(lightweaver::writeProject(prefs, BLOB_KEY, STRING_KEY, String(candidate)) == 0);
+  assert(same(lightweaver::readProject(prefs, BLOB_KEY, STRING_KEY), saved));
+  assert(lightweaver::removeProject(prefs, BLOB_KEY, STRING_KEY));
+  assert(lightweaver::writeProject(prefs, BLOB_KEY, STRING_KEY, String(candidate)) == candidate.size());
+  assert(same(lightweaver::readProject(prefs, BLOB_KEY, STRING_KEY), candidate));
+  assert(lightweaver::removeProject(prefs, "cdConfigBlob", "candidateConfig"));
+  assert(lightweaver::removeProject(prefs, "prevKnownBlob", "previousKnown"));
+}
 int main() {
   costsMatchThePageArithmetic();
   stringProjectIsRefusedOnAUsedCard();
@@ -545,5 +570,6 @@ int main() {
   powerLossAtEveryStepKeepsOneWholeProject();
   removeClearsBothForms();
   candidateBesideASavedProjectNeedsTheBlob();
+  confirmFitsThreeCopiesAsBlobs();
   return 0;
 }

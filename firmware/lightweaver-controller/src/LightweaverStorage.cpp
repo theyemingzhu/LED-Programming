@@ -68,6 +68,10 @@ constexpr const char* NVS_KNOWN_GOOD_BLOB_KEY = "kgConfigBlob";
 // lw-b0fe81f61b44, 2026-11-22). NVS_CANDIDATE_CONFIG_KEY is the string an
 // older firmware left; it is read until the next staging replaces it.
 constexpr const char* NVS_CANDIDATE_BLOB_KEY = "cdConfigBlob";
+// Confirming a candidate journals the previous project first, a full project
+// copy: same one-page problem, so the same blob form ("candidate confirmation
+// failed" on the real card, 2026-11-22, once the candidate itself fitted).
+constexpr const char* NVS_PREVIOUS_BLOB_KEY = "prevKnownBlob";
 
 String readKnownGood(Preferences& prefs) {
   return lightweaver::readProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
@@ -83,6 +87,18 @@ size_t writeCandidate(Preferences& prefs, const String& json) {
 }
 bool removeCandidate(Preferences& prefs) {
   return lightweaver::removeProject(prefs, NVS_CANDIDATE_BLOB_KEY, NVS_CANDIDATE_CONFIG_KEY);
+}
+String readPrevious(Preferences& prefs) {
+  return lightweaver::readProject(prefs, NVS_PREVIOUS_BLOB_KEY, NVS_PREVIOUS_KNOWN_GOOD_KEY);
+}
+size_t writePrevious(Preferences& prefs, const String& json) {
+  return lightweaver::writeProject(prefs, NVS_PREVIOUS_BLOB_KEY, NVS_PREVIOUS_KNOWN_GOOD_KEY, json);
+}
+bool removePrevious(Preferences& prefs) {
+  return lightweaver::removeProject(prefs, NVS_PREVIOUS_BLOB_KEY, NVS_PREVIOUS_KNOWN_GOOD_KEY);
+}
+bool hasPrevious(Preferences& prefs) {
+  return prefs.isKey(NVS_PREVIOUS_BLOB_KEY) || prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY);
 }
 bool hasCandidateConfig(Preferences& prefs) {
   return prefs.isKey(NVS_CANDIDATE_BLOB_KEY) || prefs.isKey(NVS_CANDIDATE_CONFIG_KEY);
@@ -1606,11 +1622,10 @@ bool candidateIdMatches(Preferences& prefs, const String& activationId) {
 
 bool restorePreviousKnownGood(Preferences& prefs) {
   if (!prefs.getBool(NVS_PROMOTION_ARMED_KEY, false)) {
-    return !prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY) ||
-           prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY);
+    return removePrevious(prefs);
   }
-  if (!prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY)) return false;
-  String previous = prefs.getString(NVS_PREVIOUS_KNOWN_GOOD_KEY, "");
+  if (!hasPrevious(prefs)) return false;
+  String previous = readPrevious(prefs);
   String currentKnownGood = readKnownGood(prefs);
   bool restored = false;
   if (previous == NVS_NO_PREVIOUS_KNOWN_GOOD) {
@@ -1625,7 +1640,7 @@ bool restorePreviousKnownGood(Preferences& prefs) {
   bool disarmed = prefs.putBool(NVS_PROMOTION_ARMED_KEY, false) > 0 ||
                   !prefs.getBool(NVS_PROMOTION_ARMED_KEY, false);
   if (!disarmed) return false;
-  prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY);
+  removePrevious(prefs);
   return true;
 }
 
@@ -1644,8 +1659,7 @@ bool finalizeCommittedPromotion(Preferences& prefs) {
   bool confirmationCleared = !rollbackResidue || !prefs.isKey(NVS_CONFIRMED_ID_KEY) ||
                              prefs.remove(NVS_CONFIRMED_ID_KEY);
   if (!confirmationCleared) return false;
-  bool previousCleared = !prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY) ||
-                         prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY);
+  bool previousCleared = removePrevious(prefs);
   bool candidateCleared = removeCandidate(prefs);
   bool candidateIdCleared = !prefs.isKey(NVS_CANDIDATE_ID_KEY) ||
                             prefs.remove(NVS_CANDIDATE_ID_KEY);
@@ -1654,7 +1668,8 @@ bool finalizeCommittedPromotion(Preferences& prefs) {
 
 bool validateCandidateMetadataForBoot(Preferences& prefs, WiringCandidateState state,
                                       String& message) {
-  if (prefs.isKey(NVS_CANDIDATE_BLOB_KEY) && prefs.getType(NVS_CANDIDATE_BLOB_KEY) != PT_BLOB) {
+  if ((prefs.isKey(NVS_CANDIDATE_BLOB_KEY) && prefs.getType(NVS_CANDIDATE_BLOB_KEY) != PT_BLOB) ||
+      (prefs.isKey(NVS_PREVIOUS_BLOB_KEY) && prefs.getType(NVS_PREVIOUS_BLOB_KEY) != PT_BLOB)) {
     message = "candidate metadata corrupt: invalid candidate blob type";
     return false;
   }
@@ -1676,7 +1691,7 @@ bool validateCandidateMetadataForBoot(Preferences& prefs, WiringCandidateState s
   }
   bool armedKeyPresent = prefs.isKey(NVS_PROMOTION_ARMED_KEY);
   bool armed = prefs.getBool(NVS_PROMOTION_ARMED_KEY, false);
-  bool journalPresent = prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY);
+  bool journalPresent = hasPrevious(prefs);
   String knownGood = readKnownGood(prefs);
   String candidate = readCandidate(prefs);
   String candidateId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
@@ -2572,6 +2587,7 @@ bool clearRuntimeProjectStorage(String& message) {
     NVS_CANDIDATE_CONFIG_KEY,
     NVS_CANDIDATE_BLOB_KEY,
     NVS_PREVIOUS_KNOWN_GOOD_KEY,
+    NVS_PREVIOUS_BLOB_KEY,
     NVS_LEGACY_CONFIG_KEY,
     NVS_KNOWN_GOOD_CONFIG_KEY,
     NVS_KNOWN_GOOD_BLOB_KEY,
@@ -2783,11 +2799,17 @@ bool confirmCandidateRuntimeConfig(const String& activationId, String& message) 
   }
   String previous = readKnownGood(prefs);
   bool journaled = previous.length()
-    ? prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY, previous) == previous.length()
-    : prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY, NVS_NO_PREVIOUS_KNOWN_GOOD) ==
+    ? writePrevious(prefs, previous) == previous.length()
+    : writePrevious(prefs, String(NVS_NO_PREVIOUS_KNOWN_GOOD)) ==
         strlen(NVS_NO_PREVIOUS_KNOWN_GOOD);
   bool armed = journaled && prefs.putBool(NVS_PROMOTION_ARMED_KEY, true) > 0;
-  bool promoted = armed && writeKnownGood(prefs, candidate) == candidate.length() &&
+  // Erase the saved project before writing the candidate over it: an NVS
+  // blob overwrite writes the new copy before erasing the old, which with the
+  // journal and the candidate would need room for four project copies. The
+  // journal holds the previous project and promotion is armed, so a power cut
+  // here is restored from the journal by restorePreviousKnownGood.
+  bool cleared = armed && (!hasKnownGood(prefs) || removeKnownGood(prefs));
+  bool promoted = cleared && writeKnownGood(prefs, candidate) == candidate.length() &&
                   readKnownGood(prefs) == candidate;
   bool confirmed = promoted && prefs.putString(NVS_CONFIRMED_ID_KEY, activationId) == activationId.length();
   promoted = confirmed && writeCandidateState(prefs, WIRING_CANDIDATE_NONE);

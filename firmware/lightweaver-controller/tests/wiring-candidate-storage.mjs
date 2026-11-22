@@ -99,7 +99,7 @@ assert.match(loadBody, /rollbackCandidateRuntimeConfig[\s\S]*safe defaults loade
 const confirmStart = storage.indexOf('bool confirmCandidateRuntimeConfig(');
 const confirmEnd = storage.indexOf('bool rollbackCandidateRuntimeConfig(', confirmStart);
 const confirmBody = storage.slice(confirmStart, confirmEnd);
-const previousWrite = confirmBody.indexOf('NVS_PREVIOUS_KNOWN_GOOD_KEY', confirmBody.indexOf('String previous ='));
+const previousWrite = confirmBody.indexOf('writePrevious(prefs', confirmBody.indexOf('String previous ='));
 const armWrite = confirmBody.indexOf('NVS_PROMOTION_ARMED_KEY', previousWrite);
 const knownGoodWrite = confirmBody.indexOf('writeKnownGood(prefs', armWrite);
 const stateClear = confirmBody.indexOf('writeCandidateState(prefs, WIRING_CANDIDATE_NONE)', knownGoodWrite);
