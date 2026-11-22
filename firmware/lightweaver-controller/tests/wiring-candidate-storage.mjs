@@ -99,9 +99,10 @@ assert.match(loadBody, /rollbackCandidateRuntimeConfig[\s\S]*safe defaults loade
 const confirmStart = storage.indexOf('bool confirmCandidateRuntimeConfig(');
 const confirmEnd = storage.indexOf('bool rollbackCandidateRuntimeConfig(', confirmStart);
 const confirmBody = storage.slice(confirmStart, confirmEnd);
-const previousWrite = confirmBody.indexOf('writePrevious(prefs', confirmBody.indexOf('String previous ='));
+// Slot swap: the journal is the live slot, the promotion is kgSlot = cdSlot.
+const previousWrite = confirmBody.indexOf('writePreviousSlot(prefs');
 const armWrite = confirmBody.indexOf('NVS_PROMOTION_ARMED_KEY', previousWrite);
-const knownGoodWrite = confirmBody.indexOf('writeKnownGood(prefs', armWrite);
+const knownGoodWrite = confirmBody.indexOf('prefs.putUChar(NVS_KG_SLOT_KEY, promotedSlot)', armWrite);
 const stateClear = confirmBody.indexOf('writeCandidateState(prefs, WIRING_CANDIDATE_NONE)', knownGoodWrite);
 assert.ok(previousWrite > -1 && armWrite > previousWrite && knownGoodWrite > armWrite && stateClear > knownGoodWrite,
   'confirmation must journal the prior identity before promotion and clear candidate state last');

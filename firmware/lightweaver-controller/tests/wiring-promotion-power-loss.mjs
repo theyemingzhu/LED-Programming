@@ -68,12 +68,12 @@ function assertRecoverableCommittedState(state, message) {
 }
 
 const restoreBody = functionBody('restorePreviousKnownGood', 'finalizeCommittedPromotion');
-const armedRestoreBody = restoreBody.slice(restoreBody.indexOf('String previous'));
+const armedRestoreBody = restoreBody.slice(restoreBody.indexOf('uint8_t previous'));
 assert.match(armedRestoreBody,
-  /String currentKnownGood = readKnownGood\(prefs[\s\S]*currentKnownGood == previous[\s\S]*writeKnownGood\(prefs/,
+  /liveSlot\(prefs\) == previous \|\| prefs\.putUChar\(NVS_KG_SLOT_KEY, previous\)/,
   'rollback must treat an unchanged old canonical as already restored instead of appending another full string under NVS pressure');
 const restoreActions = orderedActions(armedRestoreBody, [
-  ['restore-known-good', 'writeKnownGood(prefs'],
+  ['restore-known-good', 'prefs.putUChar(NVS_KG_SLOT_KEY, previous)'],
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
   ['drop-journal', 'removePrevious(prefs'],
 ]);
@@ -528,9 +528,9 @@ const confirmWrites = [
 ];
 const confirmBody = functionBody('confirmCandidateRuntimeConfig', 'rollbackCandidateRuntimeConfig');
 const confirmPrefixWrites = orderedActions(confirmBody, [
-  ['journal-old', 'writePrevious(prefs'],
+  ['journal-old', 'writePreviousSlot(prefs'],
   ['arm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, true)'],
-  ['promote-candidate', 'writeKnownGood(prefs, candidate)'],
+  ['promote-candidate', 'prefs.putUChar(NVS_KG_SLOT_KEY, promotedSlot)'],
   ['confirm-id', 'prefs.putString(NVS_CONFIRMED_ID_KEY, activationId)'],
   ['mark-none', 'writeCandidateState(prefs, WIRING_CANDIDATE_NONE)'],
 ]);
