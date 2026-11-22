@@ -162,3 +162,22 @@ Totals are 28 words, 5 presses (plus any nudges) and 5 decisions, against today'
 **Firmware: none.** Studio drives the sweep with the existing `POST /api/beacon/port`, about 2 s per pin inside the 20 s hold. `GET` lists the pins the card can light, and 409 marks a card that already has a project. Counting and Save reuse calls today's flow already makes.
 
 Page: https://claude.ai/artifact/RYq3ii4NvNyYiyhMhDXowq (version 2).
+
+## 7. Two ways in (real-card finding, 2026-11-22)
+
+Evidence: `real-card-2026-11-22/DIAGNOSIS-blank-card-dead-end.md` on `claude/realtiming-reds`.
+- On a blank card, finding first leaves the temporary setup `bench-18`.
+- After that, every project save is a staged candidate, and on the real card it fails with "candidate storage failed".
+- A blank card does take its first whole project directly.
+
+- **Way in 1: Studio knows the wiring.**
+  - Screens: K1 Save to card (the whole project, as one save) → restart → K2 colour check → K3 "Is the light after each purple dark?" on all strips at once.
+  - "One isn't" lets the owner tap that strip in the picture, then − and + fix it.
+  - It skips 1 Watch and 3 Stop, because the pin and count are already known. 2 and 4 become checks that run after the save, and 5 Save moves first.
+  - Totals are 24 words, 3 presses and 3 decisions.
+- **Way in 2: no known wiring.**
+  - The five-screen main path runs as drawn: 28 words and 5 decisions.
+  - Step 5 Save clears the temporary setup and then sends one whole save, so the blank-card exemption applies.
+  - **To prove on the real card** before building: does clear-then-save land without a candidate?
+- **Open, to verify:** whether a − / + count fix after way in 1 counts as a wiring change, which would stage a candidate again. The diagnosis lists output id and segment count as wiring changes, not segment length.
+- Firmware: still none for either way in. The card-side cure (store the candidate as a blob) is separate and optional.
