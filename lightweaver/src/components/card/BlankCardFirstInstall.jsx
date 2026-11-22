@@ -25,7 +25,7 @@ import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled } from
 //
 // The pre-install LED check is not asked for here because a blank card cannot
 // play frames until it holds a project. The light check follows the install.
-export function BlankCardFirstInstall({ host, transport, board, controller, className, onInstalled }) {
+export function BlankCardFirstInstall({ host, transport, board, controller, className, onStart, onSettled }) {
   const {
     projectId, projectName, strips, wiring, compiledWiring,
     projectLifecycle, markProjectInstalled,
@@ -40,6 +40,8 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
     const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
     if (!claim.ok) { setState({ status: 'failed', message: claim.message }); return; }
     setState({ status: 'pending', message: 'Saving your project to the blank card…' });
+    onStart?.();
+    let ok = false;
     try {
       await withStudioHardwareOperation('install-project', async () => {
         const revision = projectLifecycle.editedRevision;
@@ -87,11 +89,12 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
         }
       });
       setState({ status: 'confirmed', message: 'Installed on card. Next, check the lights.' });
-      onInstalled?.();
+      ok = true;
     } catch (error) {
       setState({ status: 'failed', message: error?.message || 'Studio could not save the project to this blank card.' });
     } finally {
       claim.release();
+      onSettled?.(ok);
     }
   };
 

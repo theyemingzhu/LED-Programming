@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -124,6 +124,12 @@ export function CardInstallAction({
     ? new URLSearchParams(window.location.hash.slice(1))
     : new URLSearchParams();
   const continueToPatterns = cardRoute.get('next') === 'patterns';
+  // Holds the blank-card panel on screen from the first-install click until it
+  // has finished. Without it the card stops reading blank mid-install, the
+  // ordinary install control below mounts, and next=patterns auto-starts a
+  // second install of the same project as a wiring candidate (practice card,
+  // tests/blank-card-first-install.spec.ts).
+  const [firstInstall, setFirstInstall] = useState('');
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
@@ -200,7 +206,7 @@ export function CardInstallAction({
           standaloneController={installController}
           disabled={!installGate.allowed}
         />
-      ) : cardNeedsStripDiscovery && !needsLayoutFinish ? (
+      ) : (cardNeedsStripDiscovery || firstInstall) && !needsLayoutFinish ? (
         // The draft's wiring is complete, so the blank card can take it as its
         // first project in one save (see BlankCardFirstInstall). Find my strips
         // stays here for an owner who does not know their strips yet.
@@ -213,6 +219,11 @@ export function CardInstallAction({
             board={cardTransportBoard}
             controller={installController}
             className={cta}
+            onStart={() => setFirstInstall('running')}
+            onSettled={ok => {
+              setFirstInstall(ok ? 'done' : '');
+              if (ok && continueToPatterns) window.location.hash = '#screen=pattern';
+            }}
           />
           <button
             type="button"

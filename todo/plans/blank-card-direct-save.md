@@ -41,3 +41,21 @@ fix (only Find my strips offered).
 ## Real-card proof (after spec green)
 clear-project (CLEAR, Wi-Fi kept) → blank → Find my strips → save through
 Studio → read back → diff against base. Then hand to the shipper; do not merge.
+
+## Results (2026-11-22, practice card, --workers=1)
+- tests/blank-card-first-install.spec.ts: RED on main (no "Save to card" on the
+  blank card), GREEN with the fix. POSTs: candidate (400) → clear-project →
+  one /api/config; no candidate after the clear.
+- Found while making it green: after the clear the route carries
+  next=patterns, so CardPushControl (autoStart) mounted as soon as the card
+  stopped reading blank and sent a second install as a candidate. Fixed by
+  holding the blank-card panel until its install settles, then following
+  next=patterns to Patterns.
+- Neighbours: candidate-storage-full, card-workspace, journey-j01,
+  live-find-my-strips, simpler-journeys, strip-discovery,
+  fresh-install-usb-wifi → 173/174. The one red,
+  card-workspace.spec.ts:2580 (HTTPS blank replacement across a Wi-Fi
+  handoff), is flaky on main too: main 3/4 failed, fix 3/4 failed.
+- cardAction unit tests 18/18.
+NEXT STEP: shipper runs the full lane; then the real-card proof (clear →
+Find my strips → save through Studio → read back).
