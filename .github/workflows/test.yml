@@ -100,7 +100,9 @@ jobs:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The smoke set grew past 30 min on GitHub runners (27.0, 28.6, then
+    # two cancels at 30:00 on f0feaa9f). Raised to 45 on 2026-11-22.
+    timeout-minutes: 45
     name: browser smoke
     env:
       LW_BROWSER_FAIL_FAST: 'true'
