@@ -25,14 +25,13 @@ Real-card record: claude/realtiming-reds real-card-2026-11-22 (DEFECTS.md D10).
 - tests/blank-card-one-write.spec.ts (Real-timing practice card, restart after
   save, panel rebuilt mid-save): RED on main (a second install sent), GREEN here.
 - candidate-storage-full.spec.ts green.
-- tests/blank-card-first-install.spec.ts: NOT green here. With the double
-  write gone, its "blank heading gone after the install" assertion now sees
-  the first install's own read-back fail on the practice card:
-  reason runtime-not-ready (practice card keeps runtimePhase 'factory' after
-  the clear; the real card reports 'ready' after its first project). Holding
-  runtimePhase at 'ready' in the spec did not clear it.
-
-NEXT STEP: find which readiness field the practice card reports after a
-first install (log verifyCardDeployment's reason per attempt), make the spec
-model the real card, then hand to the shipper. Or prove on the real card with
-a local Studio from this branch.
+- tests/blank-card-first-install.spec.ts green, now on the Real-timing practice
+  card (it restarts after a save under a new boot id, as the real card does).
+- The last blocker was in the fix, not the harness: the blank install read the
+  card back with project evidence only, which carries no readiness, so
+  requireReady never passed and a landed install read as failed. It now joins
+  the card status, as CardPushControl does. No harness change was needed.
+- Neighbours (card-workspace, journey-j01, live-find-my-strips,
+  simpler-journeys, strip-discovery, fresh-install-usb-wifi): 171/172; the red
+  is card-workspace.spec.ts:2580, flaky on main (3/4 fail there).
+DONE. Handed to the shipper.

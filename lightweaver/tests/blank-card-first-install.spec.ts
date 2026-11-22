@@ -84,12 +84,6 @@ test('full store on the temporary setup: Clear temporary setup, then Save to car
   // 4. One whole-project write, applied directly by the blank card; no candidate.
   await expect.poll(() => card.requests.filter(r => r.method === 'POST' && r.path === '/api/config').length, { timeout: 60000 }).toBe(1);
   await expect.poll(() => card.state.pixels, { timeout: 60000 }).toBe(41);
-  // The real card reports runtimePhase 'ready' once its first project is
-  // saved (lw-b0fe81f61b44, 2026-11-23 16:37); the practice card keeps the
-  // 'factory' phase its clear set (reported to the practice-card session).
-  const keepReady = setInterval(() => { if (card.state.pixels > 0) (card.state as any).runtimePhase = 'ready'; }, 200);
-  test.info().attach('note', { body: 'practice card held at runtimePhase ready once it holds a project' }).catch(() => {});
-  page.once('close', () => clearInterval(keepReady));
   expect(card.state.projectId).not.toBe('');
   const candidatesAfterClear = card.requests
     .slice(card.requests.findIndex(r => r.path === '/api/clear-project'))

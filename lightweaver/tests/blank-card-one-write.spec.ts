@@ -67,12 +67,6 @@ test('one press of the blank-card Save to card writes the project once', async (
   await page.waitForTimeout(1500);
   await page.evaluate(r => { window.location.hash = r; }, route);
   await expect.poll(() => card.state.pixels, { timeout: 90000 }).toBe(41);
-  // The real card reports runtimePhase 'ready' once its first project is
-  // saved (lw-b0fe81f61b44, 2026-11-23 16:37); the practice card keeps the
-  // 'factory' phase its clear set (reported to the practice-card session).
-  const keepReady = setInterval(() => { if (card.state.pixels > 0) (card.state as any).runtimePhase = 'ready'; }, 200);
-  test.info().attach('note', { body: 'practice card held at runtimePhase ready once it holds a project' }).catch(() => {});
-  page.once('close', () => clearInterval(keepReady));
   // Watch the whole restart and the settle after it.
   await page.waitForTimeout(45000);
   const writes = card.requests.filter(r => r.method === 'POST' && r.path === '/api/config').length - before;

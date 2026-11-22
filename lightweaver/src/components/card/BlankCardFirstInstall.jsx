@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { useProject } from '../../state/ProjectContext.jsx';
-import { pushConfigToCard, readCardProjectEvidence } from '../../lib/cardPushClient.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
+import { pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
+import { prepareCardDeployment, waitForCardDeploymentVerification, correlateCardDeploymentReadinessEvidence, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../lib/cardWriteLease.js';
@@ -83,7 +83,15 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
           });
           setState({ status: 'pending', message: 'Restarting the card…' });
           const verification = await waitForCardDeploymentVerification(prepared, {
-            readEvidence: () => readCardProjectEvidence({ host: cleanHost, transport: transport || link.transport }),
+            // Project evidence joined with the card's status, as the ordinary
+            // install reads it (CardPushControl readReadyDeploymentEvidence):
+            // project evidence alone carries no readiness, so requireReady
+            // could never pass and a landed install read as failed.
+            readEvidence: async () => {
+              const route = { host: cleanHost, transport: transport || link.transport };
+              const [project, status] = await Promise.all([readCardProjectEvidence(route), readCardStatusEnvelope(route)]);
+              return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
+            },
             restartWaitMs: CARD_RESTART_WAIT_MS,
             restartFromBootId: fromBootId,
             requireReady: true,
