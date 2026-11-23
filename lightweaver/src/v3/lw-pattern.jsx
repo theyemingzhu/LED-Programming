@@ -2316,20 +2316,6 @@ function writeSectionDisplayOrder(projectId, ids) {
       const timer = setTimeout(() => setSavedAt(0), 6000);
       return () => clearTimeout(timer);
     }, [savedAt]);
-    // A save that ended "failed" because the card's reply or its restart ran
-    // past Studio's wait may still have landed. When the card is later read
-    // holding exactly this project (app.jsx re-verifies the installation on
-    // every fresh card read), the save is done: say Saved, never leave "Try
-    // saving again" over a save the card has. Interruption tests D1/D2,
-    // todo/plans/practice-card-interruptions.md.
-    const installedNow = currentInstallation(projectLifecycle)?.verified === true;
-    useEffect(() => {
-      if (cardSave.status !== 'failed' || !installedNow) return;
-      dispatchCardSave({ type: 'confirm' });
-      setSavedAt(Date.now());
-      setStatusKind('ok');
-      setStatus('Saved to the card.');
-    }, [cardSave.status, installedNow]);
     // The other half: after a reload or a lost reply, the card itself is read
     // holding exactly what this browser sent. Make that the project (it was
     // the owner's Save), so Studio and the card agree again.
@@ -2344,6 +2330,17 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (pending.patchBoard) setPatchBoard(pending.patchBoard);
         if (pending.standaloneController) setStandaloneController(pending.standaloneController);
       });
+      // A save that ended "failed" because its reply or the card's restart
+      // ran past Studio's wait did land: the card holds exactly what it sent.
+      // Only this proof turns "Try saving again" into Saved — a card that
+      // merely already held the project before a failed write does not
+      // (studio-hardening "exposes retry after failure").
+      if (cardSave.status === 'failed') {
+        dispatchCardSave({ type: 'confirm' });
+        setSavedAt(Date.now());
+        setStatusKind('ok');
+        setStatus('Saved to the card.');
+      }
     }, [cardSave.status, liveFingerprint, liveCardId, projectId]);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
