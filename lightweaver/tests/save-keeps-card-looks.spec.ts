@@ -12,7 +12,8 @@ import type { Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 
-const SIX = ['fire', 'aurora', 'plasma', 'ocean', 'ripple', 'warm-white'];
+// Like the bench card: one stock look and five the owner made (combos).
+const SIX = ['fire', 'combo-aurora', 'combo-plasma', 'combo-ocean', 'combo-ripple', 'combo-sparkle'];
 
 test.describe.configure({ timeout: 150_000 });
 
@@ -24,7 +25,9 @@ function sixLookCard() {
     currentId: 'fire',
   };
   const card = createCardSimulator(spec);
-  card.state.installedLooks = SIX.map(id => ({ id, label: id, patternId: id, brightness: 0.9, speed: 1 }));
+  card.state.installedLooks = SIX.map(id => id === 'fire'
+    ? { id, label: 'Fire', patternId: id, brightness: 0.9, speed: 1 }
+    : { id, label: id.replace(/^combo-/, ''), mode: 'combo', preset: id.replace(/^combo-/, ''), patternId: id.replace(/^combo-/, ''), brightness: 0.9, speed: 1 });
   return { card, spec };
 }
 

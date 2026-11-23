@@ -513,7 +513,9 @@ function patternsBody(state: CardSimulator['state']) {
     patterns: (state.installedLooks || state.patterns).map((pattern: any) => ({
       id: String(pattern.id || ''),
       label: String(pattern.label || pattern.id || ''),
-      mode: pattern.mode || 'pattern',
+      // The real card reports a stock pattern as mode 'procedural' (fixtures/
+      // real-card-bench-2026-11-23-patterns.json); owner looks are 'combo'.
+      mode: pattern.mode || 'procedural',
       runtimePatternId: String(pattern.preset || pattern.id || ''),
       controls: { customColor: true, breathe: true, drift: true },
       zones: pattern.zones || [{ id: ZONE_ID, label: 'All lights', patternId: pattern.id }],

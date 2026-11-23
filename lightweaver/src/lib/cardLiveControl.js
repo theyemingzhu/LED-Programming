@@ -1827,6 +1827,12 @@ export async function repairMirroredLedOutputOnCard(runtimePackage = {}, options
     timeoutMs: options.timeoutMs || 6000,
     reboot: options.reboot || 'if-needed',
     allowLayoutChange: true,
+    // The mirrored-LED repair is a fixed known-good restore, staged as a
+    // wiring candidate, and its request sequence is a pinned contract
+    // (tests/card-live-preview.mjs). It replaces the card's looks by design,
+    // so the look-loss read (L1) does not belong here. No screen calls it
+    // today; one that does must confirm the replacement with the owner.
+    allowLookRemoval: true,
   });
   return {
     ...response,

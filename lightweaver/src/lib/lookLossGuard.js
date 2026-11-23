@@ -45,16 +45,29 @@ function ids(list) {
     .filter(id => !NOT_LOOKS.has(id)))];
 }
 
+// A stock pattern on the card (its id is the pattern itself, e.g. Studio's
+// automatic default look "aurora" before the owner saves any looks) is
+// recreated by picking that pattern. Replacing it with the owner's first
+// playlist is ordinary. The guard protects looks the owner made: combos,
+// recordings, journeys, and anything saved under its own id.
+const STOCK_MODES = new Set(['procedural', 'preset']);
+function isStockCardPattern(pattern) {
+  const id = String(pattern?.id || '').trim();
+  return STOCK_MODES.has(String(pattern?.mode || '')) && id !== '' && id === String(pattern?.runtimePatternId || '').trim();
+}
+
 /**
  * What a save would drop. `cardPatterns` is the card's /api/patterns payload;
  * `runtimePackage` the package about to be sent.
  */
 export function looksDroppedBySave(cardPatterns, runtimePackage) {
   const config = runtimePackage?.config || runtimePackage || {};
-  const cardIds = ids(cardPatterns?.patterns);
+  const cardList = Array.isArray(cardPatterns?.patterns) ? cardPatterns.patterns : [];
+  const cardIds = ids(cardList);
+  const stock = new Set(cardList.filter(isStockCardPattern).map(pattern => String(pattern.id).trim()));
   const sentIds = ids(config.looks);
   const sent = new Set(sentIds);
-  return { cardIds, sentIds, missing: cardIds.filter(id => !sent.has(id)) };
+  return { cardIds, sentIds, missing: cardIds.filter(id => !sent.has(id) && !stock.has(id)) };
 }
 
 /** True when the save must stop and ask. */

@@ -47,3 +47,12 @@ test('keeping the card\'s looks adds what the draft lacks and keeps the owner\'s
   assert.deepEqual(merged.playlist.map(e => e.id), ['combo-sparkle', 'combo-aurora']);
   assert.equal(merged.defaultLook.speed, 1.08);
 });
+
+test('a stock pattern on the card is not owner work: the first playlist may replace it (three-gpio)', () => {
+  const card = { patterns: [{ id: 'aurora', mode: 'procedural', runtimePatternId: 'aurora' }] };
+  const dropped = looksDroppedBySave(card, { config: { looks: [{ id: 'combo-combo-1' }] } });
+  assert.deepEqual(dropped.missing, []);
+  assert.equal(saveWouldLoseLooks(dropped), false);
+  const made = { patterns: [{ id: 'combo-sparkle', mode: 'combo', runtimePatternId: 'aurora' }, { id: 'fire', mode: 'procedural', runtimePatternId: 'fire' }] };
+  assert.deepEqual(looksDroppedBySave(made, { config: { looks: [{ id: 'fire' }] } }).missing, ['combo-sparkle'], 'a combo the owner made is protected');
+});

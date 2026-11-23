@@ -3200,7 +3200,9 @@ function writeSectionDisplayOrder(projectId, ids) {
       // role from 'alert' to 'status' while still showing both boxes; here
       // there is no role to downgrade, so this notice simply stands down and
       // lets the gate notice own the announcement — same fix, no duplicate.
-      if (!status || isPatternRecoveryConfirmFlow || patternCardGate) {
+      // The look-loss banner carries the same refusal with its own buttons;
+      // the floating notice stood over "Keep the card's looks" (L1).
+      if (!status || isPatternRecoveryConfirmFlow || patternCardGate || lookLoss) {
         dismissNoticeKey('pattern-card-status');
         return;
       }
@@ -3229,7 +3231,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         source: 'pattern-status',
         action,
       });
-    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
+    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, lookLoss, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
 
     const stackReviewIsOpen = stackNeedingSectionReviewId
       && expandedStackId === stackNeedingSectionReviewId && libraryTab === 'stacks';

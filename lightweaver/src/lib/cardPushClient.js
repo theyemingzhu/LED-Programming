@@ -734,8 +734,11 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   // A save must not quietly wipe looks off the card (L1, live 2738 on the
   // real card: five of six looks lost). Same project only: replacing a
   // different project is the owner's confirmed choice. If the card's looks
-  // cannot be read, the save is not blocked on that.
-  if (!rebootPlan.projectChanged && options.allowLookRemoval !== true) {
+  // cannot be read, the save is not blocked on that. A card that did not
+  // answer its own identity read (an unresolved .local name, say) is not asked
+  // for its looks either: the save fails over without an extra dead request
+  // (tests/card-installer-package.mjs pins that sequence).
+  if (!rebootPlan.projectChanged && rebootPlan.current && options.allowLookRemoval !== true) {
     const cardPatterns = await readCardLooksForGuard(host, { useBridge, options }).catch(() => null);
     if (cardPatterns) {
       const dropped = looksDroppedBySave(cardPatterns, preparedPayload);
