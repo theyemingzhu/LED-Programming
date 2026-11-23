@@ -44,3 +44,22 @@
 /* No filled button here: Save to card stays the one filled action on Layout. */
 .lw-symmetry-centre:focus-visible { outline: none; }
 .lw-symmetry-centre:focus-visible circle:nth-child(2) { stroke: var(--text-hi); }
+
+/* Three or more sides: "Plays with" and one select on a single line, with
+   Move up / Move down beside it when they fit at 320px, else on the line below. */
+.la-side-choice.is-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.la-side-choice.is-line .la-side-choice-k { flex: none; }
+.la .la-side-select {
+  flex: 1 1 120px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 12px;
+}
+.la .la-side-select:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+@media (pointer: coarse), (max-width: 600px) { .la .la-side-select { min-height: 44px; } }
