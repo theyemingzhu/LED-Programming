@@ -93,6 +93,7 @@ float runtimeGetSpeed();
 int16_t runtimeGetHueShift();
 bool runtimeIsBlackedOut();
 String runtimeCardId();
+bool runtimeSequenceFileInUse(const String& file);
 String runtimeBootId();
 const char* runtimeProvisioningPhase();
 bool runtimeCommandReady();

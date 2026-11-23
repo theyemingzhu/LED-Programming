@@ -23,6 +23,7 @@
 #include "LightweaverArtnet.h"
 #include "LightweaverWledWebSocket.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverMedia.h"
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
@@ -1521,7 +1522,8 @@ bool sequenceIntegrityMatches(File& file, uint32_t declaredBytes, const String& 
 
 bool prepareSequence(const LookConfig& look, PreparedSequence& prepared) {
   if (look.file.length() == 0) return false;
-  prepared.file = SD.open(look.file.c_str(), FILE_READ);
+  // microSD when it holds the file, otherwise the card's built-in memory.
+  prepared.file = lightweaverOpenRecordedMedia(look.file.c_str());
   if (!prepared.file) return false;
   bool valid = sequenceIntegrityMatches(prepared.file, look.sequenceBytes, look.sequenceSha256) &&
       readSequenceMetadata(prepared.file, prepared.frameCount, prepared.fps, prepared.frameBytes);
@@ -2722,6 +2724,15 @@ void initializeBootIdentity() {
   bootId = value;
 }
 
+// True while any look of the running project plays this recording. Built-in
+// memory never clears a recording this returns true for.
+bool runtimeSequenceFileInUse(const String& file) {
+  for (uint8_t index = 0; index < lookCount; index++) {
+    if (looks[index].mode == "sequence" && looks[index].file == file) return true;
+  }
+  return false;
+}
+
 String runtimeCardId() {
   char cardId[16] = {};
   snprintf(cardId, sizeof(cardId), "lw-%012llx",
@@ -2955,6 +2966,7 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
+  lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
   doc["capabilities"]["firmwareUpdate"]["network"] = true;
   doc["capabilities"]["firmwareUpdate"]["softwareGrant"] = true;

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '../src');
 const media = readFileSync(resolve(root, 'LightweaverMedia.cpp'), 'utf8');
 const header = readFileSync(resolve(root, 'LightweaverMedia.h'), 'utf8');
+const policy = readFileSync(resolve(root, 'LightweaverMediaStorePolicy.h'), 'utf8');
 const owner = readFileSync(resolve(root, 'LightweaverOwnerCapability.cpp'), 'utf8');
 const web = readFileSync(resolve(root, 'LightweaverWeb.cpp'), 'utf8');
 
@@ -41,10 +42,14 @@ assert.match(owner, /bool LightweaverOwnerCapability::issue[\s\S]*?leaseEpoch_\+
 assert.match(owner, /revoke\(false\)/, 'ordinary token expiry must preserve the bounded media lease epoch');
 assert.match(media, /received != g_transfer\.bytes/, 'partial transfer cannot commit');
 assert.match(media, /actualHash != g_transfer\.hash \|\| !validSequenceHeader/, 'commit verifies full staged bytes');
-assert.match(media, /SD\.rename\(g_transfer\.temp\.c_str\(\), g_transfer\.file\.c_str\(\)\)/);
-assert.match(media, /hashFile\(g_transfer\.file, readBytes, readHash\)/, 'promoted file must be read back');
+// Promotion and staging cleanup go through the shared store steps, so a
+// microSD and the card's built-in memory follow one upload protocol.
+assert.match(media, /lwMediaPromote\(fs, g_transfer\.temp\.c_str\(\), g_transfer\.file\.c_str\(\)\)/);
+assert.match(policy, /return !fs\.exists\(finalPath\) && fs\.rename\(stagingPath, finalPath\);/);
+assert.match(media, /hashFile\(fs, g_transfer\.file, readBytes, readHash\)/, 'promoted file must be read back');
 assert.match(media, /LW_MEDIA_STAGING_PATH = "\/sequences\/\.upload-staging\.tmp"/, 'reboot leaves one bounded staging path');
-assert.match(media, /SD\.exists\(LW_MEDIA_STAGING_PATH\) && !SD\.remove\(LW_MEDIA_STAGING_PATH\)/);
+assert.match(media, /!lwMediaDiscardStaging\(fs, LW_MEDIA_STAGING_PATH\)/);
+assert.match(policy, /return !fs\.exists\(stagingPath\) \|\| fs\.remove\(stagingPath\);/);
 assert.match(media, /if \(written != decodedSize\) \{\s*clearTransfer\(\)/);
 assert.match(media, /g_batch\.assets\[i\]\.file == file && g_batch\.assets\[i\]\.committed/,
   'batch readback is restricted to completed declared assets');
