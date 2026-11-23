@@ -54,3 +54,17 @@ export function requestSymmetryReveal() {
 export function useSymmetryRevealRequest() {
   return useSyncExternalStore(reveal.subscribe, reveal.get, () => 0);
 }
+
+// 4. Placed look: the look the owner is trying on the artwork (lib/placedLook.js),
+//    or null. The inspector's controls and the frame on the canvas both write
+//    it. In-session only: it is not part of the project until saved looks can
+//    hold one, so a reload starts without it.
+const placedLook = createStore(null);
+
+export function setPlacedLookPreview(look) {
+  placedLook.set(look || null);
+}
+
+export function usePlacedLookPreview() {
+  return useSyncExternalStore(placedLook.subscribe, placedLook.get, () => null);
+}
