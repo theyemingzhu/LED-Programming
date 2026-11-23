@@ -75,6 +75,7 @@ import { deriveCardAccess } from '../lib/cardAccess.js';
 import { evaluateCardInstallGate, STAGED_WIRING_CONFLICT_MESSAGE } from '../lib/cardInstallGate.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { mergeCardLooksIntoController, noteLooksRemovedByOwner, readCardLooksController } from '../lib/lookLossGuard.js';
 import { clearPendingCardSave, pendingSaveHeldByCard, readPendingCardSave, writePendingCardSave } from '../lib/pendingCardSave.js';
 import {
   consumeCardEditAuthorization,
@@ -2332,10 +2333,33 @@ function writeSectionDisplayOrder(projectId, ids) {
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
     const saveAnywayRef = useRef(false);
+    // L1: a save that would remove looks from the card stops here and asks.
+    const [lookLoss, setLookLoss] = useState(null);
+    const allowLookRemovalRef = useRef(false);
     const openCardProject = useOpenCardProject();
+    // Keep the card's looks: re-read them from the card and add the ones this
+    // draft lacks, keeping every other edit. The owner then saves again (L1).
+    const keepCardLooks = async () => {
+      const host = cardLink?.host || cardHost;
+      try {
+        const cardController = await readCardLooksController({ host, cardId: cardLink?.card?.id || '', transport: cardLink?.transport, skeleton: { strips, patchBoard: board, wiring } });
+        const merged = mergeCardLooksIntoController(standaloneController, cardController);
+        const added = (merged.looks?.length || 0) - (standaloneController?.looks?.length || 0);
+        setStandaloneController(merged);
+        setLookLoss(null);
+        setStatusKind('ok');
+        setStatus(added > 0
+          ? `Kept the card's looks: ${added} added back to your project. Save to card again to send them.`
+          : 'Your project already has the card\'s looks. Save to card again.');
+      } catch (error) {
+        setStatusKind('err');
+        setStatus(`Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.`);
+      }
+    };
     const savePreviewToCard = async () => {
       if (installPreparing) return;
       if (staleCardConflict) setStaleCardConflict(false);
+      if (lookLoss) setLookLoss(null);
       setSavedAt(0);
       setInstallPreparing(true);
       // While the save checks a slow card, the footer does not call it gone.
@@ -2460,6 +2484,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             reboot: 'if-needed',
             allowLayoutChange: undefined,
             allowProjectChange: undefined,
+            allowLookRemoval: allowLookRemovalRef.current === true,
           });
         } catch (pushError) {
           // The write went out and no answer came back. A real card restarts
@@ -2560,6 +2585,12 @@ function writeSectionDisplayOrder(projectId, ids) {
           || ['layout-mismatch', 'project-mismatch', 'config-too-large', 'save-not-applied', 'mixed-content'].includes(error?.reason)) {
           clearPendingCardSave();
         }
+        if (error?.reason === 'looks-would-drop') {
+          setLookLoss(error.droppedLooks || null);
+          setStatusKind('err');
+          setStatus(error.message);
+          return;
+        }
         if (error?.reason === 'restart-timeout') {
           setStatusKind('err');
           setStatus(error.message);
@@ -2588,6 +2619,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           setStatus(`Not saved to the card: ${String(error.message).replace(/^Stopped before saving:\s*/i, '')}`);
         }
       } finally {
+        allowLookRemovalRef.current = false;
         if (restartPlanned) { noteCardRestartSettled(); setSaveRestarting(false); }
         if (installIntentRef.current === installIntent) installIntentRef.current = null;
       }
@@ -2651,6 +2683,8 @@ function writeSectionDisplayOrder(projectId, ids) {
         setLookSaveState('Could not delete this look. Check the project and try again.');
         return;
       }
+      // A deliberate delete: the save guard lets this one look go (L1).
+      noteLooksRemovedByOwner(1);
       setDeletedLook({
         projectId, previous: lookDeletionState(standaloneController), next: lookDeletionState(next),
         label: savedLook.label, wasActive,
@@ -2740,6 +2774,9 @@ function writeSectionDisplayOrder(projectId, ids) {
 
     const writePlaylist = (nextItems) => {
       const normalized = normalizeCardPlaylist(nextItems, { savedLooks, allowEmpty: true });
+      // Entries the owner took out of the playlist leave the card too (L1).
+      const removed = derivePlaylistLookIds(playlist).length - derivePlaylistLookIds(normalized).length;
+      if (removed > 0) noteLooksRemovedByOwner(removed);
       updateController({
         playlist: normalized,
         controls: { encoder: { patternCycleIds: derivePlaylistLookIds(normalized) } },
@@ -3870,6 +3907,16 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <div className="lw-setup-banner-actions">
                       <button type="button" className="btn primary" onClick={() => { setStaleCardConflict(false); void openCardProject({ keepCopy: true }); }}>Open the card&rsquo;s version</button>
                       <button type="button" className="btn" onClick={() => { saveAnywayRef.current = true; setStaleCardConflict(false); savePreviewToCard(); }}>Save mine anyway</button>
+                    </div>
+                  </div>
+                }
+                {lookLoss &&
+                  <div className="lw-setup-banner" role="alert" data-testid="look-loss-guard">
+                    <p>{status}</p>
+                    <p className="hh">The card holds: {lookLoss.cardIds.join(', ')}. This save would send: {lookLoss.sentIds.join(', ') || 'no looks'}.</p>
+                    <div className="lw-setup-banner-actions">
+                      <button type="button" className="btn primary" data-testid="look-loss-keep" onClick={() => void keepCardLooks()}>Keep the card&rsquo;s looks</button>
+                      <button type="button" className="btn" data-testid="look-loss-replace" onClick={() => { allowLookRemovalRef.current = true; setLookLoss(null); savePreviewToCard(); }}>Replace anyway</button>
                     </div>
                   </div>
                 }

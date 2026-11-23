@@ -44,6 +44,7 @@ import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperatio
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
 import { clearCardProject } from '../../../lib/cardClearProject.js';
 import { BENCH_PROJECT_ID } from '../../../lib/benchConfig.js';
+import { mergeCardLooksIntoController, readCardLooksController } from '../../../lib/lookLossGuard.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
@@ -175,7 +176,27 @@ export function CardPushControl({
   const openCardProject = useOpenCardProject();
   const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed,
     wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
-    gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
+    gammaEnabled, gammaValue, symSettings, sectionTargets, setStandaloneController } = useProject();
+  // L1: a save that would remove looks from the card stops and asks.
+  const [lookLoss, setLookLoss] = useState(null);
+  const allowLookRemovalRef = useRef(false);
+  const keepCardLooks = async () => {
+    try {
+      const cardController = await readCardLooksController({
+        host: pushHost || getCardLinkState().host, cardId: getCardLinkState().card?.id || '', transport: getCardLinkState().transport,
+        skeleton: { strips, patchBoard: board, wiring },
+      });
+      const merged = mergeCardLooksIntoController(standaloneController, cardController);
+      const added = (merged.looks?.length || 0) - (standaloneController?.looks?.length || 0);
+      setStandaloneController(merged);
+      setLookLoss(null);
+      setPushStatus(added > 0
+        ? `Kept the card's looks: ${added} added back to your project. Save to card again to send them.`
+        : "Your project already has the card's looks. Save to card again.");
+    } catch (error) {
+      setPushStatus(`Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.`);
+    }
+  };
   const [pushHost, setPushHost] = useState(() => getCardHostname());
   // An install queued by the URL (Layout's "Check and install") or a press
   // shows it is working at once: the preflight reads come before the send's
@@ -441,6 +462,7 @@ export function CardPushControl({
               bootBeforeSave = getCardLinkState().validatedBootId || getCardLinkState().readiness?.bootId || '';
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
+                allowLookRemoval: allowLookRemovalRef.current === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
             },
           },
@@ -605,6 +627,12 @@ export function CardPushControl({
         setStaleCardConflict(true);
         return;
       }
+      if (err?.reason === 'looks-would-drop') {
+        dispatchAction({ type: 'reset' });
+        setLookLoss(err.droppedLooks || null);
+        setPushStatus(err.message);
+        return;
+      }
       if (!failedAttemptRef.current?.awaitingCandidateReadback) failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
       dispatchAction({ type: 'fail', error: message });
@@ -625,6 +653,7 @@ export function CardPushControl({
       setPushStatus(current => (current === 'Checking card…' ? '' : current));
       installInFlightRef.current = false;
       saveAnywayRef.current = false;
+      allowLookRemovalRef.current = false;
     }
   };
 
@@ -942,6 +971,15 @@ export function CardPushControl({
           ) : action.status === 'failed' && (
             <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => void retryAfterCardRestart()}>Retry</button>
           )}
+        </div>
+      )}
+      {lookLoss && (
+        <div className="lw-setup-banner" role="alert" data-testid="look-loss-guard">
+          <p className="hh">The card holds: {lookLoss.cardIds.join(', ')}. This save would send: {lookLoss.sentIds.join(', ') || 'no looks'}.</p>
+          <div className="lw-setup-banner-actions">
+            <button type="button" className="btn primary" title="Read the card's looks again and add the ones this project is missing. Nothing is sent until you save." data-tooltip="Read the card's looks again and add the ones this project is missing. Nothing is sent until you save." data-testid="look-loss-keep" onClick={() => void keepCardLooks()}>Keep the card&rsquo;s looks</button>
+            <button type="button" className="btn" title="Save this project as it is, removing the listed looks from the card." data-tooltip="Save this project as it is, removing the listed looks from the card." data-testid="look-loss-replace" onClick={() => { allowLookRemovalRef.current = true; setLookLoss(null); void pushToCard(null); }}>Replace anyway</button>
+          </div>
         </div>
       )}
       {wiringCandidate && (
