@@ -439,7 +439,12 @@ export function CardPushControl({
               }
               configPushAttempted = true;
               bootBeforeSave = getCardLinkState().validatedBootId || getCardLinkState().readiness?.bootId || '';
+              // A card settling after its restart answers in up to ~10 s
+              // (Real profile, save-trace-NOSAVE.json). The 6 s default gave up
+              // on the write itself, so Studio never learned it was staged
+              // (D11). This one write gets 15 s.
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
+                timeoutMs: 15000,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
             },
