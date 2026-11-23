@@ -821,7 +821,7 @@ export function StripDiscoveryPanel({
     if (chosen === null) return;
     setSelectedPort(chosen);
     setFindMode('pick');
-    void startDiscovery({ selectedRoles: normalizePortRoles(portRoles.map(entry => (
+    void startDiscovery({ focusPin: chosen, selectedRoles: normalizePortRoles(portRoles.map(entry => (
       entry.pin === chosen ? { ...entry, role: PORT_ROLE_STRIP } : entry))) });
   };
 
@@ -852,7 +852,7 @@ export function StripDiscoveryPanel({
     }
   };
 
-  const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles } = {}) => {
+  const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles, focusPin = null } = {}) => {
     const availablePins = new Set(selectablePortRoles.map(entry => entry.pin));
     const cardSelectedRoles = normalizePortRoles(selectedRoles.map(entry => availablePins.has(entry.pin)
       ? entry : { ...entry, role: PORT_ROLE_UNUSED, pixelCount: 0 }));
@@ -891,7 +891,7 @@ export function StripDiscoveryPanel({
           || cardLink?.readiness?.knownGoodProject === true
           || cardLink?.readiness?.provisionalSetup === true,
       });
-      setSession(current => advance(current, { type: 'bench-installed' }));
+      setSession(current => advance(current, { type: 'bench-installed', focusPin }));
     } catch (error) {
       // A card already holding a saved setup is the ORDINARY state of any card
       // that has been used — including one this same flow set up an hour ago —
@@ -919,7 +919,7 @@ export function StripDiscoveryPanel({
           await clearCardProject({ host }).catch(() => null);
           await waitForClearedCard({ host }).catch(() => null);
           setBusy(false);
-          await startDiscovery({ clearedAlready: true, selectedRoles: cardSelectedRoles });
+          await startDiscovery({ clearedAlready: true, selectedRoles: cardSelectedRoles, focusPin });
           return;
         } catch (clearError) {
           const clearMessage = clearError?.message || 'Studio could not clear the card.';
@@ -1722,7 +1722,7 @@ export function StripDiscoveryPanel({
                 <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">Lighting this pin…</p>
               )}
               <div className="strip-discovery-actions">
-                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
+                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
                 <button type="button" className="btn btn-ghost" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another pin</button>
               </div>
             </div>

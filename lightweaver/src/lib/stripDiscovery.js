@@ -247,6 +247,17 @@ export function advance(session, event = {}) {
   switch (type) {
     case 'bench-installed': {
       if (session.phase !== 'bench-install') return session;
+      // focusPin: the strip the owner just pointed at. A strip counted earlier in
+      // this setup ("Yes, and find another strip") keeps its count and is not
+      // walked again; only the new one is counted.
+      const focus = Number.isSafeInteger(Number(event?.focusPin)) && event?.focusPin !== null && event?.focusPin !== undefined
+        ? Number(event.focusPin) : null;
+      if (focus !== null && discoverablePorts(session).some(port => port.pin === focus)) {
+        const kept = withPorts(session, port => (port.pin !== focus && port.role === 'strip' && port.count > 0 && port.provisioned > 0
+          ? { ...port, probed: true, probedCeiling: port.provisioned, confirmed: true }
+          : port));
+        return enterProbe(Object.freeze({ ...kept, error: '' }), focus);
+      }
       const first = discoverablePorts(session).find(port => !port.skipped)?.pin ?? null;
       return enterProbe(Object.freeze({ ...session, error: '' }), first);
     }

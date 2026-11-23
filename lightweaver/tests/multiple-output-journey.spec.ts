@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 const PINS = [18, 21] as const;
 const COUNTS = [41, 27] as const;
@@ -30,12 +31,11 @@ test('a blank card discovers two GPIO strips, installs their saved pattern, play
     if (index === 0) {
       await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
-      await page.getByTestId('discovery-color-red').click();
-      await page.getByTestId('discovery-color-green').click();
+      await page.getByTestId('discovery-colour-row-rgb').click();
     }
-    await expect(page.getByTestId('discovery-decade')).toBeVisible();
-    await page.getByTestId(`discovery-count-${pin}`).fill(String(COUNTS[index]));
-    await page.getByTestId('discovery-counts-done').click();
+    // The colour is measured once; each new strip goes straight to its count.
+    await stopRunAt(page, COUNTS[index]);
+    await settleEndCheck(page, COUNTS[index]);
     if (index === 0) {
       // Beside the last confirm: keep this strip and count another
       // (simpler-journeys C8; the record screen's Add another strip).
@@ -50,8 +50,8 @@ test('a blank card discovers two GPIO strips, installs their saved pattern, play
   }
 
   await expect(page.getByTestId('discovery-done')).toBeVisible();
-  await expect(page.getByTestId('discovery-result-18')).toContainText('41 LEDs');
-  await expect(page.getByTestId('discovery-result-21')).toContainText('27 LEDs');
+  await expect(page.getByTestId('discovery-result-18')).toContainText('41 lights');
+  await expect(page.getByTestId('discovery-result-21')).toContainText('27 lights');
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.layout?.wiring?.outputs?.map((output: { pin: number }) => output.pin);

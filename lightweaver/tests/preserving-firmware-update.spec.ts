@@ -3,6 +3,7 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, type CardStateSpec } from './harness/cardStates';
 import { installFakeCardBridge, installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 const CARD_ID = 'lw-b0fe81f61b44';
 const OLD_BUILD = '1'.repeat(40);
@@ -812,10 +813,9 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   await expect.poll(() => card.state.beaconPinned).toBe(18);
   await page.getByTestId('discovery-start').click();
   await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await page.getByTestId('discovery-count-18').fill('41');
-  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-colour-row-rgb').click();
+  await stopRunAt(page, 41);
+  await settleEndCheck(page, 41);
   await page.getByTestId('discovery-end-yes').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
   await page.getByTestId('discovery-continue-layout').click();

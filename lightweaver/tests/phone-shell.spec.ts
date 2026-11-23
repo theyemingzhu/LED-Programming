@@ -8,6 +8,7 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard } from './ux/journeyRecorder';
 import { bootSetUp } from './ux/journeySeed';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
 const DESKTOP = { viewport: { width: 1280, height: 800 } };
@@ -176,13 +177,14 @@ test.describe('phone 390, one scale', () => {
     await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
     await page.getByTestId('discovery-start').click();
     await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId('discovery-color-red').click();
-    await page.getByTestId('discovery-color-green').click();
-    const count = page.getByTestId('discovery-count-18');
-    await count.fill('41');
-    const box = await count.boundingBox();
-    expect(box!.height).toBeLessThanOrEqual(46);
-    expect(box!.width).toBeLessThanOrEqual(120);
+    // Colour rows and the end check's − / + are finger-sized and on scale.
+    const row = page.getByTestId('discovery-colour-row-rgb');
+    expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await offScale(page)).toEqual([]);
+    await row.click();
+    await stopRunAt(page, 41);
+    const minus = page.getByTestId('discovery-end-minus');
+    expect((await minus.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await offScale(page)).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 // ---------------------------------------------------------------------------
 // Copied from journey-continuity.spec.ts verbatim (that file exports only its
@@ -129,14 +130,13 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
 
   await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await expect(page.getByTestId('discovery-decade')).toBeVisible();
-
+  // One tap: the colours lights 1, 2, 3 show. Then a light runs down the
+  // strip and Stop is the count; the end check settles a late Stop.
+  await page.getByTestId('discovery-colour-row-rgb').click();
   const COUNTED_PIXELS = 41;
-  await page.getByTestId(`discovery-count-${PROBE_PIN}`).fill(String(COUNTED_PIXELS));
-  await page.getByTestId('discovery-counts-done').click();
+  await stopRunAt(page, COUNTED_PIXELS);
   await expect(page.getByTestId('discovery-end-marker')).toBeVisible();
+  await settleEndCheck(page, COUNTED_PIXELS);
   await page.getByTestId('discovery-end-yes').click();
 
   // The last end-marker confirm saves what was found (simpler-journeys C8).

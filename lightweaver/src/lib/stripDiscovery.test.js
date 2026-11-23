@@ -424,3 +424,16 @@ test('a colour row is the full channel map, and a row that repeats a colour is r
   assert.equal(channelMapFromColourRow(['red', 'red', 'blue']), null);
   assert.equal(channelMapFromColourRow(['red', 'green']), null);
 });
+
+test('finding another strip counts only the new one; the strip counted before keeps its count', () => {
+  let session = createSessionForRun({
+    portRoles: [{ pin: 18, role: 'strip', pixelCount: 41 }, { pin: 21, role: 'strip' }],
+    benchLayout: [{ pin: 18, start: 0, count: 256 }, { pin: 21, start: 256, count: 256 }],
+  });
+  session = advanceRun(session, { type: 'bench-installed', focusPin: 21 });
+  assert.equal(session.activePin, 21);
+  assert.deepEqual(session.ports.find(port => port.pin === 18), { ...session.ports.find(port => port.pin === 18), count: 41, confirmed: true, probed: true });
+  session = advanceRun(advanceRun(advanceRun(session, { type: 'run-start' }), { type: 'run-tick', litCount: 27 }), { type: 'run-stop' });
+  session = advanceRun(session, { type: 'end-marker-yes' });
+  assert.equal(session.phase, 'record', 'no second walk of the first strip');
+});
