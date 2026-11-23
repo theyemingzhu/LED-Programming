@@ -22,3 +22,16 @@ test('a one-light strip still gets a dot, above the light', () => {
   const dot = stripDotAt({ pixels: [{ x: 10, y: 10 }] }, 1);
   assert.deepEqual([dot.x, dot.y], [10, -3]);
 });
+
+import { stripOuterEnd } from './stripDots.js';
+
+test('the chip anchors past the end farthest from the centre, pointing outward', () => {
+  const strip = line({ x: 100, y: 50 }, { x: 200, y: 50 });
+  const rightOfCentre = stripOuterEnd(strip, { x: 0, y: 50 }, 1);
+  assert.ok(rightOfCentre.x > 200 && rightOfCentre.dx === 1);
+  const leftOfCentre = stripOuterEnd(strip, { x: 400, y: 50 }, 1);
+  assert.ok(leftOfCentre.x < 100 && leftOfCentre.dx === -1);
+  // Drawn the other way round it lands in the same place: it follows the geometry, not the data order.
+  const reversed = { pixels: strip.pixels.slice().reverse() };
+  assert.equal(stripOuterEnd(reversed, { x: 0, y: 50 }, 1).x, rightOfCentre.x);
+});

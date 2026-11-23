@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { canvasStripLabel } from '../../../lib/stripLabels.js';
-import { stripDotAt } from '../../../lib/stripDots.js';
+import { stripDotAt, stripOuterEnd } from '../../../lib/stripDots.js';
 import {
   rgbCss,
   pointsAttr,
@@ -230,6 +230,17 @@ export function LayoutCanvas({
   // Names are not drawn on every strip any more: each strip has a small numbered
   // dot at its first light, and a name chip shows for the selected and the hovered strip.
   const [hoverStripId, setHoverStripId] = useState(null);
+  // The middle of everything that is showing: name chips sit away from it.
+  const pieceCentre = useMemo(() => {
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const strip of strips) {
+      if (hidden[strip.id]) continue;
+      for (const p of strip.pixels || []) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      }
+    }
+    return Number.isFinite(minX) ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2 } : null;
+  }, [strips, hidden]);
   // The look designer hides the name callouts and flow numbers: they would cover the piece.
   const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds && !designerActive;
 
@@ -667,11 +678,11 @@ export function LayoutCanvas({
                       d={s.pathData}
                       fill="none"
                       stroke={sideTint(sidePlaces.get(s.id).sideIndex)}
-                      strokeWidth={annotationScale * 16}
+                      strokeWidth={annotationScale * 30}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       pointerEvents="none"
-                      opacity={0.3}
+                      opacity={0.62}
                     />
                   )}
                   {!isSel && mirrorFocusId === s.id && (
@@ -1044,14 +1055,18 @@ export function LayoutCanvas({
               const chipText = place ? `${partName} · ${place.label}` : partName;
               const chipName = chipText.length > 24 ? `${chipText.slice(0, 23).trimEnd()}…` : chipText;
               const chipWidth = Math.min(150, 14 + chipName.length * 6.4);
-              // Beside the dot, on the side away from the strip, kept inside the canvas.
-              let toRight = dot.dx >= 0;
-              if (toRight && dot.x + (chipWidth + 14) * annotationScale > labelBounds.x + labelBounds.w) toRight = false;
-              if (!toRight && dot.x - (chipWidth + 14) * annotationScale < labelBounds.x) toRight = true;
-              const chipX = toRight ? 12 : -12 - chipWidth;
+              // Anchored just past the strip's outer end (the end farthest from the
+              // piece centre), on the side away from the strip, kept inside the canvas.
+              const anchor = stripOuterEnd(s, pieceCentre, annotationScale);
+              let toRight = anchor.dx >= 0;
+              if (toRight && anchor.x + (chipWidth + 6) * annotationScale > labelBounds.x + labelBounds.w) toRight = false;
+              if (!toRight && anchor.x - (chipWidth + 6) * annotationScale < labelBounds.x) toRight = true;
+              const ax = (anchor.x - dot.x) / annotationScale;
+              const ay = (anchor.y - dot.y) / annotationScale;
+              const chipX = toRight ? ax + 4 : ax - 4 - chipWidth;
               const topLimit = (labelBounds.y - dot.y) / annotationScale + 4;
               const bottomLimit = (labelBounds.y + labelBounds.h - dot.y) / annotationScale - 24;
-              const chipY = Math.max(topLimit, Math.min(bottomLimit, -10));
+              const chipY = Math.max(topLimit, Math.min(bottomLimit, ay - 10));
               return (
                 <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
