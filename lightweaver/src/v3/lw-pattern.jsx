@@ -74,6 +74,7 @@ import { deriveCardAccess } from '../lib/cardAccess.js';
 import { evaluateCardInstallGate, STAGED_WIRING_CONFLICT_MESSAGE } from '../lib/cardInstallGate.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { clearPendingCardSave, pendingSaveHeldByCard, readPendingCardSave, writePendingCardSave } from '../lib/pendingCardSave.js';
 import {
   consumeCardEditAuthorization,
   currentCardProjectAuthorizationExpiresAt,
@@ -2329,6 +2330,21 @@ function writeSectionDisplayOrder(projectId, ids) {
       setStatusKind('ok');
       setStatus('Saved to the card.');
     }, [cardSave.status, installedNow]);
+    // The other half: after a reload or a lost reply, the card itself is read
+    // holding exactly what this browser sent. Make that the project (it was
+    // the owner's Save), so Studio and the card agree again.
+    const liveFingerprint = String(cardLink?.readiness?.projectFingerprint || '');
+    const liveCardId = String(cardLink?.card?.id || cardLink?.readiness?.cardId || '');
+    useEffect(() => {
+      if (cardSave.status === 'pending' || !liveFingerprint) return;
+      const pending = pendingSaveHeldByCard(readPendingCardSave(), { cardId: liveCardId, projectFingerprint: liveFingerprint }, { projectId });
+      if (!pending) return;
+      clearPendingCardSave();
+      commitProjectStateWithoutEdit(() => {
+        if (pending.patchBoard) setPatchBoard(pending.patchBoard);
+        if (pending.standaloneController) setStandaloneController(pending.standaloneController);
+      });
+    }, [cardSave.status, liveFingerprint, liveCardId, projectId]);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
@@ -2436,21 +2452,20 @@ function writeSectionDisplayOrder(projectId, ids) {
           return;
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
-        // What goes to the card is the owner's project from this moment, not a
-        // draft committed only after the card's read-back. A reload, a closed
-        // tab, or a card answering after the restart wait used to throw the
-        // picked look away while the card kept it — Studio then honestly saw a
-        // different project ("Draft kept separately") on a card holding exactly
-        // what the owner saved. Interruption tests D1/D2,
-        // todo/plans/practice-card-interruptions.md. Same guard as the commit
-        // after verification below: only when nothing changed while checking.
-        if (JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
-          && JSON.stringify(latestControllerRef.current) === JSON.stringify(requestedController)) {
-          commitProjectStateWithoutEdit(() => {
-            setPatchBoard(nextBoard);
-            setStandaloneController(nextController);
-          });
-        }
+        // A save whose reply is lost (reload, closed tab, card back after the
+        // restart wait) must still be recognised once the card holds it. Note
+        // exactly what is being sent; the note becomes the project only when
+        // the card is read holding this fingerprint, and a refusal clears it,
+        // so a rejected save still leaves the pick a draft.
+        // Interruption tests D1/D2, todo/plans/practice-card-interruptions.md.
+        writePendingCardSave({
+          projectId,
+          generation: requestedGeneration,
+          cardId: before.cardId,
+          projectFingerprint: exactPrepared.config.projectFingerprint,
+          patchBoard: nextBoard,
+          standaloneController: nextController,
+        });
         dispatchCardSave({ type: 'start', revision: requestedRevision });
         if (checkingShown) { setStatusKind(''); setStatus(''); }
         let response;
@@ -2502,6 +2517,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           } : {}),
         });
         dispatchCardSave({ type: 'confirm' });
+        clearPendingCardSave();
         setSaveRestarting(false);
         setSavedAt(Date.now());
         const commitBoard = JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
@@ -2555,6 +2571,12 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
       } catch (error) {
         dispatchCardSave({ type: 'fail', error: error?.message });
+        // The card answered and said no, or nothing was sent: the save did not
+        // land, so there is nothing to recognise later.
+        if (Number(error?.status) >= 400 || error?.delivery === 'not-sent' || error?.delivery === 'rejected'
+          || ['layout-mismatch', 'project-mismatch', 'config-too-large', 'save-not-applied', 'mixed-content'].includes(error?.reason)) {
+          clearPendingCardSave();
+        }
         if (error?.reason === 'restart-timeout') {
           setStatusKind('err');
           setStatus(error.message);
