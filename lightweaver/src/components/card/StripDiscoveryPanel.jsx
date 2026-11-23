@@ -646,6 +646,12 @@ export function StripDiscoveryPanel({
     if (sweepRef.current.pin !== null) releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
   }, [host]);
   const pickPin = pin => {
+    // The tapped pin replaces the sweep's pin on the card. Releasing the sweep
+    // pin here raced the tap's own pin request and could leave the card dark
+    // after the owner's tap (strip-discovery.spec "minimizing during an
+    // idle-phase port probe").
+    sweepRef.current = { pin: null, previous: null, changedAt: 0 };
+    setSweepPin(null);
     setFindMode('pick');
     void probePort(pin);
   };

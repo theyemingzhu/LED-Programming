@@ -9,7 +9,7 @@
 //       "Clear temporary setup", then install again.
 // Real-timing practice card. Plan: todo/plans/practice-card-interruptions.md.
 import { test, expect } from '@playwright/test';
-import { findStrip } from './ux/drivers';
+import { answerFirstInstallCheck, findStrip } from './ux/drivers';
 import type { Page } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import {
@@ -81,8 +81,9 @@ async function walkToInstall(page: Page, p: InterruptionCard) {
   await expect(page).toHaveURL(/#screen=layout/, { timeout: 30_000 });
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup'; });
   await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'test-and-save', { timeout: 60_000 });
-  await page.getByTestId('setup-verify-action').click();
-  await expect(page.getByTestId('replace-card-project')).toBeVisible({ timeout: 30_000 });
+  // Since C4 (simpler-journeys) "Test and save" starts the install itself over
+  // Studio's own temporary setup; there is no separate replace step. The
+  // caller presses it once the refusal is set.
   return page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || '');
 }
 
@@ -97,7 +98,9 @@ test('install over the temporary setup, card has no room: Studio says so and off
   await startWordsLog(page);
   await startNotTakenWatch(page, WRONG_CAUSE);
   await startQuietWatch(page, 'no room|could not|did not|refused|Clear temporary setup');
-  await page.getByTestId('replace-card-project').click();
+  await page.getByTestId('setup-verify-action').click();
+  // Older builds asked to replace the temporary setup first.
+  await page.getByTestId('replace-card-project').click({ timeout: 5_000 }).catch(() => {});
   await expect(page.getByText(NO_ROOM_WORDS).first(), 'Studio names the cause: no room').toBeVisible({ timeout: 60_000 });
   const quiet = await stopQuietWatch(page);
   expect.soft(holds(practice.card), 'the card kept the temporary setup').toEqual(before);
@@ -115,14 +118,27 @@ test('install over the temporary setup, card has no room: Studio says so and off
   }
   await clear.first().click({ timeout: 30_000 });
   await expect.poll(() => practice!.card.state.projectId, { timeout: 30_000, message: 'the temporary setup is cleared' }).toBe('');
-  // A blank card has room. Install again.
+  // A blank card has room. Disarm whichever one-time refusal the first attempt
+  // did not use (the new flow staged the wiring; the plain save was never hit).
+  practice.card.refuse('/api/config', { status: 400, times: 0 });
+  practice.card.refuse('/api/wiring/candidate', { status: 400, times: 0 });
+  // Install again.
   await page.waitForTimeout(20_000);
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup'; });
-  const install = page.getByTestId('setup-verify-action').or(page.getByTestId('replace-card-project')).or(page.getByRole('button', { name: /Save to card|Install/ }));
+  // The card is blank now and Studio knows the wiring, so Card Home offers the
+  // one whole save first (Find my strips way in 1), then the light check. The
+  // explicit test ids, not a /Save|Install/ name match: that also matched the
+  // firmware "Install or update" screen.
+  const install = page.getByTestId('blank-card-save').or(page.getByTestId('setup-verify-action')).or(page.getByTestId('replace-card-project'));
   await install.first().click({ timeout: 60_000 });
-  await page.getByTestId('replace-card-project').click({ timeout: 10_000 }).catch(() => {});
-  await page.getByTestId('wiring-test-start').click({ timeout: 60_000 }).catch(() => {});
-  await page.getByTestId('wiring-test-confirm').click({ timeout: 60_000 }).catch(() => {});
+  if (await page.getByTestId('first-install-check').isVisible({ timeout: 60_000 }).catch(() => false)
+    || await page.getByTestId('first-install-check').waitFor({ timeout: 60_000 }).then(() => true, () => false)) {
+    await answerFirstInstallCheck(page);
+  } else {
+    await page.getByTestId('replace-card-project').click({ timeout: 10_000 }).catch(() => {});
+    await page.getByTestId('wiring-test-start').click({ timeout: 60_000 }).catch(() => {});
+    await page.getByTestId('wiring-test-confirm').click({ timeout: 60_000 }).catch(() => {});
+  }
   await expect.poll(() => practice!.card.state.projectId, { timeout: 90_000, message: 'the retry installs the real project' }).toBe(projectId);
   await expect.soft(page.getByText(NO_ROOM_WORDS), 'no stale no-room line after the clean install').toHaveCount(0);
 });

@@ -111,7 +111,9 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
         await expect.poll(() => card.state.pixels, { timeout: 60_000 }).toBe(0);
         const writesBefore = configWrites(card);
         await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-        await expect.poll(() => linkConnected(page), { timeout: 40_000 }).toBe(true);
+        // After the clear the card restarts; "Card restarted — verifying" can
+        // take two direct keepalive rounds, past 40 s.
+        await expect.poll(() => linkConnected(page), { timeout: 90_000 }).toBe(true);
         await startFalseFailureWatch(page, WORDING_WAY1);
 
         const save = page.getByTestId('blank-card-save');
