@@ -22,14 +22,20 @@ Every later save failed: 6 of 6 tries, including the first save after a fresh re
 
 As a result a saved tuning can never be changed or undone. It disappears only when a wiring confirm changes the install id.
 
+## The cause is older than look tuning (measured 2026-11-23)
+Measured on 52e9136e, which has **no** look-tuning code (candidate-blob and drop-stale-rollback-record only):
+- `GET /api/client-pattern?patternId=fire` makes the next `POST /api/client-pattern` answer **400 `{"ok":false,"error":"invalid pattern envelope"}`**.
+- A `GET /api/status` sent in between clears it, and the next save is accepted.
+- The second bench check on that build passed light count, saves, content and restart (4 of 5), but look saves passed 0 of 5.
+
+The client-pattern handler is unchanged since signed 1.2.4. So the fault predates both the slot swap and look tuning, and it is the likely reason look tuning failed here: its save path reads the pattern first, then posts it.
+
 ## Reading (unproven)
-Each error matches the handler seeing a different request's body.
-- "Send the tuning patch on its own" means the control handler saw extra keys. Those are the keys of the client-pattern save that came just before it.
-- "Invalid pattern envelope" comes from the `doc.size() != 4 || server.args() != 0` gate in `handleClientPatternPost`.
+The `GET`'s query argument (`patternId=fire`) is probably still counted by `server.args()` when the following `POST` is checked. The `doc.size() != 4 || server.args() != 0` gate in `handleClientPatternPost` then refuses a well-formed envelope.
 
-Suspect the shared `controlRequestBody` / `controlRequestBodyReady` buffer. It may be filled or consumed out of order between `/api/control` and `/api/client-pattern`, or `server.args()` may count the body as an argument after the first save.
+An earlier reading here blamed the shared `controlRequestBody` buffer. That is superseded: the fault reproduces with no `/api/control` call at all.
 
-Start with a host test that sends control → save → control → save in that order.
+Start with a host test that sends GET client-pattern?patternId=… → POST client-pattern, and expects 200. Check it against signed 1.2.4 as well.
 
-## Not caused by the slot swap
-The same card on candidate-blob alone is to be re-checked. Five look saves through Patterns in a row must each be accepted and match on read-back.
+## Before this change is sent again
+Fix the GET → POST fault first, as its own change, and bench-check it. Then re-check look tuning on top of it.
