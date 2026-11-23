@@ -52,6 +52,9 @@ test('six petals divide into six sides of three strips, centre ring on its own',
   assert.equal(result.orientation, 'same');
   for (const side of result.sides) assert.equal(side.stripIds.length, 3);
   assert.equal(result.matched.length, 3);
+  // Side 1 is the petal at the top; the rest follow clockwise.
+  assert.ok(result.sides[0].stripIds.every(id => id.endsWith('-0') || id.startsWith('petal-0')));
+  assert.ok(result.sides[1].stripIds.some(id => id === 'rim-1'));
   // A petal is never cut in half: both of its edges land in one side.
   for (const side of result.sides) {
     const petals = new Set(side.stripIds.map(id => id.split('-')[1]));
@@ -72,7 +75,7 @@ test('the wrong number of sides scores low and the right one high', () => {
   assert.equal(turnSides(strips, C, 3).score, 1);
 });
 
-test('suggestSymmetry routes 3, 5, 6, 8 and 12 sides and labels them Side n', () => {
+test('suggestSymmetry routes 3, 5, 6 and 8 sides and labels them Side n', () => {
   const six = suggestSymmetry(lotus(6), 6, { centre: C });
   assert.equal(six.confidence, 'high');
   assert.deepEqual(six.sides.map(side => side.label), ['Side 1', 'Side 2', 'Side 3', 'Side 4', 'Side 5', 'Side 6']);
@@ -150,7 +153,8 @@ test('no symmetry or an empty first side gives no copies', () => {
 });
 
 test('the sides model accepts the new counts and still refuses others', () => {
-  assert.deepEqual([...SYMMETRY_FOLDS], [2, 3, 4, 5, 6, 8, 12]);
+  assert.deepEqual([...SYMMETRY_FOLDS], [2, 3, 4, 5, 6, 8]);
+  assert.equal(setSymmetryFold(null, 12, lotus(6)), null);
   const strips = lotus(6);
   const symmetry = setSymmetryFold(null, 6, strips, suggestSymmetry(strips, 6, { centre: C }));
   assert.equal(normalizeSymmetry(symmetry, strips).sides.length, 6);

@@ -1,5 +1,5 @@
 // Piece symmetry: the owner divides the artwork into matching "sides": two or
-// four (a mirror line, quarter turns) or 3, 5, 6, 8 or 12 around a centre.
+// four (a mirror line, quarter turns) or 3, 5, 6 or 8 around a centre.
 // Stored at piece level as `layout.symmetry`:
 //   { fold: 2, orientation: 'mirror',
 //     sides: [{ id: 'side-1', label: 'Left side', stripIds: ['strip-3', 'strip-4'] },
@@ -19,8 +19,10 @@
 import { compileWiring } from './wiringCompiler.js';
 import { normalizeMirrorSets } from './mirrorSetRules.js';
 
-// At most 12: the card holds 12 sections in all (LW_MAX_ZONES), one per side.
-export const SYMMETRY_FOLDS = Object.freeze([2, 3, 4, 5, 6, 8, 12]);
+// Not 12: each side is one of the card's 12 sections (LW_MAX_ZONES), which
+// leaves no room for a strip on its own, and twelve sides with two looks
+// measure 4875 bytes against the card's 3968-byte project file.
+export const SYMMETRY_FOLDS = Object.freeze([2, 3, 4, 5, 6, 8]);
 
 const text = value => (typeof value === 'string' ? value.trim() : '');
 const isFold = value => SYMMETRY_FOLDS.includes(value);

@@ -1,5 +1,5 @@
 // Studio -> card contract for symmetry sides (lightweaver/todo/plans/symmetry-sides.md).
-// Builds 2-side, 4-side, 6-side and 12-side projects, prepares the card deployment, and checks the
+// Builds 2-side, 4-side, 6-side and 8-side projects, prepares the card deployment, and checks the
 // resulting runtime config against the rules the firmware enforces:
 //   1. every looks[].zones[] patternId is a pattern the card can play
 //      (firmware: isSupportedCompiledPattern in LightweaverPatterns.cpp)
@@ -98,9 +98,9 @@ const fixtures = {
     ids: Array.from({ length: 19 }, (_, i) => `s${i}`),
     symmetry: { fold: 6, orientation: 'same', sides: Array.from({ length: 6 }, (_, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [`s${i * 3}`, `s${i * 3 + 1}`, `s${i * 3 + 2}`])) },
   }),
-  'twelve sides fill the card': makeProject({
-    ids: Array.from({ length: 12 }, (_, i) => `s${i}`),
-    symmetry: { fold: 12, orientation: 'mirror', sides: Array.from({ length: 12 }, (_, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [`s${i}`])) },
+  'eight sides (mirror image)': makeProject({
+    ids: Array.from({ length: 8 }, (_, i) => `s${i}`),
+    symmetry: { fold: 8, orientation: 'mirror', sides: Array.from({ length: 8 }, (_, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [`s${i}`])) },
   }),
   'four sides of two strips': makeProject({
     ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],

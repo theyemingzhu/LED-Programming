@@ -233,7 +233,7 @@ function fourSides(strips, centre) {
 
 /**
  * Suggest how `strips` divide into `fold` sides. Two and four sides are
- * worked out here; 3, 5, 6, 8 and 12 turn about the centre (symmetryTurns.js).
+ * worked out here; 3, 5, 6 and 8 turn about the centre (symmetryTurns.js).
  *
  * `artwork` may carry `centre: {x, y}` (the artwork's middle, or what
  * artworkSymmetry.detectArtworkSymmetry reports). The strips' own middle is

@@ -1,4 +1,4 @@
-// Sides by turning: a piece with 3, 5, 6, 8 or 12 matching sides around a
+// Sides by turning: a piece with 3, 5, 6 or 8 matching sides around a
 // centre (a six-petal mandala), and the "amber copies" that let the owner see
 // whether a number of sides fits.
 //
@@ -89,7 +89,9 @@ export function turnSides(strips, centre, fold, { start = null } = {}) {
   };
   const own = strips.filter(strip => distance(strip) <= band);
   const sided = strips.filter(strip => distance(strip) > band);
-  const from = Number.isFinite(start) ? mod(start, wedge) : dividingLineStart(sided, centre, fold);
+  // The first line sits just anticlockwise of straight up, so side 1 is the
+  // side at the top of the piece and the rest follow clockwise.
+  const from = (Number.isFinite(start) ? mod(start, wedge) : dividingLineStart(sided, centre, fold)) - wedge;
   const sectorAngle = strip => mod(clockAngle(centre, strip) - from, 360);
   const turns = Array.from({ length: fold - 1 }, (_, index) => turnAbout(centre, (index + 1) * wedge));
 
