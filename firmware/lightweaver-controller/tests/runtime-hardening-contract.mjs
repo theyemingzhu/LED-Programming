@@ -26,8 +26,20 @@ assert.match(main, /bool\s+sequenceIntegrityMatches\s*\(/,
   'sequence playback must verify the declared SHA-256 before opening');
 assert.match(main, /sequenceIntegrityMatches\([^)]*look\.sequenceBytes[^)]*look\.sequenceSha256/, 
   'sequence playback must bind the profile declaration to the file bytes');
-assert.match(main, /SD\.open\(look\.file\.c_str\(\), FILE_READ\)/,
-  'sequence playback must use the retained SD mount rather than remounting');
+// Playback opens through the media store (microSD first, then the card's
+// built-in memory). That opener must still use the retained mount: it may ask
+// whether a card is mounted, never mount one.
+assert.match(main, /prepared\.file = lightweaverOpenRecordedMedia\(look\.file\.c_str\(\)\);/,
+  'sequence playback must open through the media store');
+{
+  const media = await readFile(new URL('../src/LightweaverMedia.cpp', import.meta.url), 'utf8');
+  const opener = media.match(/fs::File lightweaverOpenRecordedMedia\(const char\* path\) \{[\s\S]*?\n\}/);
+  assert.ok(opener, 'the playback opener must exist');
+  assert.match(opener[0], /SD\.open\(path, FILE_READ\)/,
+    'sequence playback must use the retained SD mount rather than remounting');
+  assert.doesNotMatch(opener[0], /\.begin\(|sdMounted\(/,
+    'sequence playback must use the retained SD mount rather than remounting');
+}
 assert.match(main, /prefs\.clear\(\)/,
   'factory reset must clear NVS regardless of SD cleanup availability');
 assert.match(main, /sd cleanup unavailable|optional sd cleanup/i,
@@ -62,7 +74,7 @@ assert.match(storage, /effectiveLookRequiresSequenceMetadata\([\s\S]*configMode\
   'strict validation must derive sequence requirements after the native-recipe override');
 assert.match(main, /bool\s+prepareSequence\s*\(\s*const LookConfig& look,\s*PreparedSequence& prepared\s*\)/,
   'sequence selection must prepare one concrete file handle before mutating playback state');
-assert.match(main, /prepared\.file\s*=\s*SD\.open\(look\.file\.c_str\(\), FILE_READ\)[\s\S]*sequenceIntegrityMatches\(prepared\.file,[\s\S]*readSequenceMetadata\(prepared\.file/,
+assert.match(main, /prepared\.file\s*=\s*lightweaverOpenRecordedMedia\(look\.file\.c_str\(\)\)[\s\S]*sequenceIntegrityMatches\(prepared\.file,[\s\S]*readSequenceMetadata\(prepared\.file/,
   'the concrete prepared file must be both hashed and parsed before playback');
 assert.match(main, /readSequenceMetadata\(prepared\.file[\s\S]*prepared\.file\.read\(preparedSequenceFrameBuffer,[\s\S]*prepared\.ready\s*=\s*true/,
   'the first frame must be read completely from the retained candidate before it becomes prepared');

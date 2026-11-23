@@ -5,6 +5,7 @@
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverMedia.h"
 #include "LightweaverRecipe.h"
 #include "LightweaverLookModePolicy.h"
 #include "LightweaverWifiChannelPolicy.h"
@@ -3228,6 +3229,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
+  lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
   doc["capabilities"]["firmwareUpdate"]["network"] = true;
   doc["capabilities"]["firmwareUpdate"]["softwareGrant"] = true;
@@ -3319,6 +3321,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   lwOutput["calibration"]["green"] = runtimeOutputCalibrationGreen();
   lwOutput["calibration"]["blue"] = runtimeOutputCalibrationBlue();
   lwOutput["measuredFps"] = runtimeOutputMeasuredFps();
+  runtimeReportOutputTiming(lwOutput);
   lwOutput["dithering"] = runtimeOutputDithering();
   const lightweaver::ConnectivityState& wifiState = config.wifiRuntime.connectivity;
   const char* wifiPhase = "setup-ap";

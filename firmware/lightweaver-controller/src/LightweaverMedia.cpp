@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <WebServer.h>
 #include <SD.h>
+#include <LittleFS.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/sha256.h>
 #include <esp_system.h>
@@ -16,6 +17,15 @@
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverWeb.h"
 #include "LightweaverSequencePlayback.h"
+#include "LightweaverMediaStorePolicy.h"
+#include "LightweaverFirmwareBootHealth.h"
+
+static_assert(LW_FLASH_MEDIA_PROJECT_MAX_BYTES == LW_PROJECT_MAX_BYTES &&
+    LW_FLASH_MEDIA_PROJECT_HEADROOM_BYTES == LW_PROJECT_RECOVERY_HEADROOM_BYTES &&
+    LW_FLASH_MEDIA_PROJECT_QUOTA_BYTES == LW_PROJECT_REPOSITORY_QUOTA_BYTES,
+    "the built-in recording budget was worked out from these project store limits");
+static_assert(LW_FLASH_MEDIA_MAX_FILE_BYTES <= LW_SEQUENCE_MEDIA_MAX_BYTES,
+    "built-in memory never accepts more than a microSD would");
 
 #ifndef LW_SD_CS
 #define LW_SD_CS 10
@@ -41,6 +51,9 @@ struct Transfer {
   uint32_t startedAt = 0;
   uint32_t ownerEpoch = 0;
   bool alreadyPresent = false;
+  // Pinned when the file begins, so every chunk and the commit use the store
+  // the upload started on.
+  LwMediaStore store = LwMediaStore::None;
 } g_transfer;
 Transfer g_receipt;
 static constexpr uint32_t LW_MEDIA_LEASE_MS = 10U * 60U * 1000U;
@@ -56,6 +69,7 @@ struct Batch {
   uint32_t ownerEpoch = 0;
   uint32_t startedAt = 0;
   size_t count = 0;
+  LwMediaStore store = LwMediaStore::None;
   BatchAsset assets[LW_MEDIA_BATCH_MAX_ASSETS];
 } g_batch;
 
@@ -211,18 +225,140 @@ bool mutationsReady() {
   return true;
 }
 
-bool mounted() {
+bool sdMounted() {
   if (SD.cardType() != CARD_NONE) return true;
   return SD.begin(LW_SD_CS) && SD.cardType() != CARD_NONE;
 }
 
+// Built-in memory is the project store's own LittleFS mount, reused as it is:
+// this file never calls LittleFS.begin() and never formats. It only ever
+// touches /sequences. LittleFS is copy-on-write, so power lost in the middle
+// of a recording write cannot damage a project file beside it.
+//
+// Wear: a recording is written once, when the owner saves it, and only read
+// after that. Playback never writes. A 640 KiB save touches about 160 of the
+// partition's 864 blocks, and LittleFS spreads writes across free blocks.
+bool flashStoreAvailable() {
+  static bool measured = false;
+  static bool trusted = false;
+  if (!lightweaverProjectRepository().available()) return false;
+  if (!measured) {
+    trusted = lwFlashMediaFilesystemTrusted(LittleFS.totalBytes());
+    measured = true;
+  }
+  return trusted;
+}
+
+fs::FS& storeFs(LwMediaStore store) {
+  if (store == LwMediaStore::Sd) return SD;
+  return LittleFS;
+}
+
+bool storeReady(LwMediaStore store) {
+  if (store == LwMediaStore::Sd) return sdMounted();
+  return store == LwMediaStore::Flash && flashStoreAvailable();
+}
+
+String storeLabel(LwMediaStore store) {
+  return store == LwMediaStore::Flash ? "card memory" : "microSD";
+}
+
 void clearTransfer() {
-  if (g_transfer.temp.length() && SD.exists(g_transfer.temp.c_str())) SD.remove(g_transfer.temp.c_str());
+  if (g_transfer.temp.length() && g_transfer.store != LwMediaStore::None) {
+    fs::FS& fs = storeFs(g_transfer.store);
+    if (fs.exists(g_transfer.temp.c_str())) fs.remove(g_transfer.temp.c_str());
+  }
   g_transfer = Transfer{};
 }
 
-bool hashFile(const String& path, size_t& size, String& hash) {
-  File file = SD.open(path.c_str(), FILE_READ);
+bool declaredInBatch(const String& file) {
+  for (size_t i = 0; i < g_batch.count; i++) {
+    if (g_batch.assets[i].file == file) return true;
+  }
+  return false;
+}
+
+// One pass over the built-in /sequences folder. `kept` is what has to stay
+// (the running project plays it, this save declared it, or it is the upload in
+// progress); `clearable` is everything else, including an abandoned staging
+// file from an interrupted upload.
+struct FlashScan { size_t kept = 0; size_t clearable = 0; };
+static constexpr size_t LW_FLASH_MEDIA_CLEAR_MAX = 16;
+
+FlashScan scanFlashStore(bool clearUnused) {
+  FlashScan scan;
+  String unused[LW_FLASH_MEDIA_CLEAR_MAX];
+  size_t unusedFootprint[LW_FLASH_MEDIA_CLEAR_MAX] = {};
+  size_t unusedCount = 0;
+  File folder = LittleFS.open("/sequences");
+  if (!folder || !folder.isDirectory()) return scan;
+  for (File entry = folder.openNextFile(); entry; entry = folder.openNextFile()) {
+    String name = entry.name();
+    const int slash = name.lastIndexOf('/');
+    if (slash >= 0) name = name.substring(slash + 1);
+    const String path = String("/sequences/") + name;
+    const size_t footprint = lwFlashMediaFootprint(entry.size());
+    const bool isFolder = entry.isDirectory();
+    entry.close();
+    const bool activeStaging = path == LW_MEDIA_STAGING_PATH &&
+        g_transfer.uploadId.length() && g_transfer.store == LwMediaStore::Flash;
+    if (isFolder || activeStaging ||
+        !lwFlashMediaEvictable(runtimeSequenceFileInUse(path), declaredInBatch(path))) {
+      scan.kept += footprint;
+    } else if (clearUnused && unusedCount < LW_FLASH_MEDIA_CLEAR_MAX) {
+      unused[unusedCount] = path;
+      unusedFootprint[unusedCount++] = footprint;
+    } else {
+      scan.clearable += footprint;
+    }
+  }
+  folder.close();
+  for (size_t i = 0; i < unusedCount; i++) {
+    if (!LittleFS.remove(unused[i].c_str())) scan.clearable += unusedFootprint[i];
+  }
+  return scan;
+}
+
+size_t flashFilesystemFree() {
+  const size_t total = LittleFS.totalBytes();
+  const size_t used = LittleFS.usedBytes();
+  return total > used ? total - used : 0;
+}
+
+String flashLimitText() {
+  return String("the card memory limit of ") + String(static_cast<unsigned long>(LW_FLASH_MEDIA_MAX_FILE_BYTES)) +
+      " bytes; a microSD card holds longer recordings";
+}
+
+// Decides whether a new recording of `bytes` may be staged in built-in
+// memory, clearing recordings nothing can play any more only when that is the
+// difference between fitting and not. The answer never depends on the project
+// store's current size: the limit already assumes the store at its largest.
+bool admitFlashMedia(size_t bytes, int& status, String& message) {
+  FlashScan scan = scanFlashStore(false);
+  size_t fsFree = flashFilesystemFree();
+  if (lwAdmitFlashMedia(bytes, scan.kept, fsFree + scan.clearable) == LwFlashMediaAdmission::Fits &&
+      lwAdmitFlashMedia(bytes, scan.kept + scan.clearable, fsFree) != LwFlashMediaAdmission::Fits) {
+    scan = scanFlashStore(true);
+    fsFree = flashFilesystemFree();
+  }
+  switch (lwAdmitFlashMedia(bytes, scan.kept + scan.clearable, fsFree)) {
+    case LwFlashMediaAdmission::Fits: return true;
+    case LwFlashMediaAdmission::OverLimit:
+      status = 413; message = String("recording is larger than ") + flashLimitText(); return false;
+    case LwFlashMediaAdmission::StoreFull:
+      status = 507;
+      message = String("card memory is full: recordings in use leave ") +
+          String(static_cast<unsigned long>(lwFlashMediaFreeBytes(scan.kept + scan.clearable, fsFree))) +
+          " bytes of " + flashLimitText();
+      return false;
+    default:
+      status = 507; message = "card memory capacity is insufficient"; return false;
+  }
+}
+
+bool hashFile(fs::FS& fs, const String& path, size_t& size, String& hash) {
+  File file = fs.open(path.c_str(), FILE_READ);
   if (!file) return false;
   if (file.size() > LW_SEQUENCE_MEDIA_MAX_BYTES) { file.close(); return false; }
   size = 0;
@@ -245,8 +381,8 @@ bool hashFile(const String& path, size_t& size, String& hash) {
   return true;
 }
 
-bool validSequenceHeader(const String& path, size_t expectedBytes) {
-  File file = SD.open(path.c_str(), FILE_READ);
+bool validSequenceHeader(fs::FS& fs, const String& path, size_t expectedBytes) {
+  File file = fs.open(path.c_str(), FILE_READ);
   if (!file) return false;
   uint8_t header[64] = {};
   const bool read = file.read(header, sizeof(header)) == sizeof(header);
@@ -294,7 +430,20 @@ void handleMutation(const String& uri) {
     sendResult(200, true, "media batch closed");
     return;
   }
-  if (!mounted()) { sendResult(503, false, "microSD media unavailable"); return; }
+  // A save picks its store once, when the batch begins: the microSD when one
+  // is present, otherwise built-in memory. Every later request of that batch
+  // stays on it.
+  const bool batchBegin = uri == "/api/media/begin" && doc["assets"].is<JsonArray>();
+  const LwMediaStore store = batchBegin
+      ? lwSelectMediaStore(sdMounted(), flashStoreAvailable()) : g_batch.store;
+  if (store == LwMediaStore::None || (!batchBegin && !storeReady(store))) {
+    sendResult(503, false, storeLabel(store) + " media unavailable"); return;
+  }
+  if (batchBegin && store == LwMediaStore::Flash && lightweaverFirmwareBootProbationActive()) {
+    // Same rule as the project store: nothing writes built-in memory while a
+    // new card software version may still roll back.
+    sendResult(409, false, "card memory is read-only until the new card software is confirmed"); return;
+  }
   if (g_transfer.uploadId.length() && millis() - g_transfer.lastTouched > 120000U) clearTransfer();
   if (uri == "/api/media/begin" && doc["assets"].is<JsonArray>()) {
     if (g_transfer.uploadId.length() &&
@@ -316,6 +465,7 @@ void handleMutation(const String& uri) {
         sendResult(400, false, "media batch asset count is invalid"); return;
       }
       size_t aggregate = 0;
+      size_t flashFootprint = 0;
       for (JsonVariantConst item : assets) {
         const String file = item["file"] | "";
         const String hash = item["sha256"] | "";
@@ -323,6 +473,15 @@ void handleMutation(const String& uri) {
         if (!validFile(file, hash) || bytes < 64 || bytes > LW_SEQUENCE_MEDIA_MAX_BYTES ||
             aggregate > LW_MEDIA_BATCH_MAX_BYTES - bytes) {
           g_batch = Batch{}; sendResult(400, false, "media batch contains an invalid asset"); return;
+        }
+        // Built-in memory refuses here, before a single byte is sent: every
+        // recording of one save has to fit the limit together.
+        flashFootprint += lwFlashMediaFootprint(bytes);
+        if (store == LwMediaStore::Flash && flashFootprint > LW_FLASH_MEDIA_MAX_BYTES) {
+          g_batch = Batch{};
+          sendResult(413, false, String(assets.size() > 1 ? "these recordings together are" : "recording is") +
+              " larger than " + flashLimitText());
+          return;
         }
         for (size_t i = 0; i < g_batch.count; i++) {
           if (g_batch.assets[i].file == file) {
@@ -337,6 +496,7 @@ void handleMutation(const String& uri) {
         aggregate += bytes;
       }
       g_batch.id = randomId();
+      g_batch.store = store;
       g_batch.owner = owner;
       g_batch.ownerEpoch = lightweaverOwnerCapability().leaseEpoch();
       g_batch.startedAt = millis();
@@ -354,14 +514,23 @@ void handleMutation(const String& uri) {
     }
     if (g_transfer.uploadId.length() && millis() - g_transfer.startedAt > LW_MEDIA_LEASE_MS) clearTransfer();
     if (g_transfer.uploadId.length()) { sendResult(409, false, "another media transfer is active"); return; }
-    if (!SD.exists("/sequences") && !SD.mkdir("/sequences")) {
-      sendResult(503, false, "microSD sequence directory unavailable"); return;
+    fs::FS& fs = storeFs(store);
+    if (!fs.exists("/sequences") && !fs.mkdir("/sequences")) {
+      sendResult(503, false, storeLabel(store) + " sequence directory unavailable"); return;
     }
-    const uint64_t freeBytes = SD.totalBytes() > SD.usedBytes() ? SD.totalBytes() - SD.usedBytes() : 0;
-    if (!SD.exists(file.c_str()) && freeBytes < uint64_t(bytes) + 4096U) {
-      sendResult(507, false, "microSD capacity is insufficient"); return;
+    if (store == LwMediaStore::Flash) {
+      int refusal = 507; String reason;
+      if (!fs.exists(file.c_str()) && !admitFlashMedia(bytes, refusal, reason)) {
+        sendResult(refusal, false, reason); return;
+      }
+    } else {
+      const uint64_t freeBytes = SD.totalBytes() > SD.usedBytes() ? SD.totalBytes() - SD.usedBytes() : 0;
+      if (!fs.exists(file.c_str()) && freeBytes < uint64_t(bytes) + 4096U) {
+        sendResult(507, false, "microSD capacity is insufficient"); return;
+      }
     }
     g_transfer.file = file;
+    g_transfer.store = store;
     g_transfer.hash = hash;
     g_transfer.bytes = bytes;
     g_transfer.owner = owner;
@@ -372,10 +541,10 @@ void handleMutation(const String& uri) {
     // One transaction at a time permits a fixed staging path. A power loss
     // leaves only this file; the next authorized begin removes it before use.
     g_transfer.temp = LW_MEDIA_STAGING_PATH;
-    if (SD.exists(file.c_str())) {
+    if (fs.exists(file.c_str())) {
       size_t existingBytes = 0; String existingHash;
-      if (!hashFile(file, existingBytes, existingHash) || existingBytes != bytes || existingHash != hash ||
-          !validSequenceHeader(file, bytes)) {
+      if (!hashFile(fs, file, existingBytes, existingHash) || existingBytes != bytes || existingHash != hash ||
+          !validSequenceHeader(fs, file, bytes)) {
         clearTransfer(); sendResult(409, false, "immutable media path has different content"); return;
       }
       g_transfer.alreadyPresent = true;
@@ -383,11 +552,11 @@ void handleMutation(const String& uri) {
       sendResult(200, true, "immutable media already present", &g_transfer);
       return;
     }
-    if (SD.exists(LW_MEDIA_STAGING_PATH) && !SD.remove(LW_MEDIA_STAGING_PATH)) {
-      clearTransfer(); sendResult(503, false, "abandoned microSD staging cannot be removed"); return;
+    if (!lwMediaDiscardStaging(fs, LW_MEDIA_STAGING_PATH)) {
+      clearTransfer(); sendResult(503, false, String("abandoned ") + storeLabel(store) + " staging cannot be removed"); return;
     }
-    File temp = SD.open(g_transfer.temp.c_str(), FILE_WRITE);
-    if (!temp) { clearTransfer(); sendResult(503, false, "microSD upload staging unavailable"); return; }
+    File temp = fs.open(g_transfer.temp.c_str(), FILE_WRITE);
+    if (!temp) { clearTransfer(); sendResult(503, false, storeLabel(store) + " upload staging unavailable"); return; }
     temp.close();
     sendResult(200, true, "media upload started", &g_transfer);
     return;
@@ -398,6 +567,8 @@ void handleMutation(const String& uri) {
     sendResult(409, false, "media transfer owner or upload id changed"); return;
   }
   g_transfer.lastTouched = millis();
+  fs::FS& fs = storeFs(g_transfer.store);
+  const String label = storeLabel(g_transfer.store);
   if (uri == "/api/media/chunk") {
     const size_t offset = doc["offset"] | UINT32_MAX;
     const String encoded = doc["data"] | "";
@@ -412,12 +583,12 @@ void handleMutation(const String& uri) {
         decodedSize > g_transfer.bytes - g_transfer.received) {
       sendResult(400, false, "media chunk is invalid"); return;
     }
-    File temp = SD.open(g_transfer.temp.c_str(), FILE_APPEND);
-    if (!temp) { sendResult(503, false, "microSD upload staging unavailable"); return; }
+    File temp = fs.open(g_transfer.temp.c_str(), FILE_APPEND);
+    if (!temp) { sendResult(503, false, label + " upload staging unavailable"); return; }
     const size_t written = temp.write(decoded, decodedSize);
     temp.flush(); temp.close();
     if (written != decodedSize) {
-      clearTransfer(); sendResult(507, false, "microSD chunk write failed; upload abandoned"); return;
+      clearTransfer(); sendResult(507, false, label + " chunk write failed; upload abandoned"); return;
     }
     g_transfer.received += written;
     sendResult(200, true, "media chunk accepted", &g_transfer);
@@ -427,16 +598,16 @@ void handleMutation(const String& uri) {
     if (g_transfer.received != g_transfer.bytes) { sendResult(409, false, "media upload is incomplete"); return; }
     if (!g_transfer.alreadyPresent) {
       size_t actualBytes = 0; String actualHash;
-      if (!hashFile(g_transfer.temp, actualBytes, actualHash) || actualBytes != g_transfer.bytes ||
-          actualHash != g_transfer.hash || !validSequenceHeader(g_transfer.temp, actualBytes)) {
+      if (!hashFile(fs, g_transfer.temp, actualBytes, actualHash) || actualBytes != g_transfer.bytes ||
+          actualHash != g_transfer.hash || !validSequenceHeader(fs, g_transfer.temp, actualBytes)) {
         sendResult(422, false, "media hash, size, or LWSEQ header failed readback"); return;
       }
-      if (SD.exists(g_transfer.file.c_str()) || !SD.rename(g_transfer.temp.c_str(), g_transfer.file.c_str())) {
+      if (!lwMediaPromote(fs, g_transfer.temp.c_str(), g_transfer.file.c_str())) {
         sendResult(409, false, "immutable media promotion failed"); return;
       }
     }
     size_t readBytes = 0; String readHash;
-    if (!hashFile(g_transfer.file, readBytes, readHash) || readBytes != g_transfer.bytes || readHash != g_transfer.hash) {
+    if (!hashFile(fs, g_transfer.file, readBytes, readHash) || readBytes != g_transfer.bytes || readHash != g_transfer.hash) {
       sendResult(500, false, "promoted media readback failed"); return;
     }
     const Transfer completed = g_transfer;
@@ -465,7 +636,17 @@ void handleReadCore(JsonVariantConst query, const String& file,
       g_receipt.owner.expectedProjectHead == lightweaverProjectRepository().currentHead() &&
       g_receipt.ownerEpoch == lightweaverOwnerCapability().leaseEpoch();
   if (!receiptAuthorized && !batchReadAuthorized && !authorize(query, owner)) return;
-  if (!mounted()) { sendResult(503, false, "microSD media unavailable"); return; }
+  // A read that follows an upload stays on that upload's store. A read
+  // authorized on its own looks on the microSD first, then built-in memory.
+  LwMediaStore store = receiptAuthorized ? g_receipt.store
+      : batchReadAuthorized ? g_batch.store : LwMediaStore::None;
+  if (store == LwMediaStore::None) {
+    store = lwSelectMediaStore(sdMounted(), flashStoreAvailable());
+    if (store == LwMediaStore::Sd && !SD.exists(file.c_str()) && flashStoreAvailable() &&
+        lwMediaPathInSequences(file.c_str()) && LittleFS.exists(file.c_str())) store = LwMediaStore::Flash;
+  }
+  if (!storeReady(store)) { sendResult(503, false, storeLabel(store) + " media unavailable"); return; }
+  fs::FS& fs = storeFs(store);
   if (receiptAuthorized && file != g_receipt.file) {
     sendResult(403, false, "media receipt is scoped to another file"); return;
   }
@@ -473,9 +654,9 @@ void handleReadCore(JsonVariantConst query, const String& file,
   const String hash = file.substring(begin, begin + 64);
   if (!validFile(file, hash)) { sendResult(400, false, "media path is invalid"); return; }
   size_t bytes = 0; String actualHash;
-  if (!hashFile(file, bytes, actualHash)) { sendResult(404, false, "media file is missing"); return; }
+  if (!hashFile(fs, file, bytes, actualHash)) { sendResult(404, false, "media file is missing"); return; }
   if (bytes < 64 || bytes > LW_SEQUENCE_MEDIA_MAX_BYTES || actualHash != hash ||
-      !validSequenceHeader(file, bytes)) { sendResult(422, false, "media readback failed integrity checks"); return; }
+      !validSequenceHeader(fs, file, bytes)) { sendResult(422, false, "media readback failed integrity checks"); return; }
   Transfer result; result.file = file; result.bytes = bytes; result.hash = actualHash;
   sendResult(200, true, "media independently read back", &result);
 }
@@ -526,6 +707,44 @@ class BoundedMediaRequestHandler final : public RequestHandler {
 
 void handleOptions() { sendCors(); g_server->send(204, "text/plain", ""); }
 }  // namespace
+
+// Playback keeps the file handle open and reads one frame per tick straight
+// into the existing frame buffer (lights x 3 bytes: 504 for 168 lights, 2,025
+// for 675), so built-in memory needs no extra read buffer and one read stays
+// inside a single 4 KiB block or two.
+fs::File lightweaverOpenRecordedMedia(const char* path) {
+  if (path == nullptr || !*path) return fs::File();
+  const bool sdPresent = SD.cardType() != CARD_NONE;
+  if (sdPresent && SD.exists(path)) return SD.open(path, FILE_READ);
+  if (flashStoreAvailable() && lwMediaPathInSequences(path) && LittleFS.exists(path))
+    return LittleFS.open(path, FILE_READ);
+  // Unchanged behaviour for a microSD that lacks the file: an invalid handle.
+  return sdPresent ? SD.open(path, FILE_READ) : fs::File();
+}
+
+void lightweaverReportRecordedMedia(JsonObject capabilities) {
+  // Reports the mounted state only: a status poll never probes the SD slot.
+  const LwMediaStore store =
+      lwSelectMediaStore(SD.cardType() != CARD_NONE, flashStoreAvailable());
+  capabilities["recordedMediaStore"] = lwMediaStoreName(store);
+  if (store == LwMediaStore::Sd) {
+    capabilities["recordedMediaMaxBytes"] = LW_SEQUENCE_MEDIA_MAX_BYTES;
+  } else if (store == LwMediaStore::Flash) {
+    // Measuring free room walks the filesystem, so it is done at most once
+    // every ten seconds however often status is polled.
+    static uint32_t measuredAt = 0;
+    static size_t freeBytes = 0;
+    static bool measured = false;
+    if (!measured || millis() - measuredAt > 10000U) {
+      const FlashScan scan = scanFlashStore(false);
+      freeBytes = lwFlashMediaFreeBytes(scan.kept, flashFilesystemFree() + scan.clearable);
+      measuredAt = millis();
+      measured = true;
+    }
+    capabilities["recordedMediaMaxBytes"] = LW_FLASH_MEDIA_MAX_FILE_BYTES;
+    capabilities["recordedMediaFreeBytes"] = freeBytes;
+  }
+}
 
 void registerLightweaverMedia(WebServer& server) {
   g_server = &server;
