@@ -31,6 +31,9 @@ const LABELS = Object.freeze({
   // different project id.
   'content-mismatch': 'Save to card',
   'attention-required': 'Needs attention',
+  // The card is running Studio's own light test: the new wiring on probation,
+  // commands held until the owner confirms. A step, not a fault (FS1).
+  'wiring-test': 'Testing lights',
   'discovery-setup': 'Finding lights',
   confirming: 'Checking card',
   ready: 'Connected',
@@ -55,6 +58,7 @@ const SETUP_TASKS = Object.freeze({
   'length-mismatch': 'save-led-count',
   'content-mismatch': 'save-project',
   'attention-required': 'recover-operation',
+  'wiring-test': 'install-project',
   'discovery-setup': 'discover-lights',
   confirming: 'reconnect-card',
   ready: 'open-patterns',
@@ -84,6 +88,7 @@ const CONNECTION_LABELS = Object.freeze({
   'content-mismatch': 'Connected',
   'setup-required': 'Connected',
   'discovery-setup': 'Connected',
+  'wiring-test': 'Connected',
 });
 
 // 'verifying' covers three different moments. Only one of them is a restart
@@ -324,6 +329,13 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   // `attention-required`. A ready→ready poll never lands here: its evidence
   // is complete and true, so the commandReady branches above take it.
   else if (verifiedTransport && (evidenceIncomplete || justBooted)) state = 'confirming';
+  // During the light test the card runs the candidate on probation and
+  // reports runtimePhase 'recovering' with commands held — the light test
+  // working exactly as designed. It fell to the catch-all below and Card
+  // Home said "Needs attention" about a save that was going fine (FS1,
+  // todo/plans/practice-card-interruptions.md). The card's own probation
+  // flag is the evidence; anything else not ready still lands below.
+  else if (verifiedTransport && readiness.wiringProbation?.active === true) state = 'wiring-test';
   else if (verifiedTransport) state = 'attention-required';
   else if (link.state === 'connecting') state = 'connecting';
 

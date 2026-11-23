@@ -471,3 +471,29 @@ test('F25: the heading does not claim "Card verified" beside a decided project m
   assert.equal(directConnectHeading('confirming'), 'Card verified');
   assert.equal(directConnectHeading('wrong-card'), 'Card verified');
 });
+
+// FS1 (todo/plans/practice-card-interruptions.md): during Studio's own light
+// test the card runs the new wiring on probation — runtimePhase 'recovering',
+// commands held, wiringProbation.active. Card Home said "Needs attention" about
+// a save that was going exactly as designed. It is a step, not a fault; a card
+// that is not ready for any other reason still needs attention.
+test('a card running the light test on probation is testing lights, not needing attention', () => {
+  const project = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) };
+  const probation = {
+    ...READY_LINK.readiness,
+    runtimePhase: 'recovering',
+    commandReady: false,
+    wiringProbation: { active: true, remainingMs: 80000 },
+  };
+  const testing = deriveCardLifecycle({ link: { ...READY_LINK, readiness: probation }, project });
+  assert.equal(testing.state, 'wiring-test');
+  assert.equal(testing.label, 'Testing lights');
+  assert.notEqual(testing.connectionLabel, 'Needs attention');
+  assert.equal(testing.setupTaskId, 'install-project');
+
+  const notOnProbation = deriveCardLifecycle({
+    link: { ...READY_LINK, readiness: { ...probation, wiringProbation: { active: false, remainingMs: 0 } } },
+    project,
+  });
+  assert.equal(notOnProbation.state, 'attention-required');
+});
