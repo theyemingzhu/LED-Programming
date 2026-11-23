@@ -20,6 +20,16 @@
         "kind": "patch",
         "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
       }
+    },
+    {
+      "id": "card-memory-recordings",
+      "what": "Let a card with no microSD keep one short recorded look in its own memory and play it after a power cut.",
+      "why": "Not yet tried on a real card: it has only passed tests on a computer. Do not send it until the bench plan in its pull request has passed on the test card.",
+      "added": "2026-11-23",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/card-memory-recordings"
+      }
     }
   ]
 }
