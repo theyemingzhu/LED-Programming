@@ -1917,6 +1917,8 @@ function persistedIdentityAuthorityToken(identity) {
   return JSON.stringify(Object.entries(identity).sort(([left], [right]) => left.localeCompare(right)));
 }
 
+export const PAIR_IDENTITY_TIMEOUT_MS = 6000;
+
 export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCardLink() } = {}) {
   const state = link.getState();
   const discoveredCard = state.discoveredCard;
@@ -1931,7 +1933,11 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
     revision: state.directDiscoveryRevision || 0,
     persistedAuthority: persistedIdentityAuthorityToken(readPersistedCardIdentity()),
   };
-  const verifyOptions = { expected: discoveredCard };
+  // The identity read's own default (1.5 s) is shorter than a busy real card
+  // takes to answer (~3.4 s measured), so a slow, healthy card could never be
+  // paired. Pairing gets the same 6 s every other card read before a save gets
+  // (CARD_READ_RETRY). Interruption test D5, todo/plans/practice-card-interruptions.md.
+  const verifyOptions = { expected: discoveredCard, timeoutMs: PAIR_IDENTITY_TIMEOUT_MS };
   if (fetchImpl) verifyOptions.fetchImpl = fetchImpl;
   const verified = await verifyExpectedCardAtHost(state.host, verifyOptions);
   // Read blank state here (before the authority/discovery gates re-check, which

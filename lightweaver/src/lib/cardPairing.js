@@ -26,7 +26,15 @@ export const PAIR_STALE_HOST = 'stale-host';
 // attempt. Try again" for something they did nothing wrong in. It is the same
 // card either way; retrying against the newer snapshot is what "try again"
 // meant, so do it here instead of asking.
-const RETRYABLE_PAIR_REASONS = new Set(['stale-discovery', 'stale-identity']);
+// A card read that ran out of time is asked again too: a busy card answers in
+// seconds, and the owner should not have to press Pair a second time for it.
+const RETRYABLE_PAIR_REASONS = new Set(['stale-discovery', 'stale-identity', 'timeout']);
+
+// A timed-out read surfaces from the browser as "signal is aborted without
+// reason" — words that mean nothing to an owner (interruption test D5).
+function isTimedOutRead(error) {
+  return error?.name === 'AbortError' || error?.name === 'TimeoutError' || /\baborted?\b/i.test(String(error?.message || ''));
+}
 const PAIR_RETRY_LIMIT = 3;
 const PAIR_RETRY_DELAY_MS = 400;
 
@@ -88,6 +96,14 @@ async function pairDiscoveredCardOnce(link = {}, {
         reason: PAIR_STALE_HOST,
         takeoverHost: normalizeCardHost(getCardBridgeState().host || link.host || readStoredCardHost()),
         message: 'Studio found the card through an earlier connection. Take over that connection to use the card in this Studio.',
+      };
+    }
+    if (isTimedOutRead(error)) {
+      return {
+        ok: false,
+        reason: 'timeout',
+        takeoverHost: '',
+        message: 'The card took too long to answer, so it is not paired yet. Keep it powered and on this Wi-Fi, then press Pair this card again.',
       };
     }
     return {
