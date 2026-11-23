@@ -678,7 +678,7 @@ export function LayoutCanvas({
                       d={s.pathData}
                       fill="none"
                       stroke={sideTint(sidePlaces.get(s.id).sideIndex)}
-                      strokeWidth={annotationScale * 30}
+                      strokeWidth={annotationScale * 21}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       pointerEvents="none"
