@@ -2315,6 +2315,20 @@ function writeSectionDisplayOrder(projectId, ids) {
       const timer = setTimeout(() => setSavedAt(0), 6000);
       return () => clearTimeout(timer);
     }, [savedAt]);
+    // A save that ended "failed" because the card's reply or its restart ran
+    // past Studio's wait may still have landed. When the card is later read
+    // holding exactly this project (app.jsx re-verifies the installation on
+    // every fresh card read), the save is done: say Saved, never leave "Try
+    // saving again" over a save the card has. Interruption tests D1/D2,
+    // todo/plans/practice-card-interruptions.md.
+    const installedNow = currentInstallation(projectLifecycle)?.verified === true;
+    useEffect(() => {
+      if (cardSave.status !== 'failed' || !installedNow) return;
+      dispatchCardSave({ type: 'confirm' });
+      setSavedAt(Date.now());
+      setStatusKind('ok');
+      setStatus('Saved to the card.');
+    }, [cardSave.status, installedNow]);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
