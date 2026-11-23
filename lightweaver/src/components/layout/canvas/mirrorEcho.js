@@ -26,6 +26,10 @@ function createStore(initial) {
 
 const echo = createStore(null);
 const reveal = createStore(0);
+// 3. Focus: the owner just chose a number of sides, so the canvas shows the
+//    amber copies and the centre mark until they say Done. `centre` is null
+//    until they drag the mark. Never saved: it is a way of looking.
+const focus = createStore(null);
 
 export function setMirrorEchoFocus(stripId) {
   echo.set(stripId || null);
@@ -33,6 +37,14 @@ export function setMirrorEchoFocus(stripId) {
 
 export function useMirrorEchoFocus() {
   return useSyncExternalStore(echo.subscribe, echo.get, () => null);
+}
+
+export function setSymmetryFocus(value) {
+  focus.set(value ? { centre: value.centre || null } : null);
+}
+
+export function useSymmetryFocus() {
+  return useSyncExternalStore(focus.subscribe, focus.get, () => null);
 }
 
 export function requestSymmetryReveal() {

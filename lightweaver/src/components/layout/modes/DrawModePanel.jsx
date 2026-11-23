@@ -27,11 +27,12 @@ import {
   reorderSide,
   setSymmetryFold,
   setSymmetryOrientation,
+  SYMMETRY_FOLDS,
   sideFlipped,
   validateSymmetry,
 } from '../../../lib/pieceSymmetry.js';
-import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
-import { setMirrorEchoFocus, useSymmetryRevealRequest } from '../canvas/mirrorEcho.js';
+import { suggestBestFold, suggestSymmetry } from '../../../lib/symmetrySuggest.js';
+import { setMirrorEchoFocus, setSymmetryFocus, useSymmetryRevealRequest } from '../canvas/mirrorEcho.js';
 import { sideTint } from '../shared/sideTints.js';
 import { STARTER_PRIMITIVES } from '../../../lib/layoutPrimitives.js';
 import {
@@ -61,6 +62,7 @@ import { StripCountControl } from '../StripCountControl.jsx';
 import { describeCardPinPlace } from '../../../lib/cardPinout.js';
 import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
+import '../symmetry-by-eye.css';
 
 // Metres formatter for the physical readouts: 2 decimals under 10 m, 1 above.
 function startedFromDragHandle(e) {
@@ -157,29 +159,35 @@ function GpioOptions({ choices = [] }) {
   );
 }
 
-const FOLD_CHOICES = [
-  { fold: 0, label: 'None' },
-  { fold: 2, label: '2 sides' },
-  { fold: 4, label: '4 sides' },
-];
+const FOLD_CHOICES = [0, ...SYMMETRY_FOLDS].map(fold => ({ fold, label: fold ? `${fold} sides` : 'None' }));
 
-// Symmetry heads the strip list. Choosing 2 or 4 sides places every strip
-// with Studio's best guess; the list below then shows the sides.
-function SymmetryControl({ symmetry, problems, onChooseFold }) {
+function symmetryNote(fold) {
+  if (fold === 2) return 'Patterns can play the two sides as mirror images.';
+  if (fold === 4) return 'Patterns can play all four sides alike.';
+  return `Patterns can play all ${fold} sides alike.`;
+}
+
+// Symmetry heads the strip list. Choosing a number of sides places every
+// strip with Studio's best guess; the list below then shows the sides, and the
+// artwork shows side 1 copied onto the others so a wrong number is seen.
+// `guess` is the most sides Studio thinks fit (0: none): a mark on that number.
+function SymmetryControl({ symmetry, problems, guess = 0, onChooseFold }) {
   const fold = symmetry?.fold || 0;
   return (
     <section className="la-symmetry" data-testid="layout-symmetry" aria-label="Symmetry">
       <span className="la-symmetry-k" id="layout-symmetry-label">Symmetry</span>
-      <div className="la-symmetry-seg" role="group" aria-labelledby="layout-symmetry-label">
+      <div className="la-symmetry-seg is-many" role="group" aria-labelledby="layout-symmetry-label">
         {FOLD_CHOICES.map(choice => (
-          <button key={choice.fold} type="button" className="btn"
+          <button key={choice.fold} type="button" className={`btn${guess > 0 && choice.fold === guess ? ' is-guess' : ''}`}
                   aria-pressed={fold === choice.fold}
+                  data-guess={guess > 0 && choice.fold === guess ? 'true' : undefined}
                   data-testid={`layout-symmetry-${choice.fold}`}
                   onClick={() => onChooseFold(choice.fold)}>{choice.label}</button>
         ))}
       </div>
-      {fold > 0 && <p className="la-symmetry-note">
-        {fold === 2 ? 'Patterns can play the two sides as mirror images.' : 'Patterns can play all four sides alike.'}
+      {fold > 0 && <p className="la-symmetry-note">{symmetryNote(fold)}</p>}
+      {guess > 0 && guess !== fold && <p className="la-symmetry-note" data-testid="layout-symmetry-guess">
+        <span className="la-symmetry-guess-mark" aria-hidden="true"/>Studio's guess from where the strips sit: {guess} sides.
       </p>}
       {problems.length > 0 && <ul className="la-symmetry-problems" role="alert" data-testid="layout-symmetry-problems">
         {problems.map(problem => <li key={`${problem.code}:${problem.sideId || ''}:${problem.stripId || ''}`}>{problem.message}</li>)}
@@ -654,13 +662,23 @@ export function DrawModePanel({
     if (!fold) {
       // Choosing None is an answer: the canvas stops offering sides.
       setLayoutSymmetryOfferDismissed?.(true);
+      setSymmetryFocus(null);
       if (symmetry) commitSymmetry(null);
       return;
     }
+    // Every choice, the current one included, shows the copies on the artwork.
+    setSymmetryFocus({ centre: null });
     if (symmetry?.fold === fold) return;
     const suggestion = suggestSymmetry(strips.filter(strip => !sideBlockReason(strip)), fold, { centre: artworkCentre });
     commitSymmetry({ ...setSymmetryFold(symmetry, fold, strips, suggestion), orientation: suggestion.orientation });
   };
+  // The most sides that fit, marked on its number. Worked out from the strips
+  // alone when no artwork is loaded.
+  const symmetryGuess = useMemo(() => {
+    if (strips.length < 2) return 0;
+    const eligible = strips.filter(strip => strip?.kaleidoscope?.enabled !== true && !splitStripIds.has(strip?.id));
+    return suggestBestFold(eligible, artworkCentre ? { centre: artworkCentre } : null);
+  }, [strips, splitStripIds, artworkCentre]);
   // Every other side (2, and 4 on four sides) either mirrors side 1 or runs
   // the same way round; one Flip on any of them turns them over together.
   const flipSymmetry = () => {
@@ -2435,7 +2453,7 @@ export function DrawModePanel({
             </div>}
             {(strips.length >= 2 || symmetry) && (
               <div ref={symmetryRef}>
-                <SymmetryControl symmetry={symmetry} problems={symmetryProblems}
+                <SymmetryControl symmetry={symmetry} problems={symmetryProblems} guess={symmetryGuess}
                                  onChooseFold={chooseSymmetryFold}/>
               </div>
             )}

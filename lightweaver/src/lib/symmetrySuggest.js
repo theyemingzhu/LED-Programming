@@ -26,6 +26,8 @@
 // Layout offer card appears only for 'high'.
 
 import { matchStripUnder, stripCentroid, stripsBoundsCentre } from './mirrorPartners.js';
+import { SYMMETRY_FOLDS } from './pieceSymmetry.js';
+import { turnSides } from './symmetryTurns.js';
 
 // A strip whose middle is this close to the dividing line, as a share of the
 // piece's reach from its centre, sits on the line.
@@ -230,7 +232,8 @@ function fourSides(strips, centre) {
 }
 
 /**
- * Suggest how `strips` divide into `fold` sides (2 or 4).
+ * Suggest how `strips` divide into `fold` sides. Two and four sides are
+ * worked out here; 3, 5, 6 and 8 turn about the centre (symmetryTurns.js).
  *
  * `artwork` may carry `centre: {x, y}` (the artwork's middle, or what
  * artworkSymmetry.detectArtworkSymmetry reports). The strips' own middle is
@@ -243,24 +246,26 @@ function fourSides(strips, centre) {
  * `matched` lists the strips that found their partners (a pair, or four).
  */
 export function suggestSymmetry(strips, fold, artwork = null) {
-  if (fold !== 2 && fold !== 4) return null;
+  if (!SYMMETRY_FOLDS.includes(fold)) return null;
   const usable = (strips || []).filter(strip => strip?.id && (strip.pixels || []).filter(finite).length >= 2);
   const centres = [];
   if (finite(artwork?.centre)) centres.push({ x: artwork.centre.x, y: artwork.centre.y });
   const own = stripsBoundsCentre(usable);
-  if (own && !centres.some(centre => Math.hypot(centre.x - own.x, centre.y - own.y) < 1e-6)) centres.push(own);
+  // `artwork.pinned`: the owner dragged the centre, so it is the only one tried.
+  const pinned = artwork?.pinned === true && centres.length === 1;
+  if (!pinned && own && !centres.some(centre => Math.hypot(centre.x - own.x, centre.y - own.y) < 1e-6)) centres.push(own);
 
   let best = null;
   for (const centre of centres) {
     const options = fold === 2
       ? [twoSides(usable, centre, 'x'), twoSides(usable, centre, 'y')]
-      : [fourSides(usable, centre)];
+      : fold === 4 ? [fourSides(usable, centre)] : [turnSides(usable, centre, fold)];
     for (const option of options) {
       if (!best || option.score > best.score + 1e-9) best = { ...option, centre };
     }
   }
   if (!best) {
-    const labels = fold === 2 ? TWO_SIDE_LABELS.x : FOUR_SIDE_LABELS;
+    const labels = fold === 2 ? TWO_SIDE_LABELS.x : Array.from({ length: fold }, (_, index) => `Side ${index + 1}`);
     best = {
       fold,
       split: fold === 2 ? 'x' : null,
@@ -276,6 +281,19 @@ export function suggestSymmetry(strips, fold, artwork = null) {
   const placed = new Set([...best.sides.flatMap(side => side.stripIds), ...best.onOwn]);
   const onOwn = [...best.onOwn, ...(strips || []).filter(strip => strip?.id && !placed.has(strip.id)).map(strip => strip.id)];
   return { ...best, onOwn, confidence: symmetryConfidence(best.score) };
+}
+
+/**
+ * The most sides that fit this piece, or 0 when none do: Studio's guess, shown
+ * as a mark on that number. A count fits when nearly every LED in a side has
+ * its partners (high confidence) and at least one strip found them all.
+ */
+export function suggestBestFold(strips, artwork = null) {
+  for (const fold of [...SYMMETRY_FOLDS].sort((p, q) => q - p)) {
+    const suggestion = suggestSymmetry(strips, fold, artwork);
+    if (suggestion?.confidence === 'high' && suggestion.matched.length > 0) return fold;
+  }
+  return 0;
 }
 
 /**

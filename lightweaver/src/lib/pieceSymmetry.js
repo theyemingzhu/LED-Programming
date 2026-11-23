@@ -1,4 +1,5 @@
-// Piece symmetry: the owner divides the artwork into two or four "sides".
+// Piece symmetry: the owner divides the artwork into matching "sides": two or
+// four (a mirror line, quarter turns) or 3, 5, 6 or 8 around a centre.
 // Stored at piece level as `layout.symmetry`:
 //   { fold: 2, orientation: 'mirror',
 //     sides: [{ id: 'side-1', label: 'Left side', stripIds: ['strip-3', 'strip-4'] },
@@ -18,10 +19,15 @@
 import { compileWiring } from './wiringCompiler.js';
 import { normalizeMirrorSets } from './mirrorSetRules.js';
 
-export const SYMMETRY_FOLDS = Object.freeze([2, 4]);
+// Not 12: each side is one of the card's 12 sections (LW_MAX_ZONES), which
+// leaves no room for a strip on its own, and twelve sides with two looks
+// measure 4875 bytes against the card's 3968-byte project file.
+export const SYMMETRY_FOLDS = Object.freeze([2, 3, 4, 5, 6, 8]);
 
 const text = value => (typeof value === 'string' ? value.trim() : '');
-const isFold = value => value === 2 || value === 4;
+const isFold = value => SYMMETRY_FOLDS.includes(value);
+// v1 mirror sets only ever described two or four members.
+const isMirrorSetFold = value => value === 2 || value === 4;
 
 export const defaultSymmetryOrientation = fold => (fold === 2 ? 'mirror' : 'same');
 
@@ -81,7 +87,7 @@ function makeSymmetry(fold, stripIdGroups, strips, { orientation, labels } = {})
   };
 }
 
-// Shape-only cleanup. Returns null unless `fold` is 2 or 4. Trims ids, gives
+// Shape-only cleanup. Returns null unless `fold` is one of SYMMETRY_FOLDS. Trims ids, gives
 // every side an id and label, pads or trims the side list to exactly `fold`,
 // lets the first side keep a strip claimed twice, and (with `strips`) drops
 // strips that no longer exist. Empty sides are KEPT so the owner can fill them;
@@ -140,7 +146,7 @@ export function findSymmetryStructureErrors(sym, strips = []) {
   const fold = Number(sym.fold);
   const sides = Array.isArray(sym.sides) ? sym.sides : [];
   if (!isFold(fold)) {
-    errors.push({ code: 'symmetry-fold', message: 'Choose 2 sides or 4 sides.' });
+    errors.push({ code: 'symmetry-fold', message: `Choose ${SYMMETRY_FOLDS.slice(0, -1).join(', ')} or ${SYMMETRY_FOLDS.at(-1)} sides.` });
   } else if (sides.length !== fold) {
     errors.push({ code: 'symmetry-side-count', message: `${fold} sides need exactly ${fold} groups of strips.` });
   }
@@ -317,7 +323,7 @@ export function migrateMirrorSetsToSymmetry(mirrorSets, strips = []) {
   const sets = normalizeMirrorSets(mirrorSets, { strips });
   if (sets.length !== 1) return null;
   const members = sets[0].members;
-  if (!isFold(members.length)) return null;
+  if (!isMirrorSetFold(members.length)) return null;
   return makeSymmetry(members.length, members.map(id => [id]), strips, {});
 }
 

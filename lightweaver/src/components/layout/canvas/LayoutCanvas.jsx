@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { canvasStripLabel, placeStripLabels } from '../../../lib/stripLabels.js';
 import {
   rgbCss,
@@ -19,8 +19,11 @@ import { setSymmetryFold } from '../../../lib/pieceSymmetry.js';
 import { suggestSymmetry, symmetryAxisLine, symmetryStripPlaces, worthOffering } from '../../../lib/symmetrySuggest.js';
 import { connectedFamilyForStrip } from '../../../lib/connectedSections.js';
 import { sideTint } from '../shared/sideTints.js';
-import { requestSymmetryReveal, useMirrorEchoFocus } from './mirrorEcho.js';
+import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
+import { symmetryEchoes } from '../../../lib/symmetryTurns.js';
+import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, useSymmetryFocus } from './mirrorEcho.js';
 import './symmetry-offer.css';
+import '../symmetry-by-eye.css';
 
 // "Left side" -> "the left side"; "Side 1" -> "side 1".
 const sideNoun = label => `${/^side\b/i.test(label) ? '' : 'the '}${label.charAt(0).toLowerCase()}${label.slice(1)}`;
@@ -49,6 +52,28 @@ function SymmetryOffer({ suggestion, strips, onMirror, onChoose, onKeep }) {
         <button type="button" className="btn" data-testid="symmetry-offer-mirror" onClick={onMirror}>Mirror the two sides</button>
         <button type="button" className="btn" data-testid="symmetry-offer-choose" onClick={onChoose}>Choose sides myself</button>
         <button type="button" className="btn la-symmetry-offer-keep" data-testid="symmetry-offer-keep" onClick={onKeep}>Keep as drawn</button>
+      </div>
+    </section>
+  );
+}
+
+// While the owner is choosing a number of sides: one card on the artwork that
+// says whether the amber copies line up, in words, with Done as its primary.
+function SymmetryFocusCard({ fold, fits, moved, onDone, onPulse, onRecentre }) {
+  return (
+    <section className="la-symmetry-offer la-symmetry-focus" data-testid="symmetry-focus" aria-labelledby="symmetry-focus-title">
+      <h2 id="symmetry-focus-title" data-testid="symmetry-focus-verdict" data-fits={fits ? 'true' : 'false'}>
+        <span className={`la-symmetry-focus-dot${fits ? ' is-fit' : ''}`} aria-hidden="true"/>
+        {fits ? `${fold} sides line up.` : `Doubled lines: this piece does not have ${fold} matching sides.`}
+      </h2>
+      <p>
+        The amber lines are side 1 copied onto the other sides.
+        {fits ? ' They sit on your strips.' : ' Try another number, or drag the centre mark if the piece is off-centre.'}
+      </p>
+      <div className="la-symmetry-offer-actions">
+        <button type="button" className="btn" data-testid="symmetry-focus-done" onClick={onDone}>Done</button>
+        <button type="button" className="btn" data-testid="symmetry-focus-pulse" onClick={onPulse}>Run a pulse around</button>
+        {moved && <button type="button" className="btn la-symmetry-offer-keep" data-testid="symmetry-focus-recentre" onClick={onRecentre}>Put the centre back</button>}
       </div>
     </section>
   );
@@ -175,6 +200,103 @@ export function LayoutCanvas({
   );
   const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds;
   const labelledIds = new Set(labelsShown ? labels.map(label => label.strip.id) : []);
+
+  // ── Symmetry by eye ────────────────────────────────────────────────────────
+  // After a number of sides is chosen, side 1's strips are drawn again on
+  // every other side in amber. The right number and centre put each copy on a
+  // real strip; a wrong one leaves doubled lines. The centre mark drags, and
+  // letting go places the strips into sides again about the new centre.
+  const symmetryFocus = useSymmetryFocus();
+  const focusActive = Boolean(symmetryFocus && symmetry && mode === 'draw' && !drawMode && typeof setLayoutSymmetry === 'function');
+  useEffect(() => { if (!symmetry && symmetryFocus) setSymmetryFocus(null); }, [symmetry, symmetryFocus]);
+  const focusFold = focusActive ? symmetry.fold : 0;
+  const focusStrips = useMemo(
+    () => (focusActive ? strips.filter(strip => !hidden[strip.id] && strip.kaleidoscope?.enabled !== true) : []),
+    [focusActive, strips, hidden],
+  );
+  const focusHome = useMemo(() => {
+    if (!focusActive) return null;
+    const box = svgText && viewBox ? parsedVb(viewBox) : null;
+    const suggestion = suggestSymmetry(focusStrips, focusFold, box ? { centre: { x: box.x + box.w / 2, y: box.y + box.h / 2 } } : null);
+    return { suggestion, centre: suggestion?.centre || stripsBoundsCentre(focusStrips) };
+  }, [focusActive, focusStrips, focusFold, svgText, viewBox]);
+  const focusCentre = focusActive ? (symmetryFocus.centre || focusHome?.centre || null) : null;
+  const focusSuggestion = useMemo(() => {
+    if (!focusActive || !focusCentre) return null;
+    return symmetryFocus.centre
+      ? suggestSymmetry(focusStrips, focusFold, { centre: focusCentre, pinned: true })
+      : focusHome?.suggestion || null;
+  }, [focusActive, focusCentre, symmetryFocus, focusStrips, focusFold, focusHome]);
+  const focusFits = focusSuggestion?.confidence === 'high' && focusSuggestion.matched.length > 0;
+  const focusCopies = useMemo(
+    () => (focusActive && focusCentre ? symmetryEchoes(focusStrips, symmetry, focusCentre).copies : []),
+    [focusActive, focusCentre, focusStrips, symmetry],
+  );
+  const placeSidesAbout = centre => {
+    const suggestion = centre
+      ? suggestSymmetry(focusStrips, focusFold, { centre, pinned: true })
+      : focusHome?.suggestion;
+    if (!suggestion) return;
+    const next = { ...setSymmetryFold(symmetry, focusFold, strips, suggestion), orientation: suggestion.orientation };
+    if (JSON.stringify(next) === JSON.stringify(symmetry)) return;
+    pushLayoutHistory?.();
+    setLayoutSymmetry(next);
+  };
+  const centreDragRef = useRef(false);
+  const centreFromEvent = event => {
+    const matrix = svgRef.current?.getScreenCTM()?.inverse();
+    if (!matrix) return null;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
+    const home = focusHome?.centre;
+    // Close to where Studio put it is where Studio put it.
+    if (home && Math.hypot(point.x - home.x, point.y - home.y) < annotationScale * 8) return null;
+    return { x: point.x, y: point.y };
+  };
+  const centreHandlers = {
+    onPointerDown: event => {
+      event.stopPropagation();
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      centreDragRef.current = true;
+    },
+    onPointerMove: event => {
+      if (!centreDragRef.current) return;
+      setSymmetryFocus({ centre: centreFromEvent(event) });
+    },
+    onPointerUp: event => {
+      if (!centreDragRef.current) return;
+      centreDragRef.current = false;
+      const centre = centreFromEvent(event);
+      setSymmetryFocus({ centre });
+      placeSidesAbout(centre);
+    },
+    onPointerCancel: () => { centreDragRef.current = false; },
+    onClick: event => event.stopPropagation(),
+    onKeyDown: event => {
+      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+      if (!step || !focusCentre) return;
+      event.preventDefault();
+      const nudge = annotationScale * (event.shiftKey ? 10 : 2);
+      const centre = { x: focusCentre.x + step[0] * nudge, y: focusCentre.y + step[1] * nudge };
+      setSymmetryFocus({ centre });
+      placeSidesAbout(centre);
+    },
+  };
+  // The pulse: each side lit in turn, once around. Uneven steps (a side with
+  // more or fewer strips than the last) show a wrong fit without reading.
+  const [pulseSide, setPulseSide] = useState(null);
+  const pulseTimersRef = useRef([]);
+  const stopPulse = () => { pulseTimersRef.current.forEach(clearTimeout); pulseTimersRef.current = []; };
+  useEffect(() => stopPulse, []);
+  const runPulse = () => {
+    stopPulse();
+    const count = symmetry?.sides?.length || 0;
+    for (let index = 0; index <= count; index += 1) {
+      pulseTimersRef.current.push(setTimeout(() => setPulseSide(index < count ? index : null), index * 330));
+    }
+  };
+  const pulseStripIds = focusActive && pulseSide !== null ? new Set(symmetry.sides[pulseSide]?.stripIds || []) : null;
+  const polyline = points => points.map(point => `${point.x},${point.y}`).join(' ');
   const handleCanvasPointerDown = event => {
     if (!firstLedPicker) {
       handleSvgMouseDown(event);
@@ -852,6 +974,39 @@ export function LayoutCanvas({
               </g>
             )}
 
+            {/* ── Symmetry by eye: side 1 copied onto the other sides, the
+                   side the pulse is on, and the centre mark. Shown only while
+                   the owner is choosing; none of it takes a click from a strip. ── */}
+            {focusActive && focusCentre && !isEditingGesture && (
+              <g className="lw-symmetry-focus" data-testid="symmetry-copies" data-count={focusCopies.length} data-fits={focusFits ? 'true' : 'false'}>
+                {focusCopies.map((copy, index) => (
+                  <polyline key={`${copy.sourceId}-${index}`} points={polyline(copy.points)} fill="none"
+                            stroke="var(--layer-1)" strokeWidth={annotationScale * (focusFits ? 3.2 : 1.8)}
+                            strokeLinecap="round" strokeLinejoin="round"
+                            opacity={focusFits ? 0.9 : 0.62} pointerEvents="none"/>
+                ))}
+                {pulseStripIds && strips.filter(s => pulseStripIds.has(s.id) && !hidden[s.id] && s.pixels?.length > 1).map(s => (
+                  <polyline key={`${s.id}-pulse`} data-testid={`symmetry-pulse-${s.id}`} points={polyline(s.pixels)} fill="none"
+                            stroke="var(--text-hi)" strokeWidth={annotationScale * 4.5}
+                            strokeLinecap="round" strokeLinejoin="round" pointerEvents="none"/>
+                ))}
+                <g className="lw-symmetry-centre" data-testid="symmetry-centre" tabIndex={0} role="slider"
+                   aria-label="Centre of the piece. Drag it, or use the arrow keys."
+                   aria-valuetext={symmetryFocus.centre ? 'Moved' : 'Where Studio put it'}
+                   transform={`translate(${focusCentre.x} ${focusCentre.y})`}
+                   style={{ cursor: 'grab', touchAction: 'none' }} {...centreHandlers}>
+                  <circle r={annotationScale * 26} fill="transparent"/>
+                  <circle r={annotationScale * 12} fill="var(--bg-canvas)" stroke="var(--accent-hi)" strokeWidth={annotationScale * 2.5}/>
+                  <circle r={annotationScale * 2.5} fill="var(--accent-hi)" pointerEvents="none"/>
+                  {[[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) => (
+                    <line key={`${dx}:${dy}`} x1={dx * annotationScale * 12} y1={dy * annotationScale * 12}
+                          x2={dx * annotationScale * 24} y2={dy * annotationScale * 24}
+                          stroke="var(--accent-hi)" strokeWidth={annotationScale * 1.5} pointerEvents="none"/>
+                  ))}
+                </g>
+              </g>
+            )}
+
             {/* One compact, screen-sized annotation per strip; no leader lines. */}
             {labelsShown && labels.map(({ strip: s, x, y, width, height }) => {
               const partName = canvasStripLabel(s, sectionFamilies);
@@ -1016,6 +1171,13 @@ export function LayoutCanvas({
                            requestSymmetryReveal();
                          }}
                          onKeep={() => setLayoutSymmetryOfferDismissed?.(true)}/>
+        )}
+
+        {focusActive && focusCentre && !offer && (
+          <SymmetryFocusCard fold={focusFold} fits={focusFits} moved={Boolean(symmetryFocus.centre)}
+                             onDone={() => { stopPulse(); setPulseSide(null); setSymmetryFocus(null); }}
+                             onPulse={runPulse}
+                             onRecentre={() => { setSymmetryFocus({ centre: null }); placeSidesAbout(null); }}/>
         )}
 
         {/* ── Canvas corner readouts (mockup .la-overlay) ── */}
