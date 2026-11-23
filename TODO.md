@@ -14,6 +14,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 ```
 
 ## Follow-ups
+- [ ] Card Home says "Not connected" for a moment after a blank card's first save while the card link moves to the card's Wi-Fi address (measured on the practice card in Fast, way in 1 of Find my strips; Layout's first save shows no such wording; not yet measured on main from Card Home). Fix it in the card link and then put 'not connected' back into WORDING_WAY1 in lightweaver/tests/find-strips-combined.spec.ts _(band: agent-runnable)_ _(effort: medium)_ → Plan: [find-strips-redesign.md](todo/plans/find-strips-redesign.md)
+- [ ] Check the combined Find my strips flow on the physical card: the sweep lights each pin in turn, That's mine picks the right one, Stop lands within two lights of the end, and after a blank card's first save the purple light sits on the last light of every pin. Update lightweaver/tests/live-find-my-strips.spec.ts (the real-card walkthrough, not run by any agent) to the new screens at the same time _(band: you-required)_ _(effort: quick)_ → Plan: [find-strips-redesign.md](todo/plans/find-strips-redesign.md)
 
 - [ ] Explore owner-published artwork updates through Peace Live. Design per-artwork targeting, buyer consent and a safe restore path before any remote playback or content changes.
 

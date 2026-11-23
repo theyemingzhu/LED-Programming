@@ -181,3 +181,19 @@ Evidence: `real-card-2026-11-22/DIAGNOSIS-blank-card-dead-end.md` on `claude/rea
   - **To prove on the real card** before building: does clear-then-save land without a candidate?
 - **Open, to verify:** whether a − / + count fix after way in 1 counts as a wiring change, which would stage a candidate again. The diagnosis lists output id and segment count as wiring changes, not segment length.
 - Firmware: still none for either way in. The card-side cure (store the candidate as a blob) is separate and optional.
+
+## 8. Build log (2026-11-23, branch claude/find-strips-redesign-0a2efe)
+
+Decisions taken while building, without asking:
+- **Way in 2 keeps the existing Save path.** After finding, Save to card still runs the protected light test (candidate, probation, confirm), which tests C2 cover. Clear-then-whole-save was never proved on a real card and would have dropped that protection. Small discovered projects fit the candidate.
+- **Way in 1 runs on Card Home's lights step and its verify step**, using one rule (`useFirstSaveApplies`): the card is blank, and the open project's wiring is complete with no starter placeholder and no uncounted headroom. When the page's install slot (`next=patterns`) already owns Save, the lights step stands down, so there is one Save per page.
+- **The way-in-1 check is one app-level sheet** (`FirstInstallCheckSheet`). Card Home rebuilds itself when the card gets a project, so a check inside the panel vanished with it.
+- **"Is purple the last light on every strip?" in way in 1, and "Is the next light dark?" in way in 2.** After a first save the card drives exactly the saved count, so nothing past it can light. During finding, the counting setup has headroom, so the light after the count really is lit when the strip is longer.
+- **Phone sizes follow Studio's one type scale** (titles 17px, text 15px). The big numbers from the mockup are desktop only.
+- **"Not lit" on the colour step takes the counting setup off and sweeps again**, instead of stepping back one pin. A card holding the counting setup cannot light other pins.
+
+Defects found and fixed on the way:
+- Studio's light stream asked `/api/status` for `physicalFrameOrder`. The firmware reports it only on `/api/firmware-info`, so every physical-order frame over a direct connection was refused. The practice card copied this, so discovery tests never really lit anything. Both are fixed, with unit tests.
+- Finding a second strip walked the first strip again. Strips counted earlier in a setup now keep their counts (engine `bench-installed` `focusPin`).
+
+Open: see the two Find my strips entries under Follow-ups in TODO.md.
