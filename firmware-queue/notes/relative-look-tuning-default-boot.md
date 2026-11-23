@@ -1,6 +1,6 @@
-# relative-look-tuning-default-boot: bench failure on 2026-11-23
+# relative-look-tuning-default-boot: not yet proven on a card
 
-This change was pulled from card release 1.2.5 after the bench check. It stays parked until this failure is fixed.
+This change was left out of card release 1.2.5. The refusals recorded below were **not** caused by it. They were an older card fault in the client-pattern save door: a save straight after a query GET is refused. My direct test triggered it, and it is present in signed 1.2.4 too. Live Studio 2670 Patterns look saves passed 5 of 5 on signed 1.2.4, because Studio saves through POST /api/config. The change stays parked until it is re-checked on a card through the real save paths.
 
 ## Where it ran
 - Card lw-b0fe81f61b44 (ESP32-S3), USB bench flash (`scripts/firmware-dev.sh`), buildId `dev`.
@@ -38,4 +38,6 @@ An earlier reading here blamed the shared `controlRequestBody` buffer. That is s
 Start with a host test that sends GET client-pattern?patternId=… → POST client-pattern, and expects 200. Check it against signed 1.2.4 as well.
 
 ## Before this change is sent again
-Fix the GET → POST fault first, as its own change, and bench-check it. Then re-check look tuning on top of it.
+1. Land the GET → POST fix (queue entry client-pattern-after-query-get), or at least run the re-check with it applied.
+2. Re-check look tuning on a card through Studio's real save path (POST /api/config) and through the phone player (status read before each save). Do not use a bare GET → POST sequence.
+3. Repeat: save a tuning, restart, change it, undo it. Each step must be accepted and read back.
