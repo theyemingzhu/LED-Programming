@@ -22,5 +22,5 @@
 }
 
 .plab-recordings-list .btn {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
 }

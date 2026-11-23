@@ -73,7 +73,7 @@
 .tc-all:not(.on) { color: var(--text-mid); background: var(--bg-elev); border: 1px solid var(--border-soft); }
 
 /* color picker swatch in the mockup .pm-pickrow row */
-.pmx-color-input { width: 44px; height: 30px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: none; cursor: pointer; padding: 2px; flex-shrink: 0; }
+.pmx-color-input { width: var(--lw-tap, 44px); height: 30px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: none; cursor: pointer; padding: 2px; flex-shrink: 0; }
 
 /* The section overview replaces the old target chips and repeated stat tile. */
 .pm-target .pm-preview-pane { margin: 8px 0 10px; padding: 0; border: 0; background: transparent; box-shadow: none; }
@@ -101,7 +101,7 @@
 @media (max-width: 900px) {
   .pm-instrument { position: static; z-index: auto; order: 0; background: transparent; padding-bottom: 0; }
   .pm-target .pm-piece-stage { height: 108px; }
-  .pm-back-sections { display: inline-flex; align-items: center; min-height: 44px; }
+  .pm-back-sections { display: inline-flex; align-items: center; min-height: var(--lw-tap, 44px); }
 }
 @media (max-width: 390px) {
   .pm-section-item { gap: 6px; }

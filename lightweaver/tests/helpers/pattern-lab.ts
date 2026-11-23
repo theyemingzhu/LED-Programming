@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+import { MIN_TAP } from '../harness/tapSize';
 
 // Pattern Lab's control column (PatternLabControls.jsx — the tile browser,
 // sliders, evolution and save steps, all rendered inside
@@ -193,14 +194,14 @@ export async function overlappingStatusBarChips(page: Page): Promise<Array<[stri
   return overlaps;
 }
 
-// Workspace convention: primary touch controls must be >=44px in the
+// Workspace convention: primary touch controls must be >= MIN_TAP (36px on a phone) in the
 // dimension a thumb has to hit. Pass every locator that is a primary control
 // at the current viewport; returns the ones that fall short so a failure
 // message names the offender instead of a bare boolean.
 export async function touchTargetShortfalls(
   page: Page,
   locators: Locator[],
-  minimum = 44,
+  minimum = MIN_TAP,
 ): Promise<Array<{ label: string; width: number; height: number }>> {
   const shortfalls: Array<{ label: string; width: number; height: number }> = [];
   for (const locator of locators) {

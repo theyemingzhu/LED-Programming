@@ -112,6 +112,29 @@ export function markInstalled(state, revision = state.editedRevision) {
 export function reverifyInstallation(state, evidence = {}) {
   const installation = state.installation;
   if (!installation) return bindUnrecordedInstall(state, evidence);
+  const recorded = reverifyRecordedInstallation(state, evidence);
+  if (recorded !== state) return recorded;
+  // The record describes an OLDER install (a save whose reply never reached
+  // this page: the owner reloaded, closed the tab, or the card answered after
+  // the 45 s restart limit). It must not stand in the way of the card's own
+  // proof that it holds exactly the open project — the same exact proof
+  // bindUnrecordedInstall accepts with no record. A record that already
+  // verifies the current revision is left alone.
+  // Interruption tests D1/D2: todo/plans/practice-card-interruptions.md.
+  if (installation.verified === true && state.installedRevision === state.editedRevision) return state;
+  // Only the card the record names: a different card still has to earn its
+  // own install (the record is this browser's memory of one card).
+  if (String(evidence.cardId || '').trim() !== String(installation.cardId || '').trim()) return state;
+  // And only a DIFFERENT install than the record's: the card now holds another
+  // fingerprint (the save this page sent). The record's own install reported
+  // under a changed revision stays unverified, as it always has.
+  const cardFingerprint = String(evidence.projectFingerprint || '').trim().toLowerCase();
+  if (!cardFingerprint || cardFingerprint === String(installation.projectFingerprint || '').trim().toLowerCase()) return state;
+  return bindUnrecordedInstall(state, evidence);
+}
+
+function reverifyRecordedInstallation(state, evidence = {}) {
+  const installation = state.installation;
   if (installation.verified === true) return state;
   // A record that survived edits can only re-verify structurally: it must name
   // the structure it was bound to (`studioFingerprint`), and the equality
