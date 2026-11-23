@@ -3321,6 +3321,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   lwOutput["calibration"]["green"] = runtimeOutputCalibrationGreen();
   lwOutput["calibration"]["blue"] = runtimeOutputCalibrationBlue();
   lwOutput["measuredFps"] = runtimeOutputMeasuredFps();
+  runtimeReportOutputTiming(lwOutput);
   lwOutput["dithering"] = runtimeOutputDithering();
   const lightweaver::ConnectivityState& wifiState = config.wifiRuntime.connectivity;
   const char* wifiPhase = "setup-ap";

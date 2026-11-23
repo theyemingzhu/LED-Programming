@@ -19,6 +19,7 @@
 #include "LightweaverRestartPolicy.h"
 #include "LightweaverSequenceActivationPolicy.h"
 #include "LightweaverSequencePlayback.h"
+#include "LightweaverSequenceClock.h"
 #include "LightweaverWledRealtime.h"
 #include "LightweaverArtnet.h"
 #include "LightweaverWledWebSocket.h"
@@ -302,7 +303,26 @@ uint32_t sequenceFrameCount = 0;
 uint32_t sequenceFrameIndex = 0;
 uint32_t sequenceFrameBytes = 0;
 uint16_t sequenceFps = 24;
-uint32_t nextSequenceFrameAt = 0;
+// Recorded playback is timed from real elapsed time, not from when the last
+// frame happened to be drawn. See LightweaverSequenceClock.h.
+LwSequenceClock sequenceClock;
+
+// Where the time goes, so a slow recording or pattern can be diagnosed from
+// /api/status instead of guessed at: the length of a main-loop pass, the LED
+// write, and the per-frame read of a recording. The "window" values collect
+// for one second and are then published by updateOutputTelemetry().
+struct OutputTimingWindow {
+  uint32_t loopPasses = 0;
+  uint32_t loopPassSumUs = 0;
+  uint32_t loopPassMaxUs = 0;
+  uint32_t showMaxUs = 0;
+  uint32_t sequenceReadMaxUs = 0;
+};
+OutputTimingWindow outputTimingWindow;
+OutputTimingWindow outputTimingPublished;
+uint32_t lastLoopPassAtUs = 0;
+uint32_t sequenceFramesShown = 0;
+uint32_t sequenceFramesSkipped = 0;
 
 ControlState controlState;
 uint32_t controlEventCounts[6] = {0, 0, 0, 0, 0, 0};
@@ -604,6 +624,17 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
+  {
+    // Measurement only: how long one pass of this loop takes.
+    const uint32_t nowUs = micros();
+    if (lastLoopPassAtUs != 0) {
+      const uint32_t passUs = nowUs - lastLoopPassAtUs;
+      outputTimingWindow.loopPasses++;
+      outputTimingWindow.loopPassSumUs += passUs;
+      if (passUs > outputTimingWindow.loopPassMaxUs) outputTimingWindow.loopPassMaxUs = passUs;
+    }
+    lastLoopPassAtUs = nowUs ? nowUs : 1;
+  }
   esp_task_wdt_reset();  // pet the watchdog every iteration, before any early return
   // Unconditional every tick, regardless of mode below: a fade started this
   // tick (fadeTo()) always blocks loop() until it finishes, so by the time
@@ -1579,8 +1610,11 @@ bool openSequence(const LookConfig& look, PreparedSequence* prepared) {
   verified->ready = false;
 
   sequenceOpen = true;
+  // Frame 0 is staged above; the file is positioned at frame 1.
   sequenceFrameIndex = 1;
-  nextSequenceFrameAt = millis() + (1000 / sequenceFps);
+  lwSequenceClockStart(sequenceClock, millis());
+  sequenceFramesShown = 1;
+  sequenceFramesSkipped = 0;
   return true;
 }
 
@@ -1964,29 +1998,39 @@ bool renderMirrorZone(const ZoneConfig& zone, uint8_t zoneIndex) {
 bool renderSequenceFrame(bool force) {
   if (!sequenceOpen) return false;
 
-  uint32_t now = millis();
-  if (!force && now < nextSequenceFrameAt) return false;
-
-  if (sequenceFrameIndex >= sequenceFrameCount) {
-    if (!looks[currentLookIndex].loop) return false;
-    sequenceFile.seek(LWSEQ_HEADER_BYTES);
-    sequenceFrameIndex = 0;
+  // The frame that real elapsed time lands on. A frame that is already late
+  // is skipped, so a 20-second recording takes 20 seconds.
+  const LwSequenceStep step = lwSequenceClockAdvance(
+      sequenceClock, millis(), sequenceFps, sequenceFrameCount, looks[currentLookIndex].loop);
+  if (!step.show) {
+    if (!force) return false;
+    applySequenceFrameBufferToLeds();
+    return true;
   }
 
-  if (sequenceFile.read(frameBuffer, sequenceFrameBytes) != sequenceFrameBytes) {
-    if (!looks[currentLookIndex].loop) return false;
-    sequenceFile.seek(LWSEQ_HEADER_BYTES);
-    sequenceFrameIndex = 0;
-    if (sequenceFile.read(frameBuffer, sequenceFrameBytes) != sequenceFrameBytes) {
-      fail(ERROR_SEQUENCE, "sequence read failed");
-      return false;
-    }
+  // Frames are normally read one after another, so the file is already in
+  // place. It is moved only for a skipped frame or the jump back at a loop.
+  const uint32_t readStartedUs = micros();
+  const size_t frameOffset = static_cast<size_t>(
+      lwSequenceFrameOffset(LWSEQ_HEADER_BYTES, step.frameIndex, sequenceFrameBytes));
+  bool read = (step.frameIndex == sequenceFrameIndex || sequenceFile.seek(frameOffset)) &&
+      sequenceFile.read(frameBuffer, sequenceFrameBytes) == sequenceFrameBytes;
+  if (!read) {
+    // One retry from an explicit position before the look is failed.
+    read = sequenceFile.seek(frameOffset) &&
+        sequenceFile.read(frameBuffer, sequenceFrameBytes) == sequenceFrameBytes;
   }
+  if (!read) {
+    fail(ERROR_SEQUENCE, "sequence read failed");
+    return false;
+  }
+  const uint32_t readUs = micros() - readStartedUs;
+  if (readUs > outputTimingWindow.sequenceReadMaxUs) outputTimingWindow.sequenceReadMaxUs = readUs;
+  sequenceFrameIndex = step.frameIndex + 1;
+  sequenceFramesShown++;
+  sequenceFramesSkipped += step.skipped;
 
   applySequenceFrameBufferToLeds();
-
-  sequenceFrameIndex++;
-  nextSequenceFrameAt = now + (1000 / sequenceFps);
   return true;
 }
 
@@ -2121,7 +2165,10 @@ void transmitPhysicalLeds(uint8_t brightnessByte, OutputSourceClass sourceClass)
   lastOutputSourceClass = sourceClass;
   outputDithering = FastLED.getFPS() >= 100;
   FastLED.setDither(outputDithering);
+  const uint32_t showStartedUs = micros();
   FastLED.show();
+  const uint32_t showUs = micros() - showStartedUs;
+  if (showUs > outputTimingWindow.showMaxUs) outputTimingWindow.showMaxUs = showUs;
   recordPhysicalShow();
 }
 
@@ -2149,6 +2196,8 @@ void updateOutputTelemetry(uint32_t now) {
   measuredOutputFps = fps > UINT16_MAX ? UINT16_MAX : uint16_t(fps);
   outputShowCount = 0;
   outputFpsWindowStartedAt = now;
+  outputTimingPublished = outputTimingWindow;
+  outputTimingWindow = OutputTimingWindow{};
 }
 
 void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass) {
@@ -3081,6 +3130,7 @@ String runtimeFirmwareInfo() {
   lwOutput["calibration"]["green"] = runtimeOutputCalibrationGreen();
   lwOutput["calibration"]["blue"] = runtimeOutputCalibrationBlue();
   lwOutput["measuredFps"] = runtimeOutputMeasuredFps();
+  runtimeReportOutputTiming(lwOutput);
   lwOutput["dithering"] = runtimeOutputDithering();
   String out;
   serializeJson(doc, out);
@@ -3767,6 +3817,23 @@ float runtimeOutputCalibrationRed() { return outputColorPipeline.redBalance(); }
 float runtimeOutputCalibrationGreen() { return outputColorPipeline.greenBalance(); }
 float runtimeOutputCalibrationBlue() { return outputColorPipeline.blueBalance(); }
 uint16_t runtimeOutputMeasuredFps() { return measuredOutputFps; }
+
+// The last full second of timing, beside measuredFps. Microseconds.
+void runtimeReportOutputTiming(JsonObject lwOutput) {
+  JsonObject timing = lwOutput["timing"].to<JsonObject>();
+  const OutputTimingWindow& window = outputTimingPublished;
+  timing["loopPassMeanUs"] = window.loopPasses ? window.loopPassSumUs / window.loopPasses : 0;
+  timing["loopPassMaxUs"] = window.loopPassMaxUs;
+  timing["showMaxUs"] = window.showMaxUs;
+  if (sequenceOpen) {
+    JsonObject sequence = timing["sequence"].to<JsonObject>();
+    sequence["fps"] = sequenceFps;
+    sequence["frames"] = sequenceFrameCount;
+    sequence["shown"] = sequenceFramesShown;
+    sequence["skipped"] = sequenceFramesSkipped;
+    sequence["readMaxUs"] = window.sequenceReadMaxUs;
+  }
+}
 bool runtimeOutputDithering() { return outputDithering; }
 
 String runtimeWiringSafetyStatus() {

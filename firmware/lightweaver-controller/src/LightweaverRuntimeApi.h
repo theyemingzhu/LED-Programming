@@ -223,4 +223,5 @@ float runtimeOutputCalibrationRed();
 float runtimeOutputCalibrationGreen();
 float runtimeOutputCalibrationBlue();
 uint16_t runtimeOutputMeasuredFps();
+void runtimeReportOutputTiming(JsonObject lwOutput);
 bool runtimeOutputDithering();
