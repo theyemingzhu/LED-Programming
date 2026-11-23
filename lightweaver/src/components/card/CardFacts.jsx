@@ -35,9 +35,19 @@ const COLOR_ORDERS = ['RGB', 'GRB', 'BRG'];
 function discoveryEvidence(project) {
   const outputs = (Array.isArray(project?.portRoles) ? project.portRoles : [])
     .filter(output => output?.role === 'strip' && Number(output.pixelCount) > 0);
+  // The count is what the project's strips hold NOW. The Find my strips
+  // record (portRoles) keeps the count first measured; a later change in
+  // Layout or a Set here moves the strips, not that record, so the row read
+  // the old number and refused to save it ("Save to card" disabled at the
+  // original count). The record still decides whether the strip was counted.
+  // D10, todo/plans/practice-card-interruptions.md.
+  const strips = Array.isArray(project?.layout?.strips) ? project.layout.strips : [];
+  const stripTotal = strips.reduce((sum, strip) => sum + (Number(strip?.pixelCount) > 0 ? Number(strip.pixelCount) : 0), 0);
   return {
     outputs,
-    count: outputs.reduce((sum, output) => sum + Number(output.pixelCount || 0), 0),
+    count: stripTotal > 0 && outputs.length > 0
+      ? stripTotal
+      : outputs.reduce((sum, output) => sum + Number(output.pixelCount || 0), 0),
     counted: outputs.length > 0 && !outputs.every(output => isUncountedHeadroomCount(output.pixelCount)),
   };
 }
