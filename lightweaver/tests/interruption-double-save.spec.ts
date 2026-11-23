@@ -87,7 +87,6 @@ test('Save pressed again during the first save\'s restart wait, after an edit: S
 });
 
 test('a look tapped during a save\'s normal restart wait: Studio says the card is restarting, not that it needs recovery', async ({ page }) => {
-  knownDefect('D4', 'a tap during the save restart says "not ready for pattern commands. Recover and verify it"');
   practice = realPracticeCard(cardState('playing'));
   const button = await openPatternsWithEdit(page, practice);
   await startNotTakenWatch(page, ['recover and verify', 'not ready for pattern commands']);

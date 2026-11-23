@@ -81,7 +81,7 @@ import {
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
 import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
-import { noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
+import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
@@ -397,6 +397,7 @@ function writeSectionDisplayOrder(projectId, ids) {
   function patternGateMessage(gate) {
     if (gate === 'blank') return 'This card has no project yet. Set up its LED strips, then install this Studio project.';
     if (gate === 'project') return 'Open Hardware and verify that this exact Studio project is still installed on this card before sending lights.';
+    if (gate === 'restarting') return 'The card is restarting to apply your save. Your pick is kept in Studio; tap it again once the card is back.';
     return 'This card is not ready for pattern commands. Recover and verify it before sending lights.';
   }
 
@@ -915,10 +916,15 @@ function writeSectionDisplayOrder(projectId, ids) {
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
       gateRaisedWhileUnreadyRef.current = access !== 'ready';
       invalidatePendingPreview();
-      setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
+      // A card that is not ready because a save just restarted it on purpose
+      // is not a card to recover (interruption test D4,
+      // todo/plans/practice-card-interruptions.md).
+      const restartingOnPurpose = Number(getCardLinkState()?.plannedRestartUntil || 0) > Date.now();
+      const gate = access === 'blank' ? 'blank' : access === 'project' ? 'project' : restartingOnPurpose ? 'restarting' : 'recovery';
+      setPatternCardGate(gate);
       setHandoffUrl('');
-      setStatusKind('err');
-      setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
+      setStatusKind(gate === 'restarting' ? 'info' : 'err');
+      setStatus(patternGateMessage(gate));
     }, [invalidatePendingPreview]);
 
     // A "not ready" refusal describes the card at the moment of the tap. When
@@ -3843,7 +3849,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                   <div className="pattern-gate-inline lw-field" data-testid="pattern-gate-notice" role="alert" aria-live="assertive">
                     <p className="pattern-gate-inline-title">That tap was not sent to the card.</p>
                     <p className="pattern-gate-inline-body">{status || patternGateMessage(patternCardGate)}</p>
-                    <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>
+                    {patternCardGate !== 'restarting' && <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>}
                   </div>
                 }
 
