@@ -26,9 +26,16 @@ As a result a saved tuning can never be changed or undone. It disappears only wh
 Measured on 52e9136e, which has **no** look-tuning code (candidate-blob and drop-stale-rollback-record only):
 - `GET /api/client-pattern?patternId=fire` makes the next `POST /api/client-pattern` answer **400 `{"ok":false,"error":"invalid pattern envelope"}`**.
 - A `GET /api/status` sent in between clears it, and the next save is accepted.
-- The second bench check on that build passed light count, saves, content and restart (4 of 5), but look saves passed 0 of 5.
+- The second bench check on that build passed content, light count (4 of 4), same-wiring saves (3 of 3) and restart. The 0 of 5 "look saves" were direct `/api/client-pattern` calls made by the test, not Studio saves.
 
 The client-pattern handler is unchanged since signed 1.2.4. So the fault predates both the slot swap and look tuning, and it is the likely reason look tuning failed here: its save path reads the pattern first, then posts it.
+
+## No owner path reaches it today
+- The same GET → POST 400 fault was measured on signed **1.2.4** (build 2464), so it is already on every card in the field.
+- Live Studio (build 2670) Patterns look saves passed **5 of 5** on that 1.2.4 card. Studio saves looks through `POST /api/config` and never calls `/api/client-pattern`.
+- The phone player sends `GET /api/status` before each `POST /api/client-pattern`, which clears the fault.
+
+Fix: one line in `handleClientPatternPost`, dropping the `server.args()` check. Low urgency. It is to be parked for the next card release, not added to 1.2.5.
 
 ## Reading (unproven)
 The `GET`'s query argument (`patternId=fire`) is probably still counted by `server.args()` when the following `POST` is checked. The `doc.size() != 4 || server.args() != 0` gate in `handleClientPatternPost` then refuses a well-formed envelope.
