@@ -245,14 +245,17 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
 // way in 2 never reaches the light test. Tap: "Studio could not verify this
 // install (read-back-mismatch)" with the card still on the temporary setup.
 // Sweep: no light test and nothing said. The tests above switch that settling
-// off (QUIET) and so cannot see it; these two keep it on. Marked test.fail()
-// until the save read-back fix lands; that fix removes the marker, and a pass
-// before then turns the lane red so the marker cannot go stale.
+// off (QUIET) and so cannot see it; these two keep it on. Skipped (fixme)
+// until the save read-back fix lands; that fix removes the marker and must
+// show them green on repeated runs (--repeat-each=4).
 test.describe('Real-timing with the card settling after its restart', () => {
   test.use({ viewport: { width: PHONE.width, height: PHONE.height } });
   for (const via of ['tap', 'sweep'] as const) {
     test(`way in 2 by ${via}: Save reaches the light test and the light test finishes`, async ({ page }) => {
-      test.fail(true, 'FS2: Save after Find my strips fails while the card settles after its restart (TODO.md)');
+      // Skipped, not test.fail(): the settling is random (p=0.5 per reply), so
+      // the fault shows in most runs but not all — 3 of 4 failed on 2026-11-23.
+      // An expected-fail that sometimes passes would put red into the lane.
+      test.fixme(true, 'FS2: Save after Find my strips fails while the card settles after its restart (TODO.md)');
       test.setTimeout(360_000);
       await guardRealCard(page);
       const { card } = createPracticeCard(cardState('factory-blank'), {
