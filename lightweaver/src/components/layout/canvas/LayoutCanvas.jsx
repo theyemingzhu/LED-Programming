@@ -24,6 +24,9 @@ import { symmetryEchoes } from '../../../lib/symmetryTurns.js';
 import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, usePlacedLookPreview, useSymmetryFocus } from './mirrorEcho.js';
 import { placedLookFrame } from '../../../lib/placedLook.js';
 import { PlacedLookFrame, PlacedLookPicture, usePlacedLookClock } from './PlacedLookOverlay.jsx';
+import { LookDesignerTouch, useLookDesignerClock } from './LookDesignerTouch.jsx';
+import { useLookDesigner } from './lookDesignerStore.js';
+import { frameByStrip } from '../../../lib/lookEngine/index.js';
 import './symmetry-offer.css';
 import '../symmetry-by-eye.css';
 
@@ -136,9 +139,18 @@ export function LayoutCanvas({
     () => (placedActive ? placedLookFrame(placedLook, strips.filter(strip => !hidden[strip.id]), placedTime, { symmetry }).byStrip : null),
     [placedActive, placedLook, strips, hidden, placedTime, symmetry],
   );
-  const effectiveShowLight = placedActive || lightShown;
-  const showLeds = placedActive || ledsShown;
-  const layoutPatternFrame = placedFrame || patternFrame;
+  // The look designer colours the dots the same way (lib/lookEngine).
+  const designer = useLookDesigner();
+  const designerActive = Boolean(designer.look && designer.model) && draw.mode === 'draw' && !draw.drawMode;
+  const designerTime = useLookDesignerClock(designerActive);
+  const designerFrame = useMemo(
+    () => (designerActive ? frameByStrip(designer.look, designer.model, designerTime) : null),
+    [designerActive, designer.look, designer.model, designerTime],
+  );
+  const litActive = placedActive || designerActive;
+  const effectiveShowLight = litActive || lightShown;
+  const showLeds = litActive || ledsShown;
+  const layoutPatternFrame = placedFrame || designerFrame || patternFrame;
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     wiring, compiledWiring, selectedWiringRunId, onSeamMove,
@@ -219,7 +231,8 @@ export function LayoutCanvas({
       .sort((a, b) => Number(b.id === selStripId) - Number(a.id === selStripId)).slice(0, 12),
     annotationScale, labelBounds, selStripId,
   );
-  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds;
+  // The look designer hides the name callouts and flow numbers: they would cover the piece.
+  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds && !designerActive;
   const labelledIds = new Set(labelsShown ? labels.map(label => label.strip.id) : []);
 
   // ── Symmetry by eye ────────────────────────────────────────────────────────
@@ -532,7 +545,7 @@ export function LayoutCanvas({
             {placedActive && <PlacedLookPicture look={placedLook} time={placedTime}/>}
 
             {/* ── Light visualization ── */}
-            {effectiveShowLight && !placedActive && (
+            {effectiveShowLight && !litActive && (
               <g filter={directedGlow ? undefined : 'url(#lw-light-glow)'} style={{ mixBlendMode: 'screen', pointerEvents: 'none' }}>
                 {strips.map(s => !hidden[s.id] && (stripSamples[s.id] || []).map((pt, i) => {
                   const stripFrame = layoutPatternFrame.get(s.id);
@@ -798,7 +811,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, placedActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, litActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     // Keep unlit LEDs clearly visible so the strip's pixels are countable at rest.
                     const shellOpacity = Math.max(selected ? 0.95 : 0.62, restingLedAlpha(ledFrame, { selected }));
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
@@ -834,7 +847,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, placedActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, litActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
                     const restOpacity = Math.max(selected ? 0.8 : 0.5, restingLedAlpha(ledFrame, { selected }));
                     return (
@@ -966,7 +979,7 @@ export function LayoutCanvas({
                 })()}
                 {/* A strip whose label is showing carries its number there;
                     the rest get a small mark just before LED 1. */}
-                {strips.filter(s => !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
+                {strips.filter(s => !designerActive && !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
                   const place = sidePlaces.get(s.id);
                   const first = s.pixels[0];
                   const next = s.pixels[Math.min(1, s.pixels.length - 1)];
@@ -1002,6 +1015,13 @@ export function LayoutCanvas({
                    symmetry centre mark, so the mark still drags. ── */}
             {placedActive && !isEditingGesture && (
               <PlacedLookFrame look={placedLook} svgRef={svgRef} scale={annotationScale} spaceRef={spaceRef}/>
+            )}
+
+            {/* ── Look designer: tap a shape to step its pattern, drag across
+                   shapes to set their order. Mounted only while it is on. ── */}
+            {designerActive && !isEditingGesture && (
+              <LookDesignerTouch svgRef={svgRef} scale={annotationScale} spaceRef={spaceRef}
+                                 model={designer.model} look={designer.look} selected={designer.selected}/>
             )}
 
             {/* ── Symmetry by eye: side 1 copied onto the other sides, the

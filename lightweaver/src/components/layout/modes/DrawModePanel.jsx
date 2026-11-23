@@ -64,6 +64,7 @@ import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
 import '../symmetry-by-eye.css';
 import { PlacedLookControl } from './PlacedLookControl.jsx';
+import { LookDesignerControl } from './LookDesignerControl.jsx';
 
 // Metres formatter for the physical readouts: 2 decimals under 10 m, 1 above.
 function startedFromDragHandle(e) {
@@ -2481,6 +2482,9 @@ export function DrawModePanel({
             {strips.some(strip => strip.pixels?.length > 0) && (
               <PlacedLookControl strips={strips} hidden={hidden} symmetry={symmetry}
                                  compiledWiring={compiledWiring} artworkCentre={artworkCentre}/>
+            )}
+            {strips.some(strip => strip.pixels?.length > 0) && (
+              <LookDesignerControl strips={strips} hidden={hidden} symmetry={symmetry} artworkCentre={artworkCentre}/>
             )}
           </Fragment>
         )}
