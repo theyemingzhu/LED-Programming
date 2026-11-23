@@ -1,5 +1,5 @@
 // Studio -> card contract for symmetry sides (lightweaver/todo/plans/symmetry-sides.md).
-// Builds 2-side and 4-side projects, prepares the card deployment, and checks the
+// Builds 2-side, 4-side, 6-side and 12-side projects, prepares the card deployment, and checks the
 // resulting runtime config against the rules the firmware enforces:
 //   1. every looks[].zones[] patternId is a pattern the card can play
 //      (firmware: isSupportedCompiledPattern in LightweaverPatterns.cpp)
@@ -89,6 +89,18 @@ const fixtures = {
   'four sides (same way round), one strip on its own': makeProject({
     ids: ['a', 'b', 'c', 'd', 'e'],
     symmetry: { fold: 4, orientation: 'same', sides: ['a', 'b', 'c', 'd'].map((id, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [id])) },
+  }),
+  'six sides, one strip on its own': makeProject({
+    ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    symmetry: { fold: 6, orientation: 'same', sides: ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [id])) },
+  }),
+  'six sides of three strips (a six-petal piece), centre on its own': makeProject({
+    ids: Array.from({ length: 19 }, (_, i) => `s${i}`),
+    symmetry: { fold: 6, orientation: 'same', sides: Array.from({ length: 6 }, (_, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [`s${i * 3}`, `s${i * 3 + 1}`, `s${i * 3 + 2}`])) },
+  }),
+  'twelve sides fill the card': makeProject({
+    ids: Array.from({ length: 12 }, (_, i) => `s${i}`),
+    symmetry: { fold: 12, orientation: 'mirror', sides: Array.from({ length: 12 }, (_, i) => sideOf(`side-${i + 1}`, `Side ${i + 1}`, [`s${i}`])) },
   }),
   'four sides of two strips': makeProject({
     ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
@@ -231,8 +243,10 @@ for (const [name, fixture] of Object.entries(fixtures)) {
     mappings.every(mapping => !continuousIds.includes(mapping.zoneId)), `${mappings.length} mappings`);
 
   // rule 4: size
-  const payload = prepareCardStoragePayload(prepared.runtimePackage);
-  check('4 config <= 3968 bytes', name, payload.bytes <= CARD_LIMIT, `${payload.bytes} bytes (${zoneIds.length} zones, ${lookIds.length} looks)`);
+  // A project too big for the card is refused by Studio with its size, never sent.
+  let bytes;
+  try { bytes = prepareCardStoragePayload(prepared.runtimePackage).bytes; } catch (error) { bytes = error.bytes; }
+  check('4 config <= 3968 bytes', name, bytes <= CARD_LIMIT, `${bytes} bytes (${zoneIds.length} zones, ${lookIds.length} looks)`);
 
   // capability gate travels with the config
   assert.throws(() => assertCardSymmetrySupport(prepared.runtimePackage, { capabilities: {} }), /Update this card/);
