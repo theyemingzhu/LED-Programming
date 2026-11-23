@@ -2436,6 +2436,21 @@ function writeSectionDisplayOrder(projectId, ids) {
           return;
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
+        // What goes to the card is the owner's project from this moment, not a
+        // draft committed only after the card's read-back. A reload, a closed
+        // tab, or a card answering after the restart wait used to throw the
+        // picked look away while the card kept it — Studio then honestly saw a
+        // different project ("Draft kept separately") on a card holding exactly
+        // what the owner saved. Interruption tests D1/D2,
+        // todo/plans/practice-card-interruptions.md. Same guard as the commit
+        // after verification below: only when nothing changed while checking.
+        if (JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
+          && JSON.stringify(latestControllerRef.current) === JSON.stringify(requestedController)) {
+          commitProjectStateWithoutEdit(() => {
+            setPatchBoard(nextBoard);
+            setStandaloneController(nextController);
+          });
+        }
         dispatchCardSave({ type: 'start', revision: requestedRevision });
         if (checkingShown) { setStatusKind(''); setStatus(''); }
         let response;
