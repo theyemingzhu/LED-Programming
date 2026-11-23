@@ -35,7 +35,7 @@ const statusJson = storageImplementation.slice(
 for (const field of ['app', 'state', 'activationId', 'cardId', 'firmwareVersion', 'buildId', 'projectRevision', 'projectFingerprint', 'productionJobId', 'productionJobDigest']) {
   assert.match(statusJson, new RegExp(`doc\\["${field}"\\]`), `candidate status must expose exact ${field}`);
 }
-assert.match(statusJson, /NVS_CANDIDATE_CONFIG_KEY/, 'candidate identity must come from the staged package, not active runtime guesses');
+assert.match(statusJson, /readCandidate\(prefs\)/, 'candidate identity must come from the staged package, not active runtime guesses');
 
 assert.match(runtime, /LW_DISCOVERY_STEP_COUNT\s*=\s*LW_APPROVED_OUTPUT_GPIO_COUNT/,
   'wire discovery must expose exactly the approved GPIOs as sequential steps');

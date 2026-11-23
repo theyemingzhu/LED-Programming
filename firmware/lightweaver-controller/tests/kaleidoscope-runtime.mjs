@@ -98,7 +98,7 @@ const stageBody = storage.slice(stageStart, stageEnd);
 assert.ok(stageStart >= 0 && stageEnd > stageStart, 'candidate staging implementation must be present');
 assert.ok(stageBody.indexOf('validateRuntimeConfigJsonStrict') >= 0,
   'candidate raw JSON must be strictly validated');
-assert.ok(stageBody.indexOf('validateRuntimeConfigJsonStrict') < stageBody.indexOf('prefs.putString(NVS_CANDIDATE_CONFIG_KEY'),
+assert.ok(stageBody.indexOf('validateRuntimeConfigJsonStrict') < stageBody.indexOf('writeCandidate(prefs'),
   'rejected raw JSON must not replace candidate or known-good storage');
 assert.doesNotMatch(stageBody.slice(0, stageBody.indexOf('validateRuntimeConfigJsonStrict')), /NVS_KNOWN_GOOD_CONFIG_KEY|NVS_KNOWN_GOOD_BLOB_KEY|writeKnownGood|removeKnownGood|prefs\.remove|prefs\.put/,
   'candidate known-good state must be untouched before raw validation succeeds');
