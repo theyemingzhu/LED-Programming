@@ -1,5 +1,6 @@
-import { useLayoutEffect, useMemo, useState } from 'react';
-import { canvasStripLabel, placeStripLabels } from '../../../lib/stripLabels.js';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { canvasStripLabel } from '../../../lib/stripLabels.js';
+import { stripDotAt, stripOuterEnd } from '../../../lib/stripDots.js';
 import {
   rgbCss,
   pointsAttr,
@@ -19,8 +20,20 @@ import { setSymmetryFold } from '../../../lib/pieceSymmetry.js';
 import { suggestSymmetry, symmetryAxisLine, symmetryStripPlaces, worthOffering } from '../../../lib/symmetrySuggest.js';
 import { connectedFamilyForStrip } from '../../../lib/connectedSections.js';
 import { sideTint } from '../shared/sideTints.js';
-import { requestSymmetryReveal, useMirrorEchoFocus } from './mirrorEcho.js';
+import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
+import { symmetryEchoes } from '../../../lib/symmetryTurns.js';
+import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, usePlacedLookPreview, useSymmetryFocus } from './mirrorEcho.js';
+import { placedLookFrame } from '../../../lib/placedLook.js';
+import { PlacedLookFrame, PlacedLookPicture, usePlacedLookClock } from './PlacedLookOverlay.jsx';
+import { LookDesignerTouch, useLookDesignerClock } from './LookDesignerTouch.jsx';
+import { useLookDesigner } from './lookDesignerStore.js';
+import { frameByStrip } from '../../../lib/lookEngine/index.js';
 import './symmetry-offer.css';
+import '../symmetry-by-eye.css';
+
+// Under a placed look, an LED outside the frame (or between bands) is dark:
+// a plain grey dot, not the strip's own warm colour, which would read as lit.
+const PLACED_DARK_LED = 'oklch(46% 0.008 75)';
 
 // "Left side" -> "the left side"; "Side 1" -> "side 1".
 const sideNoun = label => `${/^side\b/i.test(label) ? '' : 'the '}${label.charAt(0).toLowerCase()}${label.slice(1)}`;
@@ -49,6 +62,31 @@ function SymmetryOffer({ suggestion, strips, onMirror, onChoose, onKeep }) {
         <button type="button" className="btn" data-testid="symmetry-offer-mirror" onClick={onMirror}>Mirror the two sides</button>
         <button type="button" className="btn" data-testid="symmetry-offer-choose" onClick={onChoose}>Choose sides myself</button>
         <button type="button" className="btn la-symmetry-offer-keep" data-testid="symmetry-offer-keep" onClick={onKeep}>Keep as drawn</button>
+      </div>
+    </section>
+  );
+}
+
+// While the owner is choosing a number of sides: one card on the artwork that
+// says whether the amber copies line up, in words, with Done as its primary.
+function SymmetryFocusCard({ fold, fits, dealt = false, moved, onDone, onPulse, onRecentre }) {
+  return (
+    <section className="la-symmetry-offer la-symmetry-focus" data-testid="symmetry-focus" aria-labelledby="symmetry-focus-title">
+      <h2 id="symmetry-focus-title" data-testid="symmetry-focus-verdict" data-fits={fits ? 'true' : 'false'} data-dealt={dealt ? 'true' : undefined}>
+        <span className={`la-symmetry-focus-dot${fits ? ' is-fit' : ''}`} aria-hidden="true"/>
+        {fits ? `${fold} sides line up.` : dealt
+          ? `${fold} sides set, one after another along the strips.`
+          : `Doubled lines: this piece does not have ${fold} matching sides.`}
+      </h2>
+      <p>
+        {dealt && !fits
+          ? 'The shape has no matching sides to find, so each side got its strips in order. Move a strip to another side in the list if you want it elsewhere.'
+          : `The amber lines are side 1 copied onto the other sides.${fits ? ' They sit on your strips.' : ' Try another number, or drag the centre mark if the piece is off-centre.'}`}
+      </p>
+      <div className="la-symmetry-offer-actions">
+        <button type="button" className="btn" data-testid="symmetry-focus-done" onClick={onDone}>Done</button>
+        <button type="button" className="btn" data-testid="symmetry-focus-pulse" onClick={onPulse}>Run a pulse around</button>
+        {moved && <button type="button" className="btn la-symmetry-offer-keep" data-testid="symmetry-focus-recentre" onClick={onRecentre}>Put the centre back</button>}
       </div>
     </section>
   );
@@ -90,9 +128,30 @@ export function LayoutCanvas({
   const sidePlaces = useMemo(() => symmetryStripPlaces(symmetry), [symmetry]);
   const axisLine = useMemo(() => symmetryAxisLine(symmetry, strips.filter(strip => !hidden[strip.id])), [symmetry, strips, hidden]);
   const {
-    effectiveShowLight, effectiveGlowMode, glowStdDev, directedGlow,
-    showHeat, showLeds, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
+    effectiveShowLight: lightShown, effectiveGlowMode, glowStdDev, directedGlow,
+    showHeat, showLeds: ledsShown, layoutPatternFrame: patternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
   } = lightPreview;
+  // A placed look being tried on the artwork takes over the LED colours: each
+  // dot shows the colour under it in the frame (lib/placedLook.js).
+  const placedLook = usePlacedLookPreview();
+  const placedActive = Boolean(placedLook) && draw.mode === 'draw' && !draw.drawMode;
+  const placedTime = usePlacedLookClock(placedActive);
+  const placedFrame = useMemo(
+    () => (placedActive ? placedLookFrame(placedLook, strips.filter(strip => !hidden[strip.id]), placedTime, { symmetry }).byStrip : null),
+    [placedActive, placedLook, strips, hidden, placedTime, symmetry],
+  );
+  // The look designer colours the dots the same way (lib/lookEngine).
+  const designer = useLookDesigner();
+  const designerActive = Boolean(designer.look && designer.model) && draw.mode === 'draw' && !draw.drawMode;
+  const designerTime = useLookDesignerClock(designerActive);
+  const designerFrame = useMemo(
+    () => (designerActive ? frameByStrip(designer.look, designer.model, designerTime) : null),
+    [designerActive, designer.look, designer.model, designerTime],
+  );
+  const litActive = placedActive || designerActive;
+  const effectiveShowLight = litActive || lightShown;
+  const showLeds = litActive || ledsShown;
+  const layoutPatternFrame = placedFrame || designerFrame || patternFrame;
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     wiring, compiledWiring, selectedWiringRunId, onSeamMove,
@@ -168,13 +227,119 @@ export function LayoutCanvas({
     w: viewportSize.width * annotationScale,
     h: viewportSize.height * annotationScale,
   };
-  const labels = placeStripLabels(
-    strips.filter(s => !hidden[s.id] && s.pixels?.length > 0)
-      .sort((a, b) => Number(b.id === selStripId) - Number(a.id === selStripId)).slice(0, 12),
-    annotationScale, labelBounds, selStripId,
+  // Names are not drawn on every strip any more: each strip has a small numbered
+  // dot at its first light, and a name chip shows for the selected and the hovered strip.
+  const [hoverStripId, setHoverStripId] = useState(null);
+  // The middle of everything that is showing: name chips sit away from it.
+  const pieceCentre = useMemo(() => {
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const strip of strips) {
+      if (hidden[strip.id]) continue;
+      for (const p of strip.pixels || []) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      }
+    }
+    return Number.isFinite(minX) ? { x: (minX + maxX) / 2, y: (minY + maxY) / 2 } : null;
+  }, [strips, hidden]);
+  // The look designer hides the name callouts and flow numbers: they would cover the piece.
+  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds && !designerActive;
+
+  // ── Symmetry by eye ────────────────────────────────────────────────────────
+  // After a number of sides is chosen, side 1's strips are drawn again on
+  // every other side in amber. The right number and centre put each copy on a
+  // real strip; a wrong one leaves doubled lines. The centre mark drags, and
+  // letting go places the strips into sides again about the new centre.
+  const symmetryFocus = useSymmetryFocus();
+  const focusActive = Boolean(symmetryFocus && symmetry && mode === 'draw' && !drawMode && typeof setLayoutSymmetry === 'function');
+  useEffect(() => { if (!symmetry && symmetryFocus) setSymmetryFocus(null); }, [symmetry, symmetryFocus]);
+  const focusFold = focusActive ? symmetry.fold : 0;
+  const focusStrips = useMemo(
+    () => (focusActive ? strips.filter(strip => !hidden[strip.id] && strip.kaleidoscope?.enabled !== true) : []),
+    [focusActive, strips, hidden],
   );
-  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds;
-  const labelledIds = new Set(labelsShown ? labels.map(label => label.strip.id) : []);
+  const focusHome = useMemo(() => {
+    if (!focusActive) return null;
+    const box = svgText && viewBox ? parsedVb(viewBox) : null;
+    const suggestion = suggestSymmetry(focusStrips, focusFold, box ? { centre: { x: box.x + box.w / 2, y: box.y + box.h / 2 } } : null);
+    return { suggestion, centre: suggestion?.centre || stripsBoundsCentre(focusStrips) };
+  }, [focusActive, focusStrips, focusFold, svgText, viewBox]);
+  const focusCentre = focusActive ? (symmetryFocus.centre || focusHome?.centre || null) : null;
+  const focusSuggestion = useMemo(() => {
+    if (!focusActive || !focusCentre) return null;
+    return symmetryFocus.centre
+      ? suggestSymmetry(focusStrips, focusFold, { centre: focusCentre, pinned: true })
+      : focusHome?.suggestion || null;
+  }, [focusActive, focusCentre, symmetryFocus, focusStrips, focusFold, focusHome]);
+  const focusFits = focusSuggestion?.confidence === 'high' && focusSuggestion.matched.length > 0;
+  const focusCopies = useMemo(
+    () => (focusActive && focusCentre ? symmetryEchoes(focusStrips, symmetry, focusCentre).copies : []),
+    [focusActive, focusCentre, focusStrips, symmetry],
+  );
+  const placeSidesAbout = centre => {
+    const suggestion = centre
+      ? suggestSymmetry(focusStrips, focusFold, { centre, pinned: true })
+      : focusHome?.suggestion;
+    if (!suggestion) return;
+    const next = { ...setSymmetryFold(symmetry, focusFold, strips, suggestion), orientation: suggestion.orientation };
+    if (JSON.stringify(next) === JSON.stringify(symmetry)) return;
+    pushLayoutHistory?.();
+    setLayoutSymmetry(next);
+  };
+  const centreDragRef = useRef(false);
+  const centreFromEvent = event => {
+    const matrix = svgRef.current?.getScreenCTM()?.inverse();
+    if (!matrix) return null;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
+    const home = focusHome?.centre;
+    // Close to where Studio put it is where Studio put it.
+    if (home && Math.hypot(point.x - home.x, point.y - home.y) < annotationScale * 8) return null;
+    return { x: point.x, y: point.y };
+  };
+  const centreHandlers = {
+    onPointerDown: event => {
+      event.stopPropagation();
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      centreDragRef.current = true;
+    },
+    onPointerMove: event => {
+      if (!centreDragRef.current) return;
+      setSymmetryFocus({ centre: centreFromEvent(event) });
+    },
+    onPointerUp: event => {
+      if (!centreDragRef.current) return;
+      centreDragRef.current = false;
+      const centre = centreFromEvent(event);
+      setSymmetryFocus({ centre });
+      placeSidesAbout(centre);
+    },
+    onPointerCancel: () => { centreDragRef.current = false; },
+    onClick: event => event.stopPropagation(),
+    onKeyDown: event => {
+      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+      if (!step || !focusCentre) return;
+      event.preventDefault();
+      const nudge = annotationScale * (event.shiftKey ? 10 : 2);
+      const centre = { x: focusCentre.x + step[0] * nudge, y: focusCentre.y + step[1] * nudge };
+      setSymmetryFocus({ centre });
+      placeSidesAbout(centre);
+    },
+  };
+  // The pulse: each side lit in turn, once around. Uneven steps (a side with
+  // more or fewer strips than the last) show a wrong fit without reading.
+  const [pulseSide, setPulseSide] = useState(null);
+  const pulseTimersRef = useRef([]);
+  const stopPulse = () => { pulseTimersRef.current.forEach(clearTimeout); pulseTimersRef.current = []; };
+  useEffect(() => stopPulse, []);
+  const runPulse = () => {
+    stopPulse();
+    const count = symmetry?.sides?.length || 0;
+    for (let index = 0; index <= count; index += 1) {
+      pulseTimersRef.current.push(setTimeout(() => setPulseSide(index < count ? index : null), index * 330));
+    }
+  };
+  const pulseStripIds = focusActive && pulseSide !== null ? new Set(symmetry.sides[pulseSide]?.stripIds || []) : null;
+  const polyline = points => points.map(point => `${point.x},${point.y}`).join(' ');
   const handleCanvasPointerDown = event => {
     if (!firstLedPicker) {
       handleSvgMouseDown(event);
@@ -385,8 +550,11 @@ export function LayoutCanvas({
               );
             })}
 
+            {/* ── Placed look: the picture the lights are looking at, faint ── */}
+            {placedActive && <PlacedLookPicture look={placedLook} time={placedTime}/>}
+
             {/* ── Light visualization ── */}
-            {effectiveShowLight && (
+            {effectiveShowLight && !litActive && (
               <g filter={directedGlow ? undefined : 'url(#lw-light-glow)'} style={{ mixBlendMode: 'screen', pointerEvents: 'none' }}>
                 {strips.map(s => !hidden[s.id] && (stripSamples[s.id] || []).map((pt, i) => {
                   const stripFrame = layoutPatternFrame.get(s.id);
@@ -444,13 +612,18 @@ export function LayoutCanvas({
               const stripColor = effectiveShowLight ? rgbCss(stripFrame, s.color) : (s.color || 'var(--accent)');
               // Identity colors keep adjacent physical sections distinguishable
               // even when their LED dots are too small to resolve.
+              // With sides, a strip at rest wears its side's colour (the same one the
+              // list's Side groups use); strips on their own keep their own colour.
+              const sideOfStrip = !isHid && !effectiveShowLight && symmetry && mode === 'draw' ? sidePlaces.get(s.id) : null;
               const railColor = isHid
                 ? 'oklch(40% 0.01 75)'
-                : stripColor;
+                : sideOfStrip ? sideTint(sideOfStrip.sideIndex) : stripColor;
               return (
                 <g key={s.id} transform={`translate(${s.x || 0} ${s.y || 0})`}>
                   <path d={s.pathData}
                         data-strip-path={s.id}
+                        onPointerEnter={() => setHoverStripId(s.id)}
+                        onPointerLeave={() => setHoverStripId(current => (current === s.id ? null : current))}
                         tabIndex="0"
                         role="button"
                         aria-label={`Select ${s.name} strip`}
@@ -505,11 +678,11 @@ export function LayoutCanvas({
                       d={s.pathData}
                       fill="none"
                       stroke={sideTint(sidePlaces.get(s.id).sideIndex)}
-                      strokeWidth={annotationScale * 16}
+                      strokeWidth={annotationScale * 21}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       pointerEvents="none"
-                      opacity={0.3}
+                      opacity={0.62}
                     />
                   )}
                   {!isSel && mirrorFocusId === s.id && (
@@ -652,7 +825,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, s.color || 'oklch(58% 0.04 70)') : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, litActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     // Keep unlit LEDs clearly visible so the strip's pixels are countable at rest.
                     const shellOpacity = Math.max(selected ? 0.95 : 0.62, restingLedAlpha(ledFrame, { selected }));
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
@@ -688,7 +861,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, s.color || 'oklch(58% 0.04 70)') : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, litActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
                     const restOpacity = Math.max(selected ? 0.8 : 0.5, restingLedAlpha(ledFrame, { selected }));
                     return (
@@ -818,59 +991,92 @@ export function LayoutCanvas({
                     })}
                   </>;
                 })()}
-                {/* A strip whose label is showing carries its number there;
-                    the rest get a small mark just before LED 1. */}
-                {strips.filter(s => !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
-                  const place = sidePlaces.get(s.id);
-                  const first = s.pixels[0];
-                  const next = s.pixels[Math.min(1, s.pixels.length - 1)];
-                  const dx = first.x - next.x; const dy = first.y - next.y;
-                  const length = Math.hypot(dx, dy) || 1;
-                  const reach = annotationScale * 13;
-                  const x = first.x + (length > 0 && (dx || dy) ? dx / length * reach : 0);
-                  const y = first.y + (length > 0 && (dx || dy) ? dy / length * reach : -reach);
-                  const tint = sideTint(place.sideIndex);
-                  return (
-                    <g key={`${s.id}-flow`} data-testid={`flow-mark-${s.id}`} data-flow-position={place.position}
-                       transform={`translate(${x} ${y})`}
-                       style={{ cursor: 'pointer', pointerEvents: canDragStrip ? 'all' : 'none' }}
-                       onPointerDown={event => startStripMove(event, s)}
-                       onClick={event => {
-                         event.stopPropagation();
-                         if (stripDragSuppressClickRef.current) return;
-                         selectStrip(s.id);
-                       }}>
-                      <title>{`${place.label}, ${place.position} of ${place.count}`}</title>
-                      <circle r={annotationScale * 7.5} fill="oklch(0.18 0.02 220 / 0.88)" stroke={tint} strokeWidth={annotationScale}/>
-                      <text textAnchor="middle" dominantBaseline="central" fontSize={annotationScale * 9.5}
-                            fontFamily="var(--font-mono, monospace)" fill={tint} style={{ userSelect: 'none' }}>
-                        {place.position}
-                      </text>
-                    </g>
-                  );
-                })}
               </g>
             )}
 
-            {/* One compact, screen-sized annotation per strip; no leader lines. */}
-            {labelsShown && labels.map(({ strip: s, x, y, width, height }) => {
+            {/* ── Placed look: its frame and corner handles. Under the
+                   symmetry centre mark, so the mark still drags. ── */}
+            {placedActive && !isEditingGesture && (
+              <PlacedLookFrame look={placedLook} svgRef={svgRef} scale={annotationScale} spaceRef={spaceRef}/>
+            )}
+
+            {/* ── Look designer: tap a shape to step its pattern, drag across
+                   shapes to set their order. Mounted only while it is on. ── */}
+            {designerActive && !isEditingGesture && (
+              <LookDesignerTouch svgRef={svgRef} scale={annotationScale} spaceRef={spaceRef}
+                                 model={designer.model} look={designer.look} selected={designer.selected}/>
+            )}
+
+            {/* ── Symmetry by eye: side 1 copied onto the other sides, the
+                   side the pulse is on, and the centre mark. Shown only while
+                   the owner is choosing; none of it takes a click from a strip. ── */}
+            {focusActive && focusCentre && !isEditingGesture && (
+              <g className="lw-symmetry-focus" data-testid="symmetry-copies" data-count={focusCopies.length} data-fits={focusFits ? 'true' : 'false'}>
+                {focusCopies.map((copy, index) => (
+                  <polyline key={`${copy.sourceId}-${index}`} points={polyline(copy.points)} fill="none"
+                            stroke="var(--layer-1)" strokeWidth={annotationScale * (focusFits ? 3.2 : 1.8)}
+                            strokeLinecap="round" strokeLinejoin="round"
+                            opacity={focusFits ? 0.9 : 0.62} pointerEvents="none"/>
+                ))}
+                {pulseStripIds && strips.filter(s => pulseStripIds.has(s.id) && !hidden[s.id] && s.pixels?.length > 1).map(s => (
+                  <polyline key={`${s.id}-pulse`} data-testid={`symmetry-pulse-${s.id}`} points={polyline(s.pixels)} fill="none"
+                            stroke="var(--text-hi)" strokeWidth={annotationScale * 4.5}
+                            strokeLinecap="round" strokeLinejoin="round" pointerEvents="none"/>
+                ))}
+                <g className="lw-symmetry-centre" data-testid="symmetry-centre" tabIndex={0} role="slider"
+                   aria-label="Centre of the piece. Drag it, or use the arrow keys."
+                   aria-valuetext={symmetryFocus.centre ? 'Moved' : 'Where Studio put it'}
+                   transform={`translate(${focusCentre.x} ${focusCentre.y})`}
+                   style={{ cursor: 'grab', touchAction: 'none' }} {...centreHandlers}>
+                  <circle r={annotationScale * 26} fill="transparent"/>
+                  <circle r={annotationScale * 12} fill="var(--bg-canvas)" stroke="var(--accent-hi)" strokeWidth={annotationScale * 2.5}/>
+                  <circle r={annotationScale * 2.5} fill="var(--accent-hi)" pointerEvents="none"/>
+                  {[[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy]) => (
+                    <line key={`${dx}:${dy}`} x1={dx * annotationScale * 12} y1={dy * annotationScale * 12}
+                          x2={dx * annotationScale * 24} y2={dy * annotationScale * 24}
+                          stroke="var(--accent-hi)" strokeWidth={annotationScale * 1.5} pointerEvents="none"/>
+                  ))}
+                </g>
+              </g>
+            )}
+
+            {/* One small numbered dot per strip at its first light; the name is a
+                chip for the selected and the hovered strip only. */}
+            {labelsShown && strips.filter(s => !hidden[s.id] && s.pixels?.length > 0).map(s => {
               const partName = canvasStripLabel(s, sectionFamilies);
-              // In a side, the label leads with the strip's flow number, as the
-              // sidebar row does ("1  Left top").
               const place = symmetry && mode === 'draw' ? sidePlaces.get(s.id) : null;
+              const number = place ? place.position : strips.findIndex(item => item.id === s.id) + 1;
+              const tint = place ? sideTint(place.sideIndex) : s.color;
               const label = place
                 ? `${partName} · ${place.label}, ${place.position} of ${place.count} · ${s.pixelCount} LEDs`
                 : `${partName} · ${s.pixelCount} LEDs`;
-              const room = place ? 18 : 20;
-              const displayName = partName.length > room ? `${partName.slice(0, room - 1).trimEnd()}…` : partName;
+              const dot = stripDotAt(s, annotationScale);
+              const showChip = s.id === selStripId || s.id === hoverStripId;
+              const chipText = place ? `${partName} · ${place.label}` : partName;
+              const chipName = chipText.length > 24 ? `${chipText.slice(0, 23).trimEnd()}…` : chipText;
+              const chipWidth = Math.min(150, 14 + chipName.length * 6.4);
+              // Anchored just past the strip's outer end (the end farthest from the
+              // piece centre), on the side away from the strip, kept inside the canvas.
+              const anchor = stripOuterEnd(s, pieceCentre, annotationScale);
+              let toRight = anchor.dx >= 0;
+              if (toRight && anchor.x + (chipWidth + 6) * annotationScale > labelBounds.x + labelBounds.w) toRight = false;
+              if (!toRight && anchor.x - (chipWidth + 6) * annotationScale < labelBounds.x) toRight = true;
+              const ax = (anchor.x - dot.x) / annotationScale;
+              const ay = (anchor.y - dot.y) / annotationScale;
+              const chipX = toRight ? ax + 4 : ax - 4 - chipWidth;
+              const topLimit = (labelBounds.y - dot.y) / annotationScale + 4;
+              const bottomLimit = (labelBounds.y + labelBounds.h - dot.y) / annotationScale - 24;
+              const chipY = Math.max(topLimit, Math.min(bottomLimit, ay - 10));
               return (
                 <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
                    data-selected={s.id === selStripId || undefined}
                    aria-label={label}
-                   transform={`translate(${x} ${y}) scale(${annotationScale})`}
+                   transform={`translate(${dot.x} ${dot.y}) scale(${annotationScale})`}
                    style={{ pointerEvents: canDragStrip ? 'all' : 'none', cursor: movingStripIds.includes(s.id) ? 'grabbing' : 'grab', userSelect: 'none' }}
                    onPointerDown={event => startStripMove(event, s)}
+                   onPointerEnter={() => setHoverStripId(s.id)}
+                   onPointerLeave={() => setHoverStripId(current => (current === s.id ? null : current))}
                    onClick={event => {
                      event.stopPropagation();
                      if (stripDragSuppressClickRef.current) return;
@@ -878,16 +1084,20 @@ export function LayoutCanvas({
                      else selectStrip(s.id);
                    }}>
                   <title>{label}</title>
-                  <rect width={width / annotationScale} height={height / annotationScale} rx="4"
-                        fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}
-                        strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
-                  {place && (
-                    <text data-testid={`flow-mark-${s.id}`} data-flow-position={place.position}
-                          x="7" y="13" fontFamily="var(--font-mono, monospace)" fontSize="11" fontWeight="600"
-                          fill={sideTint(place.sideIndex)}>{place.position}</text>
+                  {showChip && (
+                    <g className="lw-strip-chip" data-testid={`strip-chip-${s.id}`}>
+                      <rect x={chipX} y={chipY} width={chipWidth} height="20" rx="4"
+                            fill="oklch(0.18 0.02 220 / 0.92)" stroke={tint} strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
+                      <text className="lw-strip-label-name" x={chipX + 7} y={chipY + 14} fontFamily="var(--font-ui, sans-serif)" fontSize="11"
+                            fontWeight={s.id === selStripId ? 600 : 400} fill={tint}>{chipName}</text>
+                    </g>
                   )}
-                  <text className="lw-strip-label-name" x={place ? 21 : 7} y="13" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
-                        fontWeight={s.id === selStripId ? 600 : 400} fill={s.color}>{displayName}</text>
+                  <g className="lw-strip-dot" data-testid={place ? `flow-mark-${s.id}` : `strip-dot-${s.id}`}
+                     data-flow-position={place ? place.position : undefined}>
+                    <circle r="7.5" fill="oklch(0.18 0.02 220 / 0.88)" stroke={tint} strokeWidth={s.id === selStripId ? 1.6 : 1}/>
+                    <text textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontFamily="var(--font-mono, monospace)"
+                          fill={tint} style={{ userSelect: 'none' }}>{number}</text>
+                  </g>
                 </g>
               );
             })}
@@ -1016,6 +1226,13 @@ export function LayoutCanvas({
                            requestSymmetryReveal();
                          }}
                          onKeep={() => setLayoutSymmetryOfferDismissed?.(true)}/>
+        )}
+
+        {focusActive && focusCentre && !offer && (
+          <SymmetryFocusCard fold={focusFold} fits={focusFits} dealt={Boolean(focusSuggestion?.dealt)} moved={Boolean(symmetryFocus.centre)}
+                             onDone={() => { stopPulse(); setPulseSide(null); setSymmetryFocus(null); }}
+                             onPulse={runPulse}
+                             onRecentre={() => { setSymmetryFocus({ centre: null }); placeSidesAbout(null); }}/>
         )}
 
         {/* ── Canvas corner readouts (mockup .la-overlay) ── */}

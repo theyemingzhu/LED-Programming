@@ -30,7 +30,9 @@ export function sidesHintCopy({ symmetry, sidesMirrored } = {}) {
 
 // Section label for the one target that stands for every mirrored side.
 export function mirroredSectionLabel(sideCount) {
-  return Number(sideCount) >= 4 ? 'All four sides, mirrored' : 'Both sides, mirrored';
+  const count = Number(sideCount);
+  if (count === 4) return 'All four sides, mirrored';
+  return count > 2 ? `All ${count} sides, mirrored` : 'Both sides, mirrored';
 }
 
 // A target is a mirrored group when the section model marks the sides it drives.

@@ -45,7 +45,8 @@ test('a strip callout keeps its name on one line without pitch', async ({ page }
 
   // Measurements belong in Specs, leaving the artwork annotation compact.
   await expect(callout).toContainText('Line');
-  await expect(callout.locator('text')).toHaveCount(1);
+  // The name is the chip of the selected strip; the number dot is a second text.
+  await expect(callout.locator('.lw-strip-label-name')).toHaveCount(1);
   await expect(callout).not.toContainText(/mm pitch|\d+ px/);
 });
 

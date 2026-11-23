@@ -90,7 +90,7 @@ export function deriveSectionTargets({
       : sides.length
         ? [sectionFor(zoneById.get(sides[0].id), {
             id: sides[0].id,
-            label: 'Both sides, mirrored',
+            label: sides.length === 2 || sides.length === 4 ? 'Both sides, mirrored' : `All ${sides.length} sides, mirrored`,
             mirroredSides: sides.slice(1).map(side => side.id),
           })]
         : [];

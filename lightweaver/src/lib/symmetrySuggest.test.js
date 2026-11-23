@@ -137,7 +137,8 @@ test('four curved wings that only reflect still make four sides', () => {
 });
 
 test('other folds and empty pieces are handled', () => {
-  assert.equal(suggestSymmetry(wings(), 3), null);
+  assert.equal(suggestSymmetry(wings(), 7), null);
+  assert.equal(suggestSymmetry(wings(), 3).sides.length, 3);
   const empty = suggestSymmetry([], 2);
   assert.equal(empty.confidence, 'low');
   assert.deepEqual(empty.sides.map(side => side.stripIds), [[], []]);
