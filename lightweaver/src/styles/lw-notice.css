@@ -231,8 +231,8 @@
     bottom: calc(var(--lw-statusbar-h, 32px) + 8px);
     width: auto;
   }
-  .lw-notice-act, .lw-notice-close { min-height: 44px; }
-  .lw-notice-close { min-width: 44px; }
+  .lw-notice-act, .lw-notice-close { min-height: var(--lw-tap, 44px); }
+  .lw-notice-close { min-width: var(--lw-tap, 44px); }
 }
 
 /* ============================================================

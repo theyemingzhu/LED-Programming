@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { testPort } from './testPort.mjs';
+import { MIN_TAP } from './harness/tapSize';
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -559,7 +560,7 @@ test('AP setup waits for a verified join and offers a bounded manual gallery rec
   for (const button of [openSetup, reconnect]) {
     const box = (await button.boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(390);
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
   await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-narrow.png', fullPage: true });
   await reconnect.scrollIntoViewIfNeeded();
@@ -1838,7 +1839,7 @@ test('Card section navigation becomes one compact switcher on a 390px viewport',
   const hardware = page.getByTestId('card-hardware-fold');
   const summary = hardware.locator('summary');
   await expect(summary).toBeVisible();
-  expect(await summary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
+  expect(await summary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(MIN_TAP);
 
   await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=settings$/);

@@ -52,7 +52,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 .cl-tabs { display: flex; gap: 18px; margin: 10px 0; border-bottom: 1px solid #31392e; }
 .cl-installation + .cl-tabs { margin-top: 6px; }
 .cl-tabs button {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   background: none;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -89,7 +89,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 }
 
 .cl-button {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 6px 11px;
   border: 1px solid #505a48;
   border-radius: 6px;
@@ -118,7 +118,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 .cl-installation .cl-button:hover:not(:disabled)::before { background: #252d20; border-color: #869176; }
 .cl-primary { background: #dec49a; color: #1a2116; border-color: #dec49a; }
 .cl-primary:hover:not(:disabled) { background: #efd6ad; }
-.cl-text-button { min-height: 44px; padding: 0; border: 0; background: transparent; color: #dec49a; font-size: 13px; }
+.cl-text-button { min-height: var(--lw-tap, 44px); padding: 0; border: 0; background: transparent; color: #dec49a; font-size: 13px; }
 
 .cl-connect { max-width: 550px; margin: 8px auto 16px; text-align: center; }
 .cl-eyebrow { color: #d5b789; font-size: 13px; overflow-wrap: anywhere; }
@@ -140,7 +140,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.cl-message button { flex-shrink: 0; min-height: 44px; border: 0; background: transparent; text-decoration: underline; }
+.cl-message button { flex-shrink: 0; min-height: var(--lw-tap, 44px); border: 0; background: transparent; text-decoration: underline; }
 .cl-error { background: #32251e; border-color: #78513b; color: #f0c5ad; }
 .cl-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -165,7 +165,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 .cl-duration input { width: 76px; text-align: center; }
 .cl-duration [role=alert] { color: #f0c5ad; }
 .cl-duration input, .cl-add-row select {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 8px;
   border: 1px solid #505a48;
   border-radius: 7px;
@@ -174,7 +174,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
   font-size: 14px;
 }
 .cl-row-actions { display: flex; gap: 4px; }
-.cl-row-actions button { min-width: 44px; min-height: 44px; background: #212b1d; border: 1px solid #485541; border-radius: 5px; }
+.cl-row-actions button { min-width: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); background: #212b1d; border: 1px solid #485541; border-radius: 5px; }
 .cl-add-row { display: flex; gap: 8px; margin-top: 10px; }
 .cl-add-row select { min-width: 0; flex: 1; }
 .cl-playlist-footer { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 0; color: #aab0a4; font-size: 12px; }

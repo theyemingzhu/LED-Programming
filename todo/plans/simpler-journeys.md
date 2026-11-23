@@ -166,7 +166,7 @@ Branch `claude/mobile-ux` (on top of `claude/simpler-journeys-build`). One style
 5. Added by Adrian mid-build ("far too big … I'm not blind"): one smaller scale on every phone screen. Titles 17/15, panel padding 10–12, block gaps 8–10, button side-padding 12, no primary glow, no focus box around a focused title. The update screen now fits on one screen above the tab bar.
 
 **Decisions:**
-- Buttons keep the 44 px tap height. About 38 existing checks across 18 specs enforce it, and it is the phone tap minimum. Going lower (36 px) is Adrian's call, not done.
+- Phone controls are 36 px tall (Adrian, 2026-11-23: "36"). One token, `--lw-tap`, read by every component sheet: 44 px by default, 36 px only in `lw-phone.css`, so desktop, touch tablets and the card page keep 44 px. Tests share `MIN_TAP` from `tests/harness/tapSize.ts`.
 - Not on the phone: Workshop (Batch production needs USB, which phone browsers lack) and "Preview short strip" (a bench tool with its own row of controls).
 
 **Rejected:**
@@ -183,7 +183,7 @@ Branch `claude/mobile-ux` (on top of `claude/simpler-journeys-build`). One style
 2. His correction mid-build: "some of the boxes and icons are far too big, and buttons far too big, and fonts … We're trying to get as much vertical room and horizontal room as possible … Look at update the card." He then said "go" to the read-back: one smaller scale on every phone screen, buttons kept at 44px, update screen to fit one screen.
 3. "Why does the number 41 take up half the screen? … things that are very out of scale and alignment." Fixed with the one-scale pass and a test that guards it.
 
-**Still open (Adrian's call):** shrinking buttons below the 44px tap height (38 checks enforce 44px). Asked, not answered.
+**Decided 2026-11-23:** 36 px phone controls (see the decisions list).
 
 **Last verified (before the hold):** `tests/phone-shell.spec.ts` 8/8; 22 related specs compared with base, no regressions; mobile config has the same 2 reds as base (pattern-lab-isolation:239, setup-phone:75).
 

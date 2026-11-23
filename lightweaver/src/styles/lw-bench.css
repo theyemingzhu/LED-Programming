@@ -132,7 +132,7 @@
 }
 
 .lwb-btn-compact {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
 }
 
 .lwb-btn:focus-visible,
@@ -196,7 +196,7 @@
 .lwb-nav .btn {
   flex: 1;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   justify-content: center;
 }
 
@@ -242,7 +242,7 @@
 }
 
 .lwb-quiz-open {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   white-space: nowrap;
 }
 
@@ -313,7 +313,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0 12px;
   border-radius: 9px;
   background: var(--bg-elev);

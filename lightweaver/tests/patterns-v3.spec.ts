@@ -7,6 +7,7 @@ import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
 import { createDefaultKaleidoscope } from '../src/lib/kaleidoscope.js';
 import { compileWiring } from '../src/lib/wiringCompiler.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { MIN_TAP } from './harness/tapSize';
 
 // These specs assert on the EXACT mockup PatternScreen that now ships
 // (src/v3/lw-pattern.jsx). The DOM is the mockup's own: .pm wrapper, .pmcard
@@ -563,7 +564,7 @@ test('preview toolbar is one compact desktop row and the redundant card panel is
   const rowY = metadataBox!.y;
   for (const box of [previousBox!, targetBox!, nextBox!, toggleBox!]) {
     expect(Math.abs(box.y - rowY)).toBeLessThanOrEqual(1);
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
   expect(controlsBox!.height).toBeLessThanOrEqual(44);
   // The redundant "Card" panel must stay gone from the Patterns screen itself

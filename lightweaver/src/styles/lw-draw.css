@@ -72,10 +72,10 @@
 /* Touch: everything tappable in these new controls meets 44px */
 @media (pointer: coarse) {
   .la-add-strip-chooser .btn.lw-shape-tile { min-height: 56px; }
-  .lw-led-nudge .btn { min-width: 44px; height: 44px; }
+  .lw-led-nudge .btn { min-width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); }
   .lw-shape-count input[type=number],
-  .lw-led-nudge input[type=number] { height: 44px; }
-  .la-size-ctrl .btn { min-width: 44px; height: 44px; }
+  .lw-led-nudge input[type=number] { height: var(--lw-tap, 44px); }
+  .la-size-ctrl .btn { min-width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); }
 }
 .la-total-leds {
   display: block;

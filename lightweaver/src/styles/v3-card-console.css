@@ -217,7 +217,7 @@
 /* ── controls: the same physical language as the panel ───── */
 
 .card-workspace-screen .btn {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0 20px;
   border-radius: 8px;
   font-size: 13.5px;
@@ -234,7 +234,7 @@
   border: 1px solid var(--accent-hi);
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25), 0 4px 14px color-mix(in srgb, var(--accent) 38%, transparent);
 }
-.card-workspace-screen .btn-lg { min-height: 44px; height: auto; border-radius: 8px; }
+.card-workspace-screen .btn-lg { min-height: var(--lw-tap, 44px); height: auto; border-radius: 8px; }
 .card-workspace-screen .btn-lg.ghost {
   color: var(--text-hi);
   background: var(--bg-elev-2);
