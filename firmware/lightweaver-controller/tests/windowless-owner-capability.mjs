@@ -20,12 +20,43 @@ assert.match(header, /cardId[\s\S]*bootId[\s\S]*allowedOrigin[\s\S]*host[\s\S]*n
 assert.match(source, /constantTimeTokenEqual/, 'bearer tokens use constant-time comparison');
 assert.match(source, /revoke\(\)/, 'mismatch and expiry paths revoke the active capability');
 assert.match(source, /\/api\/owner\/capability/, 'firmware exposes an explicit owner-capability issuance endpoint');
-assert.match(source, /runtimeOwnerPairingAuthorized\(\)/,
-  'issuance is gated by commissioning authority or deliberate physical presence');
+// 2026-11-23: nothing on the card requires a physical touch. An installed
+// artwork cannot be reached, so a control press authorises nothing. Issuance
+// rests on the allowed origin plus the exact card, boot and project head.
+assert.match(source, /lightweaverOwnerIssueDecision\(\s*ownerOriginAllowed\(origin, host\), binding\.cardId == runtimeCardId\(\),\s*binding\.bootId == runtimeBootId\(\),\s*expectedHead == lightweaverProjectRepository\(\)\.currentHead\(\)\)/,
+  'issuance is decided by origin and the exact card, boot and project head');
+assert.match(source, /OriginRefused\)[\s\S]{0,200}send\(403[\s\S]{0,120}origin is not allowed/,
+  'a wrong origin is still refused with 403');
+assert.match(source, /BindingChanged\)[\s\S]{0,200}send\(409[\s\S]{0,120}card, boot, or project head changed/,
+  'a wrong card, boot or project head is still refused with 409');
 assert.doesNotMatch(source, /corsOriginAllowed\([^)]*\)[\s\S]{0,120}issue\(/,
-  'an allowed/same origin alone must not issue ownership');
+  'an allowed origin alone must not issue ownership: the exact binding is checked first');
 assert.match(runtime, /runtimeNetworkIdentity\(\)/);
-assert.match(runtime, /runtimeOwnerPairingAuthorized\(\)/);
+const touchAuthority = /runtimeOwnerPairingAuthorized|touch a card control|physical confirmation|physicalConfirmationNonce/;
+const paths = {
+  'owner permission': 'LightweaverOwnerCapability.cpp',
+  recordings: 'LightweaverMedia.cpp',
+  'project store': 'LightweaverProjectRepository.cpp',
+  'live streaming': 'LightweaverHttpFrameStream.cpp',
+  'firmware update': 'LightweaverFirmwareUpdate.cpp',
+  runtime: 'main.cpp',
+  'runtime api': 'LightweaverRuntimeApi.h',
+  'card page': 'LightweaverWeb.cpp',
+};
+for (const [name, file] of Object.entries(paths)) {
+  assert.doesNotMatch(readFileSync(join(sourceRoot, file), 'utf8'), touchAuthority,
+    `${name} must not wait for or ask for a touch on the card`);
+}
+for (const file of ['LightweaverMedia.cpp', 'LightweaverProjectRepository.cpp',
+  'LightweaverHttpFrameStream.cpp', 'LightweaverFirmwareUpdate.cpp']) {
+  assert.match(readFileSync(join(sourceRoot, file), 'utf8'),
+    /lightweaverOwnerCapability\(\)\.validate\(/,
+    `${file} still validates the owner permission against its exact binding`);
+}
+// The controls still work as controls: a press is recorded and reported.
+const mainSource = readFileSync(join(sourceRoot, 'main.cpp'), 'utf8');
+assert.match(mainSource, /lastControlEventAt = millis\(\)/);
+assert.match(mainSource, /doc\["controls"\]\["lastEventAtMs"\] = lastControlEventAt/);
 assert.match(web, /registerLightweaverOwnerCapability/);
 assert.match(web, /projectHead/,
   'status exposes the exact editable-project head used to bind owner capabilities');
@@ -61,7 +92,44 @@ static LightweaverOwnerBinding binding() {
   return b;
 }
 
+// A configured card on a wall: nobody has touched a control since power-on.
+// The decision takes no touch input at all, so there is nothing to wait for.
+static void issuedWithoutTouch() {
+  using D = LightweaverOwnerIssueDecision;
+  assert(lightweaverOwnerIssueDecision(true, true, true, true) == D::Issue);
+  assert(lightweaverOwnerIssueDecision(false, true, true, true) == D::OriginRefused);
+  assert(lightweaverOwnerIssueDecision(false, false, false, false) == D::OriginRefused);
+  assert(lightweaverOwnerIssueDecision(true, false, true, true) == D::BindingChanged);
+  assert(lightweaverOwnerIssueDecision(true, true, false, true) == D::BindingChanged);
+  assert(lightweaverOwnerIssueDecision(true, true, true, false) == D::BindingChanged);
+  // Recordings, the project store, live streaming and the firmware update
+  // all present this one permission through validate(). Issued with no
+  // touch, it is accepted for the exact binding and refused for a wrong
+  // origin, card, boot, project head, session or generation.
+  {
+    LightweaverOwnerCapability permission;
+    auto exact = binding();
+    assert(permission.issue(exact, "token-path", 1000));
+    assert(permission.validate("token-path", exact, 1001) == LightweaverOwnerValidation::Accepted);
+    for (int field = 0; field < 6; field++) {
+      LightweaverOwnerCapability fresh;
+      assert(fresh.issue(exact, "token-path", 1000));
+      auto wrong = exact;
+      if (field == 0) wrong.allowedOrigin = "https://example.com";
+      if (field == 1) wrong.cardId = "lw-other";
+      if (field == 2) wrong.bootId = "boot-b";
+      if (field == 3) wrong.expectedProjectHead = "head-z";
+      if (field == 4) wrong.ownerSessionId = "owner-b";
+      if (field == 5) wrong.operationGeneration = 8;
+      assert(fresh.validate("token-path", wrong, 1001) == LightweaverOwnerValidation::BindingMismatch);
+      // A refused binding also ends the permission.
+      assert(fresh.validate("token-path", exact, 1002) == LightweaverOwnerValidation::Missing);
+    }
+  }
+}
+
 int main() {
+  issuedWithoutTouch();
   LightweaverOwnerCapability capability;
   auto expected = binding();
   LightweaverOwnerCapability retry;

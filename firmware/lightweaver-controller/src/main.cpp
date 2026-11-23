@@ -2752,13 +2752,6 @@ String runtimeNetworkIdentity() {
   return identity;
 }
 
-bool runtimeOwnerPairingAuthorized() {
-  if (!runtimeConfig.knownGoodProject || factoryBeaconMode || safeDiscoveryMode)
-    return true;
-  if (lastControlEvent == CONTROL_NONE || lastControlEventAt == 0) return false;
-  return millis() - lastControlEventAt <= 30000;
-}
-
 uint32_t runtimeWiringProbationRemainingMs() {
   if (!wiringProbationActive) return 0;
   int32_t remaining = int32_t(wiringProbationDeadlineMs - millis());

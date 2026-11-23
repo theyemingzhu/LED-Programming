@@ -50,6 +50,21 @@ class LightweaverOwnerCapability {
   uint32_t leaseEpoch_ = 0;
 };
 
+// Whether the card hands out an owner permission. No physical touch is part
+// of this: an installed artwork cannot be reached, so a control press never
+// authorises anything (Adrian, 2026-11-23). What still has to hold is the
+// exact identity of the request: an allowed page origin, this card, this
+// boot, and the project the caller believes the card is running.
+enum class LightweaverOwnerIssueDecision : uint8_t { Issue, OriginRefused, BindingChanged };
+
+inline LightweaverOwnerIssueDecision lightweaverOwnerIssueDecision(
+    bool originAllowed, bool cardMatches, bool bootMatches, bool projectHeadMatches) {
+  if (!originAllowed) return LightweaverOwnerIssueDecision::OriginRefused;
+  if (!cardMatches || !bootMatches || !projectHeadMatches)
+    return LightweaverOwnerIssueDecision::BindingChanged;
+  return LightweaverOwnerIssueDecision::Issue;
+}
+
 bool constantTimeTokenEqual(const String& left, const String& right);
 LightweaverOwnerCapability& lightweaverOwnerCapability();
 void registerLightweaverOwnerCapability(WebServer& server);

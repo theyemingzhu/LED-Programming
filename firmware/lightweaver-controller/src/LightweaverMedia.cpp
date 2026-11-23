@@ -190,7 +190,7 @@ bool authorize(JsonVariantConst source, LightweaverOwnerBinding& owner) {
   return true;
 }
 
-// Begin consumes a fresh physical owner capability. Upload ID then acts only as
+// Begin consumes a fresh owner capability (no card touch is involved). Upload ID then acts only as
 // a short, file-scoped lease: the general capability's 60-second TTL is not
 // extended, and this lease cannot alter config or read any other file.
 bool authorizeTransfer(JsonVariantConst source, LightweaverOwnerBinding& owner) {

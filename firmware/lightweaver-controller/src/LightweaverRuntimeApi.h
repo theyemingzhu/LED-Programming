@@ -167,9 +167,6 @@ uint16_t runtimeNativeArmedZoneMask();
 bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
                            size_t pixelCount, bool physicalOrder);
 String runtimeNetworkIdentity();
-// Existing blank-card commissioning authority, or a recent deliberate action
-// on a physical card control. Same-origin HTTP reachability is never enough.
-bool runtimeOwnerPairingAuthorized();
 
 // Live per-zone tweak persistence (power-cycle resume). The data model and
 // its NVS-backed load/save/clear live in LightweaverStorage.h/.cpp; these are
