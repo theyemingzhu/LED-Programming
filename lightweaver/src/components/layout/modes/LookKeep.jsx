@@ -38,15 +38,15 @@ export function LookKeep({ model, fold }) {
              value={draft} maxLength={DESIGNED_NAME_MAX} placeholder={open ? open.name : 'Name this look'} spellCheck={false}
              onChange={event => setDraft(event.target.value)}
              onKeyDown={event => { if (event.key === 'Enter') keep(); }}/>
-      <div className="ld-pair">
+      <div className="ld-stack">
         <button type="button" className="btn" data-testid="look-designer-keep-button" onClick={keep}>Keep this look</button>
         {open && (
-          <button type="button" className="btn" data-testid="look-designer-keep-replace" onClick={replace}>
+          <button type="button" className="btn" data-testid="look-designer-keep-replace" aria-label={`Replace "${open.name}"`} onClick={replace}>
             Replace "{open.name}"
           </button>
         )}
       </div>
-      <p className="la-symmetry-note" role="status" data-testid="look-designer-keep-say">
+      <p className={`la-symmetry-note ld-keep-say${state.keepSay ? ' is-said' : ''}`} role="status" data-testid="look-designer-keep-say">
         {state.keepSay || 'Kept looks stay in this project and play in Studio only, until a card update.'}
       </p>
     </div>

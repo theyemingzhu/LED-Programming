@@ -213,3 +213,9 @@
 .ld-kept-tag { flex: none; color: var(--text-lo); font-size: 11px; }
 .la .ld .ld-kept-remove { min-height: 34px; }
 @media (pointer: coarse), (max-width: 600px) { .la .ld .ld-kept-open, .la .ld .ld-kept-remove, .la .ld .ld-keep-name { min-height: 44px; } }
+
+/* Keep: one full-width button per row, so a long target name wraps instead of being cut by the panel edge. */
+.ld-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.la .ld .ld-stack .btn { height: auto; min-height: 34px; padding-block: 6px; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; text-align: center; justify-content: center; }
+/* What Keep has just said reads at normal strength. */
+.la .ld .ld-keep-say.is-said { color: var(--text-hi); font-size: 12.5px; overflow-wrap: anywhere; }
