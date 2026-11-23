@@ -2,16 +2,6 @@
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
   "waiting": [
     {
-      "id": "relative-look-tuning-default-boot",
-      "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
-      "why": "Not yet proven on a card. The refusals seen on the 1.2.5 candidate 4e254c3b (23 Nov 2026) were not caused by this change: they were the older client-pattern save fault (a save straight after a query GET is refused), which my direct test triggered and which is in signed 1.2.4 too. It needs a re-check through Studio's real save path (POST /api/config) and the phone player before it is sent.",
-      "added": "2026-11-17",
-      "source": {
-        "kind": "patch",
-        "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
-      }
-    },
-    {
       "id": "client-pattern-after-query-get",
       "what": "Let a look save through the phone player go through when it comes straight after reading that look's settings.",
       "why": "On every card since 1.2.4, a look save sent right after a GET /api/client-pattern?patternId=… is refused with \"invalid pattern envelope\": the GET's query argument is still counted when the save is checked. No owner path reaches it today: Studio saves looks through /api/config, and the phone player reads the card status before each save, which clears it. One line in handleClientPatternPost plus a host test; it rides the next card release.",
@@ -29,6 +19,16 @@
       "source": {
         "kind": "branch",
         "branch": "claude/card-memory-recordings"
+      }
+    },
+    {
+      "id": "card-no-touch",
+      "what": "The card no longer asks anyone to touch it before saving a project, loading a recording, streaming or updating.",
+      "why": "It rides with the card-memory recordings change it is built on, and Studio's wording has to change with it.",
+      "added": "2026-11-23",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/card-no-touch"
       }
     }
   ]
