@@ -4,11 +4,21 @@
     {
       "id": "relative-look-tuning-default-boot",
       "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
-      "why": "FAILED the bench check on 23 Nov 2026 (card update 1.2.5 candidate 4e254c3b): after one tuned save, every later look save got 400 \"invalid pattern envelope\" (6 of 6), so a tuning cannot be undone. Do not send it until that is fixed and re-checked on a card. Left out of 1.2.5.",
+      "why": "Not yet proven on a card. The refusals seen on the 1.2.5 candidate 4e254c3b (23 Nov 2026) were not caused by this change: they were the older client-pattern save fault (a save straight after a query GET is refused), which my direct test triggered and which is in signed 1.2.4 too. It needs a re-check through Studio's real save path (POST /api/config) and the phone player before it is sent.",
       "added": "2026-11-17",
       "source": {
         "kind": "patch",
         "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
+      }
+    },
+    {
+      "id": "client-pattern-after-query-get",
+      "what": "Let a look save through the phone player go through when it comes straight after reading that look's settings.",
+      "why": "On every card since 1.2.4, a look save sent right after a GET /api/client-pattern?patternId=… is refused with \"invalid pattern envelope\": the GET's query argument is still counted when the save is checked. No owner path reaches it today: Studio saves looks through /api/config, and the phone player reads the card status before each save, which clears it. One line in handleClientPatternPost plus a host test; it rides the next card release.",
+      "added": "2026-11-23",
+      "source": {
+        "kind": "patch",
+        "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
       }
     }
   ]
