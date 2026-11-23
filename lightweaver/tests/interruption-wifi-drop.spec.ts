@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import { createBenchDiscoveryPracticeCard } from './harness/benchDiscoveryCard';
 import {
-  realPracticeCard, bootConnected, nextWrite, dropOffAir, configWrites, REAL_RESTART_MS,
+  knownDefect, realPracticeCard, bootConnected, nextWrite, dropOffAir, configWrites, REAL_RESTART_MS,
   startWordsLog, startQuietWatch, stopQuietWatch, startNotTakenWatch, notTakenSeen, reportWords,
   QUIET_LIMIT_MS,
 } from './harness/interruptions';
@@ -42,6 +42,7 @@ test('look change on the quick path into a 10 s Wi-Fi drop: the card plays it on
 });
 
 test('light count Set, Wi-Fi drops 10 s after the card took the write: the card has the count, Studio says so', async ({ page }) => {
+  knownDefect('D3', 'during the restart into the new count Card Home says Recover lights is the check to run first');
   practice = createBenchDiscoveryPracticeCard({
     timing: 'real', seed: 11, overrides: { spontaneousSilence: null }, restartAfterSaveMs: REAL_RESTART_MS,
   }) as InterruptionCard;

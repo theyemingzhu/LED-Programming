@@ -10,7 +10,7 @@ import { cardState } from './harness/cardStates';
 import {
   realPracticeCard, bootConnected, nextWrite, holds, lastSent, configWrites, REAL_RESTART_MS,
   startWordsLog, startQuietWatch, stopQuietWatch, startNotTakenWatch, notTakenSeen, reportWords,
-  QUIET_LIMIT_MS,
+  QUIET_LIMIT_MS, knownDefect,
 } from './harness/interruptions';
 import type { InterruptionCard } from './harness/interruptions';
 
@@ -84,4 +84,20 @@ test('Save pressed again during the first save\'s restart wait, after an edit: S
   }
   expect.soft(await notTakenSeen(page)).toEqual([]);
   expect.soft(quiet.gapMs, `longest wait with nothing on screen began at: ${quiet.gapText}`).toBeLessThan(QUIET_LIMIT_MS);
+});
+
+test('a look tapped during a save\'s normal restart wait: Studio says the card is restarting, not that it needs recovery', async ({ page }) => {
+  knownDefect('D4', 'a tap during the save restart says "not ready for pattern commands. Recover and verify it"');
+  practice = realPracticeCard(cardState('playing'));
+  const button = await openPatternsWithEdit(page, practice);
+  await startNotTakenWatch(page, ['recover and verify', 'not ready for pattern commands']);
+  const write = nextWrite(practice.card);
+  await button.click();
+  await write;
+  await expect(page.getByText(/Restarting (the )?card/).first()).toBeVisible({ timeout: 10_000 });
+  await page.waitForTimeout(4_000);
+  await page.locator('[data-pattern-id="plasma"]').first().click();
+  await page.waitForTimeout(3_000);
+  expect.soft(await notTakenSeen(page), 'recovery advice during a normal restart').toEqual([]);
+  await expect(button).toHaveText(/Saved/, { timeout: REAL_RESTART_MS + 40_000 });
 });

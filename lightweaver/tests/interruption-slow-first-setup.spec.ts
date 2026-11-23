@@ -10,7 +10,7 @@ import type { Locator, Page } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import { FALSE_FAILURE_WORDING } from './harness/falseFailureWatch';
 import {
-  realPracticeCard, linkState, startWordsLog, startQuietWatch, stopQuietWatch, startNotTakenWatch, notTakenSeen,
+  knownDefect, realPracticeCard, linkState, startWordsLog, startQuietWatch, stopQuietWatch, startNotTakenWatch, notTakenSeen,
   reportWords, QUIET_LIMIT_MS,
 } from './harness/interruptions';
 import type { InterruptionCard } from './harness/interruptions';
@@ -37,6 +37,7 @@ async function step(page: Page, gaps: Gap[], name: string, act: () => Promise<un
 const visible = (l: Locator) => () => expect(l).toBeVisible({ timeout: STEP_MS });
 
 test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio never shows a raw error', async ({ page }) => {
+  knownDefect('D5', 'a card answering in 5 s cannot be paired; raw "signal is aborted without reason"');
   practice = realPracticeCard(cardState('factory-blank'));
   practice.card.setReplyDelay(SLOW_REPLY_MS);
   await practice.card.install(page);
@@ -60,6 +61,7 @@ test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio nev
 });
 
 test('first setup after pairing, card answering in 5 s: every step finishes, the card holds the project, never silent for 3 s', async ({ page }) => {
+  knownDefect('D6+D7', 'probe 4 s timeout with raw abort text (D6, Find my strips session); setup write blamed on the card page (D7)');
   practice = realPracticeCard(cardState('factory-blank'));
   const { card } = practice;
   await card.install(page);

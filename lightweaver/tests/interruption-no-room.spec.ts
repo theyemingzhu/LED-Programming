@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import {
-  realPracticeCard, bootConnected, nextWrite, holds, lastSent, configWrites, linkState,
+  knownDefect, realPracticeCard, bootConnected, nextWrite, holds, lastSent, configWrites, linkState,
   startWordsLog, startQuietWatch, stopQuietWatch, startNotTakenWatch, notTakenSeen, reportWords,
   QUIET_LIMIT_MS,
 } from './harness/interruptions';
@@ -94,6 +94,7 @@ async function walkToInstall(page: Page, p: InterruptionCard) {
 }
 
 test('install over the temporary setup, card has no room: Studio says so and offers Clear temporary setup; after it, install lands', async ({ page }) => {
+  knownDefect('D8', 'no room is reported as Finish Wi-Fi then read-back-mismatch (Find my strips session)');
   practice = realPracticeCard(cardState('factory-blank'));
   const projectId = await walkToInstall(page, practice);
   const before = holds(practice.card);

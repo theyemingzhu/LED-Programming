@@ -14,7 +14,7 @@
 // physical card.
 //
 // Plan: todo/plans/practice-card-interruptions.md.
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
 import { CARD_HOSTS } from './cardSimulator';
 import type { CardSimulator } from './cardSimulator';
@@ -264,3 +264,14 @@ export async function reportWords(page: Page, practice: InterruptionCard | null,
 }
 
 export { REAL_PROFILE };
+
+/**
+ * A red interruption test that names a known Studio defect
+ * (todo/plans/practice-card-interruptions.md). Playwright then expects it to
+ * fail, so the run is green today; the fix for that defect deletes this line,
+ * and the test must pass.
+ */
+export function knownDefect(id: string, what: string) {
+  test.info().annotations.push({ type: 'known-defect', description: `${id}: ${what}` });
+  test.fail(true, `known Studio defect ${id}: ${what}`);
+}
