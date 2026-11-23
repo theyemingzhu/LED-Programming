@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { claimFirstInstallCheck, getFirstInstallState, releaseFirstInstallCheck, resetFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
-import { FirstInstallLightCheck } from './FirstInstallLightCheck.jsx';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { getFirstInstallState, resetFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { useFirstSaveApplies } from './FirstSaveOrFind.jsx';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
@@ -194,20 +193,6 @@ export function CardInstallAction({
     ? `${installedPixelCount === draftPixelCount ? `${draftPixelCount} configured pixels unchanged` : `${installedPixelCount} → ${draftPixelCount} configured pixels`}; ${pinsUnchanged ? 'GPIOs unchanged' : `outputs change to ${draftPins.map(pin => `GPIO ${pin}`).join(', ')}`}. Section and pattern changes are not yet compared.`
     : `Installed configuration not yet compared. Your draft has ${draftPixelCount} configured pixels on ${draftPins.map(pin => `GPIO ${pin}`).join(', ') || 'unassigned outputs'}.`;
 
-  const checkOwnerRef = useRef(null);
-  if (!checkOwnerRef.current) checkOwnerRef.current = {};
-  const [ownsCheck, setOwnsCheck] = useState(false);
-  useEffect(() => {
-    if (firstInstall !== 'checking' || compact) { setOwnsCheck(false); return undefined; }
-    setOwnsCheck(claimFirstInstallCheck(checkOwnerRef.current));
-    const owner = checkOwnerRef.current;
-    return () => releaseFirstInstallCheck(owner);
-  }, [firstInstall, compact]);
-  const finishCheck = ({ colourFixed = false } = {}) => {
-    releaseFirstInstallCheck(checkOwnerRef.current);
-    setFirstInstall('done');
-    window.location.hash = colourFixed ? '#screen=card&section=setup' : '#screen=pattern';
-  };
   if (firstSaveOnly && !firstSaveApplies) return null;
 
   // The full Check-and-install surface stands down while Setup owns the next
@@ -258,16 +243,8 @@ export function CardInstallAction({
           disabled={!installGate.allowed}
         />
       ) : firstInstall === 'checking' ? (
-        ownsCheck ? (
-          <FirstInstallLightCheck
-            host={cardHost || cardLink.host}
-            transport={cardLink.transport}
-            onDone={finishCheck}
-            onOpenLayout={() => { releaseFirstInstallCheck(checkOwnerRef.current); setFirstInstall('done'); onEditInWire?.(); }}
-          />
-        ) : (
-          <p className="lww-flow-message" role="status" data-testid="blank-card-checking">Checking the lights.</p>
-        )
+        // The check itself is FirstInstallCheckSheet, one app-level sheet.
+        <p className="lww-flow-message" role="status" data-testid="blank-card-checking">Checking the lights.</p>
       ) : firstInstall === 'done' ? (
         // Installed; never offer the blank-card save again on a card that is no
         // longer blank (a second press would be refused as a false failure).

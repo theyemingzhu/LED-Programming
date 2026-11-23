@@ -1082,6 +1082,7 @@ export function SetupScreen({
               project whose wiring is known get the project in one save, then a
               light check. Otherwise finding comes first, as before. */}
           <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
             firstSave={(
               <CardInstallAction
                 firstSaveOnly
@@ -1143,10 +1144,25 @@ export function SetupScreen({
           // (setup-open-patterns) for the identical click, and this rung used
           // to print the same button a second time directly beneath it, with
           // a paragraph describing an install that had already happened.
-          <>
-            <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
-          </>
+          // A blank card takes the whole project in one save right here, then
+          // the light check (Find my strips way in 1). Otherwise as before.
+          <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <>
+                <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
+                <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
+              </>
+            )}
+          />
         ) : null}
       </div>
     );

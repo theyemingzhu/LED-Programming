@@ -34,18 +34,5 @@ export function subscribeFirstInstallState(listener) {
   return () => listeners.delete(listener);
 }
 
-// After a first install succeeds the phase is 'checking': the light check
-// (FirstInstallLightCheck) runs before the panel hands on. Several install
-// panels can be on screen, and a rebuilt panel is a new instance, so exactly
-// one claims the check: the first to ask, until it lets go (unmount).
-let checkOwner = null;
-export function claimFirstInstallCheck(owner) {
-  if (checkOwner === null || checkOwner === owner) {
-    checkOwner = owner;
-    return true;
-  }
-  return false;
-}
-export function releaseFirstInstallCheck(owner) {
-  if (checkOwner === owner) checkOwner = null;
-}
+// 'checking': a first install succeeded and its light check is open
+// (FirstInstallCheckSheet, one app-level owner). The check sets 'done'.

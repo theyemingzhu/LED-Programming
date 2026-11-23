@@ -65,11 +65,26 @@ export async function findStrip(page: Page, {
     await j.press(page.getByTestId(`discovery-probe-${pin}`), `Tap the pin where the strip plugs in`);
     await j.press(page.getByTestId('discovery-start'), 'Yes, it lit');
   }
-  await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 60_000 });
-  await j.press(page.getByTestId(`discovery-colour-row-${colours}`), 'Tap the colours you see');
+  // The colour is measured once per setup; a further strip goes straight to its count.
+  const colourStep = page.getByTestId('discovery-color-proof');
+  await expect(colourStep.or(page.getByTestId('discovery-run'))).toBeVisible({ timeout: 60_000 });
+  if (await colourStep.isVisible()) await j.press(page.getByTestId(`discovery-colour-row-${colours}`), 'Tap the colours you see');
   await stopRunAt(page, count, j);
   await settleEndCheck(page, count);
   await j.press(page.getByTestId(addAnother ? 'discovery-end-add-strip' : 'discovery-end-yes'), addAnother ? 'Yes, and find another strip' : 'Yes, the next light is dark');
+}
+
+/**
+ * Way in 1's light check after a blank card's first save: the colour row as
+ * sent (red, green, blue), every strip's end, then on to Patterns. Frames only.
+ */
+export async function answerFirstInstallCheck(page: Page, { timeout = 120_000 } = {}) {
+  const row = page.getByTestId('first-install-colour-row-rgb');
+  await expect(row).toBeEnabled({ timeout });
+  await row.click();
+  await expect(page.getByTestId('first-install-ends-yes')).toBeEnabled({ timeout: 30_000 });
+  await page.getByTestId('first-install-ends-yes').click();
+  await page.getByTestId('first-install-check-done').click();
 }
 
 /** Press Stop once the running light shows `count` (or the closest it gets). */

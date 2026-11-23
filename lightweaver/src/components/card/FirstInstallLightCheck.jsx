@@ -16,14 +16,14 @@ const COLOUR_ROWS = Object.freeze([
 ]);
 const HEALTH_POLL_MS = 500;
 
-export function FirstInstallLightCheck({ host, transport, onDone, onOpenLayout }) {
+export function FirstInstallLightCheck({ host, transport, bootId = '', onDone, onOpenLayout }) {
   const { compiledWiring, standaloneController, setStandaloneController } = useProject();
   const outputs = compiledWiring?.outputs || [];
   const outputKey = outputs.map(output => `${output.pin}:${output.start}:${output.count}`).join('|');
   const savedOrder = standaloneController?.led?.colorOrder || 'GRB';
   const [step, setStep] = useState('colour');
   const [colourFix, setColourFix] = useState(null);
-  const [lit, setLit] = useState({ sent: 0, failing: false });
+  const [lit, setLit] = useState({ sent: 0, failing: false, reason: '' });
   const streamRef = useRef(null);
 
   const frame = useMemo(() => {
@@ -33,6 +33,8 @@ export function FirstInstallLightCheck({ host, transport, onDone, onOpenLayout }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, outputKey, colourFix]);
 
+  // A stream is bound to the boot it started on; the first save restarts the
+  // card, so a new boot gets a new stream (and the frame is pushed again).
   useEffect(() => {
     const stream = createCardFrameStream({ host, transport });
     streamRef.current = stream;
@@ -40,8 +42,9 @@ export function FirstInstallLightCheck({ host, transport, onDone, onOpenLayout }
     const timer = setInterval(() => {
       const stats = stream.getStats?.() || {};
       setLit(current => {
-        const next = { sent: Number(stats.sentFrames) || 0, failing: (Number(stats.consecutiveFailures) || 0) > 0 };
-        return next.sent === current.sent && next.failing === current.failing ? current : next;
+        const failing = (Number(stats.consecutiveFailures) || 0) > 0;
+        const next = { sent: Number(stats.sentFrames) || 0, failing, reason: failing ? String(stats.lastError?.reason || stats.lastError?.message || '') : '' };
+        return next.sent === current.sent && next.failing === current.failing && next.reason === current.reason ? current : next;
       });
     }, HEALTH_POLL_MS);
     return () => {
@@ -49,11 +52,11 @@ export function FirstInstallLightCheck({ host, transport, onDone, onOpenLayout }
       streamRef.current = null;
       void stream.stop();
     };
-  }, [host, transport]);
+  }, [host, transport, bootId]);
 
   useEffect(() => {
     if (frame && streamRef.current) streamRef.current.push(frame);
-  }, [frame]);
+  }, [frame, bootId]);
 
   // Nothing to answer until the strip shows what the question is about.
   const waiting = lit.sent === 0 || lit.failing;
@@ -130,7 +133,7 @@ export function FirstInstallLightCheck({ host, transport, onDone, onOpenLayout }
         </>
       )}
       {waiting && step !== 'done' && step !== 'fix' && (
-        <p className="strip-discovery-note" role="status" data-testid="first-install-check-wait">
+        <p className="strip-discovery-note" role="status" data-testid="first-install-check-wait" data-reason={lit.reason}>
           {lit.failing ? 'Waiting for the card to take the lights. It may still be restarting.' : 'Waiting for the card to light up.'}
         </p>
       )}

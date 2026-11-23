@@ -33,8 +33,12 @@ export function useFirstSaveApplies() {
     && compiledWiring.outputs.every(output => Number(output.count) > 0 && !isUncountedHeadroomCount(output.count)));
 }
 
-export function FirstSaveOrFind({ firstSave, find }) {
-  return useFirstSaveApplies() ? firstSave : find;
+// `elsewhere`: another mount already owns the one project write on this page
+// (Card Home's install slot under next=patterns). One Save button per page,
+// because one press must be one write.
+export function FirstSaveOrFind({ firstSave, find, elsewhere = false }) {
+  const applies = useFirstSaveApplies();
+  return applies && !elsewhere ? firstSave : find;
 }
 
 export default FirstSaveOrFind;
