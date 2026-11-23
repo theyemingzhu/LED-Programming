@@ -52,3 +52,8 @@ test('a save notices when another window changed the card first', () => {
   assert.equal(cardChangedSinceSeen(null, { projectFingerprint: 'bbbbbbbbbbbbbbbb' }), false);
   assert.equal(cardChangedSinceSeen(seen, { projectFingerprint: '' }), false);
 });
+
+test('the restarting-on-purpose refusal steps down once the card is ready, like recovery (D4)', () => {
+  assert.equal(shouldClearRecoveryGate({ access: 'ready', gate: 'restarting', raisedWhileUnready: true }), true);
+  assert.equal(shouldClearRecoveryGate({ access: 'recovery', gate: 'restarting', raisedWhileUnready: true }), false);
+});
