@@ -359,7 +359,16 @@ export async function installBenchConfig({
   // itself — without this the card kept running the OLD pixel buffers and never
   // reached the new config at all.
   if (response?.rebooting !== true && benchConfigNeedsReboot(response)) {
-    await rebootImpl(host, { fetchImpl });
+    try {
+      await rebootImpl(host, { fetchImpl });
+    } catch (rebootError) {
+      // The card already accepted the setup. A reboot request that got no
+      // answer is a slow card, and firmware restarts on its own within 5 s
+      // of an accepted save anyway — the ready-wait below is what decides.
+      // Saying "could not be set up" here was a failure about a write that
+      // landed (interruption test D7). A card that answered and refused still fails.
+      if (!isTimedOutRead(rebootError)) throw rebootError;
+    }
   }
 
   await waitForPlaybackImpl({ host, transport, fetchImpl, ...waitOptions });

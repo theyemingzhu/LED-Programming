@@ -636,3 +636,28 @@ test('a local Studio blames a slow card, not a card page, when the preflight tim
   assert.ok(BENCH_PREFLIGHT_TIMEOUT_MS >= 6000);
   assert.equal(bridged, 0, 'no card-page attempt from a local Studio');
 });
+
+test('an accepted setup whose reboot request times out still waits for the card, not "could not be set up" (D7)', async () => {
+  let waited = 0;
+  await installBenchConfig({
+    host: 'lightweaver.local',
+    config: { led: { pixels: 256 } },
+    initial: true,
+    direct: true,
+    guardImpl: async () => ({ id: 'lw-aabbccddeeff' }),
+    fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, requiresReboot: true }) }),
+    rebootImpl: async () => { const error = new Error('signal is aborted without reason'); error.name = 'AbortError'; throw error; },
+    waitForPlaybackImpl: async () => { waited += 1; },
+  });
+  assert.equal(waited, 1);
+  await assert.rejects(installBenchConfig({
+    host: 'lightweaver.local',
+    config: { led: { pixels: 256 } },
+    initial: true,
+    direct: true,
+    guardImpl: async () => ({ id: 'lw-aabbccddeeff' }),
+    fetchImpl: async () => ({ ok: true, json: async () => ({ ok: true, requiresReboot: true }) }),
+    rebootImpl: async () => { const error = new Error('card returned 403: reboot was rejected'); error.status = 403; throw error; },
+    waitForPlaybackImpl: async () => {},
+  }), /reboot was rejected/);
+});
