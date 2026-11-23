@@ -63,3 +63,56 @@ test('"these belong together" moves strips into one area by hand', () => {
   assert.ok(joined);
   assert.equal(result.areas.flatMap(a => a.copies.flat()).filter(id => id === 'rim-0').length, 1);
 });
+
+// The piece the features coordinator seeded: centre (320, 200), six petals
+// drawn as quadratic curves, six small circles that each start at their own
+// leftmost point, one centre ring; 44 lights per strip.
+function seededPiece({ reverseCircle = null } = {}) {
+  const O = { x: 320, y: 200 };
+  const at = (r, deg) => ({ x: O.x + r * Math.cos(deg * Math.PI / 180), y: O.y + r * Math.sin(deg * Math.PI / 180) });
+  const loop = (id, c, r, reverse = false) => ({
+    id,
+    pixels: Array.from({ length: 44 }, (_, i) => {
+      const a = Math.PI + (reverse ? -1 : 1) * 2 * Math.PI * i / 43; // starts at the leftmost point
+      return { x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) };
+    }),
+  });
+  const strips = [];
+  for (let k = 0; k < 6; k += 1) {
+    const th = -90 + 60 * k;
+    const [a, b, c] = [at(40, th - 9), at(105, th - 24), at(150, th)];
+    strips.push({ id: `petal-${k}`, pixels: Array.from({ length: 44 }, (_, i) => { const t = i / 43; const u = 1 - t; return { x: u * u * a.x + 2 * u * t * b.x + t * t * c.x, y: u * u * a.y + 2 * u * t * b.y + t * t * c.y }; }) });
+  }
+  for (let k = 0; k < 6; k += 1) strips.push(loop(`circle-${k}`, at(128, -60 + 60 * k), 13, reverseCircle === k));
+  strips.push(loop('centre-ring', O, 20));
+  return { strips, O };
+}
+
+test('the coordinator\'s piece: petals x6, circles x6 and a centre ring, whichever way a circle was drawn', () => {
+  for (const reverseCircle of [null, 2]) {
+    const { strips, O } = seededPiece({ reverseCircle });
+    const result = deriveAreas(strips, { fold: 6, centre: O });
+    assert.deepEqual(result.areas.map(a => [a.copies.length, a.copies[0].length]).sort(), [[1, 1], [6, 1], [6, 1]]);
+    assert.ok(result.areas.some(a => a.copies[0][0] === 'centre-ring'));
+    assert.ok(result.areas.some(a => a.copies.every(c => c[0].startsWith('circle-')) && a.copies.length === 6));
+    assert.ok(result.areas.some(a => a.copies.every(c => c[0].startsWith('petal-')) && a.copies.length === 6));
+  }
+});
+
+test('every circle copy starts in the same place: the light nearest the centre, so they chase in step', async () => {
+  const { buildPieceMap } = await import('./pieceMap.js');
+  const { strips, O } = seededPiece({ reverseCircle: 2 });
+  const derived = deriveAreas(strips, { fold: 6, centre: O });
+  const map = buildPieceMap(strips, derived, O);
+  const circleArea = derived.areas.findIndex(a => a.copies[0][0].startsWith('circle-'));
+  const nearest = new Set();
+  strips.forEach((strip, s) => {
+    if (!strip.id.startsWith('circle-')) return;
+    const from = strips.slice(0, s).reduce((n, x) => n + x.pixels.length, 0);
+    let best = 0;
+    strip.pixels.forEach((p, i) => { if (Math.hypot(p.x - O.x, p.y - O.y) < Math.hypot(strip.pixels[best].x - O.x, strip.pixels[best].y - O.y)) best = i; });
+    assert.equal(map.leds[from + best].area, circleArea);
+    nearest.add(map.leds[from + best].shape);
+  });
+  assert.deepEqual([...nearest], [0]);
+});

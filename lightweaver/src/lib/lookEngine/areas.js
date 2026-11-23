@@ -13,7 +13,7 @@
 // strip is its own area with one copy. A wrong guess here is worse than none,
 // so `together` lets the owner say "these belong together" by hand.
 //
-// Returns { areas: [{ id, name, copies: [[stripId, ...]] }], flips, source }.
+// Returns { areas: [{ id, name, copies: [[stripId, ...]] }], flips, loops, source }.
 // `flips[stripId]` is true when the strip's LED 1 is at the far end of its
 // shape (shape 0 should be the end nearer the centre, or the lead's direction).
 
@@ -45,11 +45,42 @@ function ends(strip) {
   return [points[0], points[points.length - 1]];
 }
 
+
+// A closed loop (a circle) has no true first light: each is drawn from wherever
+// its owner began, and either way round. So before matching, a loop is read
+// from the light nearest the centre, clockwise. `loops[id]` keeps how, so the
+// piece map can give every copy the same "along the shape" (see pieceMap.js).
+function isLoop(points) {
+  if (points.length < 8) return false;
+  const length = pathLength(points);
+  return dist(points[0], points[points.length - 1]) <= 2.5 * length / (points.length - 1);
+}
+
+function readLoopFromCentre(strip, centre) {
+  const points = pointsOf(strip);
+  if (!isLoop(points) || points.length !== (strip.pixels || []).length) return null;
+  let start = 0;
+  points.forEach((point, index) => { if (dist(point, centre) < dist(points[start], centre)) start = index; });
+  let area = 0;
+  points.forEach((point, index) => { const next = points[(index + 1) % points.length]; area += point.x * next.y - next.x * point.y; });
+  const dir = area >= 0 ? 1 : -1; // y grows downward: positive is clockwise on screen
+  const n = points.length;
+  return { start, dir, pixels: Array.from({ length: n }, (_, k) => points[mod(start + dir * k, n)]) };
+}
+
 const areaId = copies => `area-${copies[0][0]}`;
 
 export function deriveAreas(strips = [], { fold = 0, centre = null, together = [] } = {}) {
-  const list = (strips || []).filter(strip => strip && strip.id != null);
+  const given = (strips || []).filter(strip => strip && strip.id != null);
   const flips = {};
+  const loops = {};
+  const list = given.map(strip => {
+    const read = finite(centre) && fold >= 2 ? readLoopFromCentre(strip, centre) : null;
+    if (!read) return strip;
+    loops[strip.id] = { start: read.start, dir: read.dir };
+    flips[strip.id] = false;
+    return { ...strip, pixels: read.pixels };
+  });
   let groups = []; // each: array of copies, each copy an array of strips
   let source = 'strips';
   const positioned = list.filter(strip => pointsOf(strip).length >= 2);
@@ -112,7 +143,8 @@ export function deriveAreas(strips = [], { fold = 0, centre = null, together = [
           .sort((p, q) => p.gap - q.gap)[0];
         return { a, b: near.b, gap: near.gap };
       });
-      const touching = pairs.every(pair => pair.gap <= 0.12 * pathLength(pointsOf(pair.a)))
+      // A loop has no tip to meet at: loops never pair, they interleave.
+      const touching = pairs.every(pair => !loops[pair.a.id] && !loops[pair.b.id] && pair.gap <= 0.12 * pathLength(pointsOf(pair.a)))
         && new Set(pairs.map(pair => pair.b)).size === other.length;
       groups.push(touching ? pairs.map(pair => [pair.a, pair.b]) : [...orbit, ...other].map(strip => [strip]));
     });
@@ -157,7 +189,8 @@ export function deriveAreas(strips = [], { fold = 0, centre = null, together = [
         if (points.length < 2) continue;
         const r0 = dist(points[0], centre);
         const r1 = dist(points[points.length - 1], centre);
-        if (Math.abs(r1 - r0) > 0.25 * pathLength(points)) flips[strip.id] = r1 < r0;
+        if (loops[strip.id]) flips[strip.id] = false;
+        else if (Math.abs(r1 - r0) > 0.25 * pathLength(points)) flips[strip.id] = r1 < r0;
         else flips[strip.id] = flips[strip.id] === true;
       }
     }
@@ -166,5 +199,5 @@ export function deriveAreas(strips = [], { fold = 0, centre = null, together = [
     const ids = copies.map(copy => copy.map(strip => strip.id));
     return { id: areaId(ids), name: `Area ${index + 1}`, copies: ids };
   });
-  return { areas, flips, source };
+  return { areas, flips, loops, source };
 }

@@ -228,7 +228,8 @@ export function LayoutCanvas({
       .sort((a, b) => Number(b.id === selStripId) - Number(a.id === selStripId)).slice(0, 12),
     annotationScale, labelBounds, selStripId,
   );
-  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds;
+  // The look designer hides the name callouts and flow numbers: they would cover the piece.
+  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds && !designerActive;
   const labelledIds = new Set(labelsShown ? labels.map(label => label.strip.id) : []);
 
   // ── Symmetry by eye ────────────────────────────────────────────────────────
@@ -975,7 +976,7 @@ export function LayoutCanvas({
                 })()}
                 {/* A strip whose label is showing carries its number there;
                     the rest get a small mark just before LED 1. */}
-                {strips.filter(s => !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
+                {strips.filter(s => !designerActive && !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
                   const place = sidePlaces.get(s.id);
                   const first = s.pixels[0];
                   const next = s.pixels[Math.min(1, s.pixels.length - 1)];

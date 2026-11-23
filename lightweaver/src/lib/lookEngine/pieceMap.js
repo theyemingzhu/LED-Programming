@@ -5,7 +5,8 @@
 //   { areaIds: [id], copyCounts: [n], leds: [{ area, copy, shape, out }] }
 //     area   index into `areas` (centre first), -1 when a strip belongs to none
 //     copy   which copy of the area, clockwise from the top
-//     shape  0..1 along the LED's own shape
+//     shape  0..1 along the LED's own shape (a closed loop: from the light nearest the
+//            centre, clockwise, so each copy starts in the same place)
 //     out    0..1 from the piece centre, within its area's own range
 //
 // BYTES (encodePieceMap), little endian, 4 + 3 * LEDs:
@@ -41,7 +42,10 @@ export function buildPieceMap(strips = [], derived = { areas: [], flips: {} }, c
     const flipped = derived.flips?.[strip.id] === true;
     pixels.forEach((point, index) => {
       const radius = finite(point) ? Math.hypot(point.x - middle.x, point.y - middle.y) : 0;
-      const shape = pixels.length > 1 ? index / (pixels.length - 1) : 0;
+      const loop = derived.loops?.[strip.id];
+      // A loop is read from its start, clockwise, so every copy of it begins in the same place.
+      const shape = loop ? (((index - loop.start) * loop.dir) % pixels.length + pixels.length) % pixels.length / pixels.length
+        : pixels.length > 1 ? index / (pixels.length - 1) : 0;
       leds.push({ area: slot ? slot.area : -1, copy: slot ? slot.copy : 0, shape: flipped ? 1 - shape : shape, out: radius });
       if (slot) { range[slot.area].min = Math.min(range[slot.area].min, radius); range[slot.area].max = Math.max(range[slot.area].max, radius); }
     });
