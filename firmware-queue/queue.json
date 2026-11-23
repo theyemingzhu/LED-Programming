@@ -4,31 +4,11 @@
     {
       "id": "relative-look-tuning-default-boot",
       "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
-      "why": "UI release is independent; card firmware awaits safe restore coverage and physical output and restart verification.",
+      "why": "FAILED the bench check on 23 Nov 2026 (card update 1.2.5 candidate 4e254c3b): after one tuned save, every later look save got 400 \"invalid pattern envelope\" (6 of 6), so a tuning cannot be undone. Do not send it until that is fixed and re-checked on a card. Left out of 1.2.5.",
       "added": "2026-11-17",
       "source": {
         "kind": "patch",
         "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
-      }
-    },
-    {
-      "id": "drop-stale-rollback-record",
-      "what": "Stop the card repeating an old 'update rolled back' record after a different build has been installed.",
-      "why": "Studio already ignores the stale record (build 2476), so this is not worth a signed card update on its own; it passed its host test and compiles, but has not been bench-tested on a card.",
-      "added": "2026-11-20",
-      "source": {
-        "kind": "patch",
-        "patch": "firmware-queue/patches/drop-stale-rollback-record.patch"
-      }
-    },
-    {
-      "id": "candidate-blob",
-      "what": "Store the staged wiring candidate in a second project slot and confirm a wiring change by flipping which slot is live, so the card never needs room for another project copy.",
-      "why": "Every rewire on a card holding a full project answered candidate storage failed or candidate confirmation failed; on the bench card this build staged and confirmed 5 of 5 changes, including the blank-card Find my strips install.",
-      "added": "2026-11-22",
-      "source": {
-        "kind": "branch",
-        "branch": "claude/candidate-blob"
       }
     }
   ]

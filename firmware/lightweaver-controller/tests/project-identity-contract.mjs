@@ -57,13 +57,13 @@ assert.match(saveBody, /if \(!committed\)[\s\S]*return false;[\s\S]*config = \*p
 
 const stageEnd = storage.indexOf('bool activateStagedRuntimeConfig(', stageStart);
 const stageBody = storage.slice(stageStart, stageEnd);
-assert.match(stageBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, message\)[\s\S]*putString\(NVS_CANDIDATE_CONFIG_KEY, json\)/);
+assert.match(stageBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, message\)[\s\S]*writeCandidate\(prefs, json\)/);
 assert.doesNotMatch(stageBody, /NVS_KNOWN_GOOD_CONFIG_KEY|NVS_KNOWN_GOOD_BLOB_KEY|writeKnownGood|removeKnownGood/, 'staging must not overwrite acknowledged identity');
 
 const statusStart = storage.indexOf('String runtimeWiringSafetyStatusJson()');
 const statusEnd = storage.indexOf('bool runtimeConfigJsonChangesWiring(', statusStart);
 const statusBody = storage.slice(statusStart, statusEnd);
-for (const marker of ['NVS_CANDIDATE_CONFIG_KEY', 'activationId', 'projectRevision', 'projectFingerprint']) {
+for (const marker of ['readCandidate\\(prefs\\)', 'activationId', 'projectRevision', 'projectFingerprint']) {
   assert.match(statusBody, new RegExp(marker), 'candidate status should bind candidate identity to the card-issued activation id');
 }
 assert.doesNotMatch(
