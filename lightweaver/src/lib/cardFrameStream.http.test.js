@@ -53,7 +53,8 @@ test('HTTP physical frames refuse unsupported firmware before acquiring a lease'
     fetchImpl: async url => { paths.push(new URL(url).pathname); return jsonResponse({ cardId: authority.cardId, bootId: authority.bootId }); },
   });
   await assert.rejects(transport.sendFrame(['FF0000'], 0, { physicalOrder: true }), error => error.reason === 'physical-frame-unsupported');
-  assert.deepEqual(paths, ['/api/status']);
+  // Asked where the firmware reports it, still refused before any lease.
+  assert.deepEqual(paths, ['/api/status', '/api/firmware-info']);
 });
 
 test('HTTP transport rejects non-monotonic frames and authority drift before sending', async () => {
@@ -74,3 +75,33 @@ test('HTTP transport rejects non-monotonic frames and authority drift before sen
   authority.bootId = 'b2';
   await assert.rejects(() => transport.sendFrame(['FFFFFF'], 0, { sequence: 4 }), /revoked/i);
 });
+
+// The firmware reports physicalFrameOrder on /api/firmware-info, never on
+// /api/status (LightweaverStorage.cpp runtimeStatusJson). A real card must
+// still stream physical frames; another card's firmware-info must not count.
+for (const [label, infoCard, expectSent] of [['the same card', 'lw-card-a', true], ['a different card', 'lw-card-b', false]]) {
+  test(`physical frames read the capability from firmware-info when status lacks it: ${label}`, async () => {
+    const paths = [];
+    const authority = {
+      transport: 'direct-lna', host: '192.168.18.70', cardId: 'lw-card-a', bootId: 'boot-2',
+      ownerSessionId: 'owner-1', operationGeneration: 4, revoked: false,
+      ownerCapability: 'cap-1', ownerCapabilityExpectedHead: 'head-1',
+      snapshot() { return { host: this.host, cardId: this.cardId, bootId: this.bootId, ownerSessionId: this.ownerSessionId, operationGeneration: this.operationGeneration }; },
+    };
+    const transport = createHttpFrameTransport('192.168.18.70', {
+      authority,
+      fetchImpl: async url => {
+        const path = new URL(url).pathname;
+        paths.push(path);
+        if (path === '/api/status') return jsonResponse({ cardId: 'lw-card-a', bootId: 'boot-2', capabilities: { symmetrySides: 1 } });
+        if (path === '/api/firmware-info') return jsonResponse({ cardId: infoCard, bootId: 'boot-2', capabilities: { physicalFrameOrder: { version: 1 } } });
+        if (path === '/api/stream/lease') return jsonResponse({ ok: true, leaseId: 'lease-1', expiresInMs: 4000, nextSequence: 1 });
+        return jsonResponse({ ok: true, nextSequence: 2 });
+      },
+      nowImpl: () => 1000,
+    });
+    const sent = await transport.sendFrame(['FF0000'], 0, { sequence: 1, physicalOrder: true }).then(() => true, error => error.reason);
+    assert.equal(sent, expectSent ? true : 'physical-frame-unsupported');
+    assert.equal(paths.includes('/api/stream/frame'), expectSent);
+  });
+}

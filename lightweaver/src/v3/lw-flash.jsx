@@ -584,6 +584,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const softwareGrantBlocked = grantService.state === 'unavailable';
     const softwareGrantReady = softwareGrantAvailable && grantService.state === 'ready';
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
+    // "Update over Wi-Fi" only revealed the real start button and one
+    // sentence; start() never reads `confirming` (simpler-journeys C6). A
+    // Wi-Fi update the card can take opens on that start button directly,
+    // with the binding sentence and the grant checks above it. USB keeps its
+    // two steps: the owner must confirm the selected card's ID.
     // F40 (Adrian: "I tried to look for where you're talking about, I don't
     // quite see it"): a card that genuinely cannot take a Wi-Fi update yet
     // (F34/F35's `firmwareUpdateReady: false` bit) still resolves this panel
@@ -593,6 +598,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // one-time USB path (`runPreservingUsbBootstrap`) was never offered from
     // here, so a card in this state looked like a dead end.
     const cardCannotTakeWifiUpdate = mode === 'wifi' && readiness?.firmwareUpdateReady === false;
+    const showConfirm = confirming || (mode === 'wifi' && Boolean(release) && !alreadyOnPublishedFirmware && !cardCannotTakeWifiUpdate);
     // Once the card is verified back on the target build, the one continue
     // button goes where the owner was when the update interrupted them
     // (recorded by the footer chip, Connection Center and Setup through
@@ -992,7 +998,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             <p>Project head: {readiness.projectHead}</p>
           </details>}
         </div>
-        {!usbResultUnknown && !confirming && phase === 'idle' && (
+        {!usbResultUnknown && !showConfirm && phase === 'idle' && (
           <div className="preserving-update-choice">
             {mode === 'usb' && !usbInspectionReady ? (
               <p className="preserving-update-notice" role={usbInspectionError ? 'alert' : 'status'} data-testid="preserving-usb-inspection-required">
@@ -1035,7 +1041,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             </details>}
           </div>
         )}
-        {!usbResultUnknown && confirming && phase === 'idle' && (
+        {!usbResultUnknown && showConfirm && phase === 'idle' && (
           <div className="install-confirm-action">
             {mode === 'wifi' ? (
               <>

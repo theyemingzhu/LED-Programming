@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { handleLibraryRequest } from '../functions/api/library/_shared/router.js';
 import { createDefaultProject } from '../src/lib/projectModel.js';
+import { MIN_TAP } from './harness/tapSize';
 
 type Role = 'owner' | 'worker' | 'customer' | null;
 type PortableProject = ReturnType<typeof createDefaultProject>;
@@ -1761,8 +1762,8 @@ for (const width of [320, 390]) {
       await expect(action).toBeVisible();
       const box = await action.boundingBox();
       expect(box).not.toBeNull();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
+      expect(box!.width).toBeGreaterThanOrEqual(MIN_TAP);
+      expect(box!.height).toBeGreaterThanOrEqual(MIN_TAP);
       boxes.push(box!);
     }
     for (let index = 1; index < boxes.length; index += 1) {
@@ -1778,8 +1779,8 @@ for (const width of [320, 390]) {
     expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(width);
     expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(760);
     const closeBox = await dialog.getByRole('button', { name: 'Close Projects' }).boundingBox();
-    expect(closeBox!.width).toBeGreaterThanOrEqual(44);
-    expect(closeBox!.height).toBeGreaterThanOrEqual(44);
+    expect(closeBox!.width).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(closeBox!.height).toBeGreaterThanOrEqual(MIN_TAP);
     await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
@@ -1787,7 +1788,11 @@ for (const width of [320, 390]) {
     const railBox = await page.locator('.rail').boundingBox();
     expect(noticeBox).not.toBeNull();
     expect(railBox).not.toBeNull();
-    expect(noticeBox!.x).toBeGreaterThanOrEqual(railBox!.x + railBox!.width);
+    // The rail is a left column on desktop and the bottom tab bar on a phone
+    // (styles/lw-phone.css): the notice must not overlap it, wherever it is.
+    const overlapsRail = noticeBox!.x < railBox!.x + railBox!.width && noticeBox!.x + noticeBox!.width > railBox!.x
+      && noticeBox!.y < railBox!.y + railBox!.height && noticeBox!.y + noticeBox!.height > railBox!.y;
+    expect(overlapsRail).toBe(false);
     expect(noticeBox!.x + noticeBox!.width).toBeLessThanOrEqual(width);
     for (const box of boxes) {
       expect(noticeBox!.y).toBeGreaterThanOrEqual(box.y + box.height);
@@ -1814,7 +1819,7 @@ for (const width of [320, 390]) {
     for (const control of controls) {
       const box = await control.boundingBox();
       expect(box).not.toBeNull();
-      expect(box!.height).toBeGreaterThanOrEqual(44);
+      expect(box!.height).toBeGreaterThanOrEqual(MIN_TAP);
     }
   });
 }

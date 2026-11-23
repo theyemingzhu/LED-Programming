@@ -316,12 +316,11 @@ test('a discovered unpaired card offers one-tap pair, not another Connect this c
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found . pair/);
 
+  // One tap: "Found — pair" pairs (simpler-journeys C5), with no dialog and
+  // no second Connect this card.
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('Pair this Lightweaver card');
-  await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: 'Use this card instead' })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-found-unpaired');
+  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
 });
 
 test('a found factory card on the setup AP can pair before opening its preserving update', async ({ page }) => {
@@ -350,9 +349,6 @@ test('a found factory card on the setup AP can pair before opening its preservin
   }, status);
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found . pair/);
   await page.getByTestId('card-link-status').click();
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('Pair this Lightweaver card');
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe(cardId);
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15000 });

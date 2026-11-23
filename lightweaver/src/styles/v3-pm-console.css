@@ -160,7 +160,7 @@
   border-color: var(--border-soft);
 }
 @media (pointer: coarse) {
-  .pm .btn { min-height: 44px; }
+  .pm .btn { min-height: var(--lw-tap, 44px); }
 }
 .pm .btn.primary {
   color: var(--on-accent);

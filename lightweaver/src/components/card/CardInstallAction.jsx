@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { getFirstInstallState, resetFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
+import { useFirstSaveApplies } from './FirstSaveOrFind.jsx';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
+import { layoutInstallController } from '../../lib/installController.js';
+import { BlankCardFirstInstall } from './BlankCardFirstInstall.jsx';
 import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 import { STRIP_DISCOVERY_BLANK_MESSAGE, STRIP_DISCOVERY_LABEL, STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../lib/cardAction.js';
+import { BENCH_PROJECT_ID } from '../../lib/benchConfig.js';
 import '../../styles/lw-wire.css';
 
 // Guided find-strips / finish-wire / LED check / color-order / install flow.
@@ -31,6 +36,10 @@ export function CardInstallAction({
   // In the status row's door slot: no heading, no module chrome — the
   // control itself is the door. Light-test controls still render beneath it.
   compact = false,
+  // Card Home's lights step (Find my strips, way in 1): render only the
+  // blank-card first save and its light check, and nothing when they do not
+  // apply. The caller shows Find my strips instead.
+  firstSaveOnly = false,
 }) {
   // `cta` is the class every headline button in this component uses. Kept as
   // one binding so a future branch cannot forget the rule.
@@ -43,17 +52,12 @@ export function CardInstallAction({
   // patch board supplies each section's playback and stable patch identity;
   // rebuilding patches from runs loses both and makes every saved mix Aurora.
   const cardTransportBoard = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
-  const installController = useMemo(() => ({
-    ...standaloneController,
-    outputs: compiledWiring.outputs.map(output => ({
-      id: output.id,
-      name: output.name,
-      pin: output.pin,
-      pixels: output.count,
-      direction: output.direction,
-      segments: output.segments,
-    })),
-  }), [standaloneController, compiledWiring.outputs]);
+  // Same body as Patterns' Save to card: the project's default look first
+  // (lib/installController.js).
+  const installController = useMemo(
+    () => layoutInstallController(standaloneController, compiledWiring.outputs),
+    [standaloneController, compiledWiring.outputs],
+  );
 
   const stripIds = new Set(strips.map(strip => strip.id));
   const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));
@@ -118,16 +122,60 @@ export function CardInstallAction({
   // discovery has and loop the owner between the two screens forever.
   const cardNeedsStripDiscovery = needsStripDiscovery({ readinessState: cardReadinessState });
   const openStripDiscovery = () => { window.location.hash = STRIP_DISCOVERY_ROUTE; };
+  // Way in 1 or 2 of Find my strips: one rule, shared with Card Home.
+  const firstSaveApplies = useFirstSaveApplies();
   const cardRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.hash.slice(1))
     : new URLSearchParams();
   const continueToPatterns = cardRoute.get('next') === 'patterns';
+  // Holds the blank-card panel on screen from the first-install click until it
+  // has finished. Without it the card stops reading blank mid-install, the
+  // ordinary install control below mounts, and next=patterns auto-starts a
+  // second install of the same project as a wiring candidate (practice card,
+  // tests/blank-card-first-install.spec.ts).
+  // Shared across every install panel and every rebuild of one (lib/firstInstallState.js).
+  const firstInstallState = useSyncExternalStore(subscribeFirstInstallState, getFirstInstallState, getFirstInstallState);
+  const firstInstall = firstInstallState.phase;
+  const setFirstInstall = phase => setFirstInstallState({ phase });
+  // Once the card no longer reads blank, a finished first install hands the
+  // panel back to the ordinary branches (it then reads as installed).
+  useEffect(() => {
+    // Reset the whole state, not only the phase: its "Installed on card"
+    // message otherwise reappears on the next blank card, a success for a card
+    // that holds nothing (real card, Studio 2666, 2026-11-23).
+    if (firstInstall === 'done' && !cardNeedsStripDiscovery) resetFirstInstallState();
+  }, [firstInstall, cardNeedsStripDiscovery]);
+  // A failed first install whose write landed anyway (the read-back timed out,
+  // say): once the card answers as something other than blank, the blank
+  // panel must go, or its Save to card would push factory-blank at a card that
+  // is no longer blank and be refused. It hands over WITHOUT next=patterns, so
+  // the ordinary install control does not auto-start a second write.
+  useEffect(() => {
+    if (firstInstall !== 'failed' || !cardReadinessState || cardReadinessState === 'blank') return;
+    if (continueToPatterns) {
+      const route = new URLSearchParams(window.location.hash.slice(1));
+      route.delete('next');
+      window.location.hash = '#' + route.toString();
+    }
+    resetFirstInstallState();
+  }, [firstInstall, cardReadinessState, continueToPatterns]);
+  // The state belongs to one card: pairing another card starts clean.
+  const pairedCardId = cardLink.card?.cardId || cardLink.expectedCard?.id || '';
+  useEffect(() => {
+    if (firstInstallState.cardId && pairedCardId && pairedCardId !== firstInstallState.cardId) resetFirstInstallState();
+  }, [firstInstallState.cardId, pairedCardId]);
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
-  const replaceProjectIntent = continueToPatterns && cardRoute.get('replace') === 'project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
+  // The temporary find-my-strips setup is Studio's own scaffolding, not an
+  // owner's project: replacing it is the whole point of saving after a light
+  // check, so it needs no "this card holds a different project" question
+  // (simpler-journeys C4). A real other project still asks.
+  const cardHoldsTemporarySetup = cardProjectId === BENCH_PROJECT_ID;
+  const replaceProjectIntent = continueToPatterns
+    && (cardRoute.get('replace') === 'project' || cardHoldsTemporarySetup);
   const differentProjectOnCard = Boolean(cardLink.card?.id && cardLink.readiness?.cardId === cardLink.card.id
-    && cardProjectId && projectId && cardProjectId !== projectId);
+    && cardProjectId && projectId && cardProjectId !== projectId && !cardHoldsTemporarySetup);
   const openProjectReplacement = () => {
     window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&replace=project';
   };
@@ -145,10 +193,12 @@ export function CardInstallAction({
     ? `${installedPixelCount === draftPixelCount ? `${draftPixelCount} configured pixels unchanged` : `${installedPixelCount} → ${draftPixelCount} configured pixels`}; ${pinsUnchanged ? 'GPIOs unchanged' : `outputs change to ${draftPins.map(pin => `GPIO ${pin}`).join(', ')}`}. Section and pattern changes are not yet compared.`
     : `Installed configuration not yet compared. Your draft has ${draftPixelCount} configured pixels on ${draftPins.map(pin => `GPIO ${pin}`).join(', ') || 'unassigned outputs'}.`;
 
+  if (firstSaveOnly && !firstSaveApplies) return null;
+
   // The full Check-and-install surface stands down while Setup owns the next
   // step. The compact Status door does not: Save to card is the one write
   // on that row, including when the open project and the card disagree.
-  if (yieldPrimary && !installTaskOpen && !compact) return null;
+  if (yieldPrimary && !installTaskOpen && !compact && !firstSaveOnly) return null;
   // A blank card cannot accept this project's ordinary save yet. Its one
   // truthful next step is the discovery action already rendered by Setup;
   // a compact Save to card beside it would be a second, unusable primary.
@@ -160,8 +210,8 @@ export function CardInstallAction({
           the ladder's last phase description, so "Start LED check" read as
           that phase's button and was not. It is its own thing and says so.
           In the status row it is one door among three and needs no heading. */}
-      <p className="lww-flow-message" data-testid="card-save-summary">Save to card: {saveDifference} This saves your draft to the card and can interrupt playback. Required light checks remain in place.</p>
-      {!compact && <h2 className="lww-flow-heading">Check and install on this card</h2>}
+      {!firstSaveOnly && <p className="lww-flow-message" data-testid="card-save-summary">Save to card: {saveDifference} This saves your draft to the card and can interrupt playback. Required light checks remain in place.</p>}
+      {!compact && !firstSaveOnly && <h2 className="lww-flow-heading">Check and install on this card</h2>}
       {compact && needsLayoutFinish ? (
         <>
           <p className="lww-flow-message" data-testid="layout-finish-reason">{layoutFinishReason}</p>
@@ -192,6 +242,43 @@ export function CardInstallAction({
           standaloneController={installController}
           disabled={!installGate.allowed}
         />
+      ) : firstInstall === 'checking' ? (
+        // The check itself is FirstInstallCheckSheet, one app-level sheet.
+        <p className="lww-flow-message" role="status" data-testid="blank-card-checking">Checking the lights.</p>
+      ) : firstInstall === 'done' ? (
+        // Installed; never offer the blank-card save again on a card that is no
+        // longer blank (a second press would be refused as a false failure).
+        <p className="lww-flow-message" role="status" data-testid="blank-card-installed">Installed on card. Next, check the lights.</p>
+      ) : (cardNeedsStripDiscovery || firstInstall) && !needsLayoutFinish ? (
+        // The draft's wiring is complete, so the blank card can take it as its
+        // first project in one save (see BlankCardFirstInstall). Find my strips
+        // stays here for an owner who does not know their strips yet.
+        <>
+          <h3 className="lww-flow-title">Put your project on this card.</h3>
+          <BlankCardFirstInstall
+            host={cardHost || cardLink.host}
+            transport={cardLink.transport}
+            board={cardTransportBoard}
+            controller={installController}
+            className={cta}
+            onStart={() => setFirstInstall('running')}
+            onSettled={ok => {
+              // A failed first install keeps the hold (phase 'failed'): the owner
+              // sees why, and no other install control writes again on its own.
+              // A finished first install runs the light check next (way in 1);
+              // the check hands on to Patterns.
+              setFirstInstall(ok ? 'checking' : 'failed');
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost"
+            data-testid="wire-find-strips"
+            title="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            data-tooltip="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
+            onClick={openStripDiscovery}
+          >{STRIP_DISCOVERY_LABEL}</button>
+        </>
       ) : cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>

@@ -35,8 +35,7 @@ import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
 import { buildPackageForPortRoles, deploySetupToCard } from '../../lib/cardSetupDeploy.js';
 import { discoveryProjectParts, layoutIsUncountedHeadroom, withDiscoveryPatternChoices } from '../../lib/discoveryCommit.js';
 import { auditionBenchPattern, requireBenchInstallReadback, requireBenchZoneMapping, restoreBenchPatternSnapshot } from '../../lib/benchPatternAudition.js';
-import { CardPinMap } from './CardPinMap.jsx';
-import { describeCardPinPlace } from '../../lib/cardPinout.js';
+import { CardPinPicker } from './CardPinPicker.jsx';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../../lib/cardLiveControl.js';
 import { getCardWiringStatus } from '../../lib/cardWiringSafety.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -54,8 +53,8 @@ import {
 import {
   DISCOVERY_FRAME_RATE_WARN_PIXELS,
   advance,
-  buildChannelProofFrame,
-  channelMapFromProofAnswers,
+  buildColourCheckFrame,
+  channelMapFromColourRow,
   correctFrameForChannelMap,
   createStripDiscoverySession,
   discoveryFrame,
@@ -117,6 +116,18 @@ function portLabel(port) {
 // this poll exists for the one case onHealth cannot report: a stream that has
 // never sent anything at all and therefore never emitted a report.
 const STREAM_HEALTH_POLL_MS = 1000;
+// Sweep: how long each pin stays lit, how many quiet rounds before "Nothing
+// lit?", and how soon after a change a "That's mine" press still means the
+// pin before (a person sees the strip light, then presses).
+const SWEEP_STEP_MS = 2000;
+const SWEEP_ROUNDS = 2;
+const LATE_PRESS_MS = 500;
+// The running light: one more light every RUN_TICK_MS until Stop.
+const RUN_TICK_MS = 100;
+const COLOUR_ROWS = Object.freeze([
+  ['red', 'green', 'blue'], ['green', 'red', 'blue'], ['blue', 'red', 'green'],
+  ['red', 'blue', 'green'], ['green', 'blue', 'red'], ['blue', 'green', 'red'],
+]);
 
 // A health report or a getStats() snapshot, reduced to the few facts the owner
 // needs. failingForMs is bucketed to whole seconds so an 18 fps health stream
@@ -259,6 +270,22 @@ async function benchAuditionRequest(host, cardLink) {
   return exactRequest;
 }
 
+// A short strip of lights, drawn: which lights to look at, or how far the
+// running light has gone. Decoration for the question above it.
+function StripLights({ count = 12, lit = [], litCount = 0, lastPurple = false, testId }) {
+  const litSet = new Set(lit);
+  return (
+    <svg className="strip-discovery-strip" data-testid={testId} viewBox={`0 0 ${count * 20} 24`} aria-hidden="true">
+      <rect className="strip-discovery-strip-tape" x="0" y="4" width={count * 20} height="16" rx="3" />
+      {Array.from({ length: count }, (_, index) => {
+        const on = litSet.has(index) || index < litCount;
+        const purple = lastPurple && index === litCount - 1;
+        return <circle key={index} cx={index * 20 + 10} cy="12" r="5" className={purple ? 'is-purple' : litSet.has(index) ? 'is-look' : on ? 'is-on' : 'is-off'} />;
+      })}
+    </svg>
+  );
+}
+
 export function StripDiscoveryPanel({
   cardHost = '',
   cardLink = null,
@@ -266,6 +293,7 @@ export function StripDiscoveryPanel({
   embedded = false,
   onLifecycleChange = null,
   onComplete = null,
+  onSaveToCard = null,
 }) {
   const host = normalizeCardHost(cardHost || cardLink?.host || readStoredCardHost());
   const flowIdRef = useRef('');
@@ -430,6 +458,7 @@ export function StripDiscoveryPanel({
   // a lighting attempt that may be slow or refused.
   const [selectedPort, setSelectedPort] = useState(null);
   const [probeError, setProbeError] = useState('');
+  const [probeUnlit, setProbeUnlit] = useState(false);
   const pinnedPortRef = useRef(null);
   pinnedPortRef.current = pinnedPort;
 
@@ -440,7 +469,7 @@ export function StripDiscoveryPanel({
       .then(result => { if (!cancelled) setProbePortEvidence({ key: probePortKey, ports: result }); })
       // Older cards can lack this endpoint; they keep the established pin menu
       // without the newly approved GPIO 39.
-      .catch(() => { if (!cancelled) setProbePortEvidence(null); });
+      .catch(() => { if (!cancelled) setProbePortEvidence({ key: probePortKey, ports: null }); });
     return () => { cancelled = true; };
   }, [host, phaseIsPastIdle, probePortKey]);
 
@@ -471,6 +500,7 @@ export function StripDiscoveryPanel({
 
   const probePort = useCallback(async pin => {
     setProbeError('');
+    setProbeUnlit(false);
     // Clicking the lit port again turns it off.
     if (pinnedPort === pin) {
       setPinnedPort(null);
@@ -534,18 +564,97 @@ export function StripDiscoveryPanel({
       // probe destroys the very thing it is meant to help find. If the card is
       // not already driving this port, say so and let the owner tick it instead.
       setProbeBusy(null);
-      setProbeError(
-        `This card is not set up to drive GPIO ${pin} yet, so it cannot light it without changing your setup. `
-        + `If you know your strip is there, tick it below and carry on.`,
-      );
+      setProbeUnlit(true);
       }, { attempts: 4, delayMs: 400 });
       return;
     } catch (error) {
       setProbeBusy(null);
       setPinnedPort(null);
-      setProbeError(`Could not light GPIO ${pin}: ${error?.message || 'the card did not answer'}. You can still tick it below if you know your strip is there.`);
+      // Never the browser's own words ("signal is aborted without reason"):
+      // say what happened and what to do (D6).
+      setProbeError(isTransientCardFailure(error)
+        ? 'The card is slow to answer and did not light that pin yet. Tap the pin to try again.'
+        : 'The card did not light that pin. Tap the pin to try again, or pick another.');
     }
   }, [host, cardLink?.transport, pinnedPort, serializeProject, projectRevision]);
+
+  // ── Sweep (combined flow, way in 2: no known wiring) ─────────────────────
+  // Studio lights each pin the card can light, one after another, and the
+  // owner presses "That's mine" when their strip lights. Nobody needs to know
+  // a pin number. Two quiet rounds become "Nothing lit?"; a card that cannot
+  // sweep (it already holds a setup) opens on tapping the card drawing.
+  const [findMode, setFindMode] = useState('watch');
+  const [sweepPin, setSweepPin] = useState(null);
+  const sweepRef = useRef({ pin: null, previous: null, changedAt: 0 });
+  // How many pins this watch has lit. Kept outside the effect: the effect
+  // re-runs whenever the card link re-reads the card, and restarting the count
+  // there meant two quiet rounds never added up to "Nothing lit?".
+  const sweepStepRef = useRef(0);
+  const watchAgain = () => { sweepStepRef.current = 0; setFindMode('watch'); };
+  const sweepPins = useMemo(() => selectablePortRoles.map(entry => entry.pin), [selectablePortRoles]);
+  const sweepPinList = sweepPins.join(',');
+  const portsKnown = probePortEvidence?.key === probePortKey;
+  const canSweep = portsKnown && probePorts?.available === true && sweepPins.length > 0;
+  useEffect(() => {
+    if (phaseIsPastIdle || findMode !== 'watch' || !portsKnown || canSweep) return;
+    setFindMode('pick');
+  }, [phaseIsPastIdle, findMode, portsKnown, canSweep]);
+  useEffect(() => {
+    if (phaseIsPastIdle || findMode !== 'watch' || selectedPort !== null || !canSweep) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const pins = sweepPinList.split(',').map(Number);
+    const step = async () => {
+      if (cancelled) return;
+      if (sweepStepRef.current >= pins.length * SWEEP_ROUNDS) {
+        sweepRef.current = { pin: null, previous: null, changedAt: 0 };
+        setSweepPin(null);
+        setFindMode('quiet');
+        releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
+        return;
+      }
+      const pin = pins[sweepStepRef.current % pins.length];
+      sweepStepRef.current += 1;
+      const result = await pinBeaconPort(host, pin, { bridgeVersion: getCardBridgeState().version })
+        .catch(error => (isTransientCardFailure(error) ? { transient: true } : { ok: false }));
+      if (cancelled) return;
+      if (result?.ok) {
+        sweepRef.current = { pin, previous: sweepRef.current.pin, changedAt: Date.now() };
+        setSweepPin(pin);
+      } else if (!result?.transient) {
+        sweepRef.current = { pin: null, previous: null, changedAt: 0 };
+        setSweepPin(null);
+        setFindMode('pick');
+        return;
+      }
+      timer = setTimeout(step, SWEEP_STEP_MS);
+    };
+    void step();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [phaseIsPastIdle, findMode, selectedPort, canSweep, sweepPinList, host]);
+  // The sweep holds a pin on the card; hand the card back when it stops.
+  useEffect(() => {
+    if (findMode === 'watch' && !phaseIsPastIdle) return;
+    if (sweepRef.current.pin === null) return;
+    sweepRef.current = { pin: null, previous: null, changedAt: 0 };
+    setSweepPin(null);
+    if (!phaseIsPastIdle && pinnedPortRef.current === null) {
+      releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
+    }
+  }, [findMode, phaseIsPastIdle, host]);
+  useEffect(() => () => {
+    if (sweepRef.current.pin !== null) releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
+  }, [host]);
+  const pickPin = pin => {
+    // The tapped pin replaces the sweep's pin on the card. Releasing the sweep
+    // pin here raced the tap's own pin request and could leave the card dark
+    // after the owner's tap (strip-discovery.spec "minimizing during an
+    // idle-phase port probe").
+    sweepRef.current = { pin: null, previous: null, changedAt: 0 };
+    setSweepPin(null);
+    setFindMode('pick');
+    void probePort(pin);
+  };
 
   const noteStreamHealth = useCallback(report => {
     setStreamHealth(current => {
@@ -556,7 +665,7 @@ export function StripDiscoveryPanel({
 
   // The phases where the card should be showing a Studio frame. Outside them a
   // dark strip means nothing, so no delivery claim is made either.
-  const lighting = Boolean(session) && ['probe', 'decade', 'end-marker'].includes(session.phase);
+  const lighting = Boolean(session) && ['probe', 'run', 'decade', 'end-marker'].includes(session.phase);
   // `relight` is declared below this effect; the ref is how the restart watcher
   // reaches it without reordering the file.
   const relightRef = useRef(null);
@@ -636,13 +745,7 @@ export function StripDiscoveryPanel({
   const outgoingFrame = useCallback(() => {
     if (session?.phase === 'probe' && session.activePin !== null
       && (channelProof.stage === 'first' || channelProof.stage === 'second')) {
-      const port = session.ports.find(item => item.pin === session.activePin);
-      return buildChannelProofFrame({
-        benchLayout: session.benchLayout,
-        pin: session.activePin,
-        litCount: port?.litCount || 0,
-        step: channelProof.stage,
-      });
+      return buildColourCheckFrame({ benchLayout: session.benchLayout, pin: session.activePin });
     }
     if (session?.phase === 'decade' && channelProof.stage === 'skipped') return discoveryFrame(session)?.map(color => color === '000000' ? color : '080808');
     return correctFrameForChannelMap(discoveryFrame(session), channelProof.map);
@@ -685,28 +788,32 @@ export function StripDiscoveryPanel({
     setInterruptedRun(null);
   };
 
-  // ui-repair B-COLOUR: the two colour-proof answers. The same colour twice is
-  // physically impossible — one answer was a slip — so the check starts over
-  // rather than recording a map that lies.
-  const answerChannelProof = seen => {
-    setChannelProof(current => {
-      if (current.stage === 'first') {
-        return { stage: 'second', firstSeen: seen, map: null, retry: false };
-      }
-      if (current.stage === 'second') {
-        const map = channelMapFromProofAnswers(current.firstSeen, seen);
-        if (!map) return { stage: 'first', firstSeen: '', map: null, retry: true };
-        return { stage: 'done', firstSeen: current.firstSeen, map, retry: false };
-      }
-      return current;
-    });
-  };
-
   useEffect(() => {
-    if (session?.phase === 'probe' && ['done', 'skipped'].includes(channelProof.stage)) dispatch({ type: 'ruler-ready' });
+    if (session?.phase === 'probe' && ['done', 'skipped'].includes(channelProof.stage)) dispatch({ type: 'run-start' });
   }, [session?.phase, channelProof.stage, dispatch]);
 
   const skipChannelProof = () => setChannelProof({ stage: 'skipped', firstSeen: '', map: null, retry: false });
+  // The one-tap colour answer: the three colours lights 1, 2, 3 show.
+  const answerColourRow = row => {
+    const map = channelMapFromColourRow(row);
+    if (map) setChannelProof({ stage: 'done', firstSeen: row[0], map, retry: false });
+  };
+
+  // The running light. One more light every RUN_TICK_MS until Stop, paused
+  // while the card restarts or Studio is making more lights available.
+  const runPaused = busy || cardRestartedDuringLook;
+  useEffect(() => {
+    if (session?.phase !== 'run' || runPaused) return undefined;
+    const timer = setInterval(() => {
+      setSession(current => {
+        if (current?.phase !== 'run') return current;
+        const port = current.ports.find(item => item.pin === current.activePin);
+        if (!port || port.litCount >= port.provisioned) return current;
+        return advance(current, { type: 'run-tick', litCount: port.litCount + 1 });
+      });
+    }, RUN_TICK_MS);
+    return () => clearInterval(timer);
+  }, [session?.phase, runPaused]);
 
   // Explicit "show me again": re-push the current phase's frame and clear the
   // restart notice. The stream keepalive re-sends on its own; this exists so
@@ -720,7 +827,46 @@ export function StripDiscoveryPanel({
   }, [outgoingFrame]);
   relightRef.current = relight;
 
-  const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles } = {}) => {
+  // "That's mine": the pin the sweep has lit. A press within LATE_PRESS_MS
+  // of a change means the pin before, which is what the owner was looking at.
+  const claimSweepPin = () => {
+    const { pin, previous, changedAt } = sweepRef.current;
+    const chosen = previous !== null && Date.now() - changedAt < LATE_PRESS_MS ? previous : pin;
+    if (chosen === null) return;
+    setSelectedPort(chosen);
+    setFindMode('pick');
+    void startDiscovery({ focusPin: chosen, selectedRoles: normalizePortRoles(portRoles.map(entry => (
+      entry.pin === chosen ? { ...entry, role: PORT_ROLE_STRIP } : entry))) });
+  };
+
+  // "Not lit" on the colour step: the counting setup went onto a pin with no
+  // strip. Take it off the card so the card sweeps again, then go back.
+  const [notLitWait, setNotLitWait] = useState(false);
+  const notLit = async () => {
+    setBusy(true);
+    setNotLitWait(true);
+    setFailure('');
+    try {
+      const stream = streamRef.current;
+      streamRef.current = null;
+      await stream?.stop();
+      await clearDanglingWiringTransaction(host).catch(() => false);
+      await clearCardProject({ host });
+      await waitForClearedCard({ host });
+      clearDiscoveryRun();
+      setChannelProof({ stage: 'first', firstSeen: '', map: null, retry: false });
+      setSelectedPort(null);
+      setSession(null);
+      setFindMode('watch');
+    } catch (error) {
+      setFailure(error?.message || 'Studio could not take the counting setup off the card.');
+    } finally {
+      setNotLitWait(false);
+      setBusy(false);
+    }
+  };
+
+  const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles, focusPin = null } = {}) => {
     const availablePins = new Set(selectablePortRoles.map(entry => entry.pin));
     const cardSelectedRoles = normalizePortRoles(selectedRoles.map(entry => availablePins.has(entry.pin)
       ? entry : { ...entry, role: PORT_ROLE_UNUSED, pixelCount: 0 }));
@@ -759,7 +905,7 @@ export function StripDiscoveryPanel({
           || cardLink?.readiness?.knownGoodProject === true
           || cardLink?.readiness?.provisionalSetup === true,
       });
-      setSession(current => advance(current, { type: 'bench-installed' }));
+      setSession(current => advance(current, { type: 'bench-installed', focusPin }));
     } catch (error) {
       // A card already holding a saved setup is the ORDINARY state of any card
       // that has been used — including one this same flow set up an hour ago —
@@ -787,7 +933,7 @@ export function StripDiscoveryPanel({
           await clearCardProject({ host }).catch(() => null);
           await waitForClearedCard({ host }).catch(() => null);
           setBusy(false);
-          await startDiscovery({ clearedAlready: true, selectedRoles: cardSelectedRoles });
+          await startDiscovery({ clearedAlready: true, selectedRoles: cardSelectedRoles, focusPin });
           return;
         } catch (clearError) {
           const clearMessage = clearError?.message || 'Studio could not clear the card.';
@@ -873,6 +1019,24 @@ export function StripDiscoveryPanel({
   };
 
   const recordingRef = useRef(false);
+  // The last "Yes, that is the last one" also saves what was found
+  // (simpler-journeys C8). The record screen that followed repeated counts the
+  // owner had just confirmed one by one, and only existed to offer "Add
+  // another strip", which now sits beside the last confirm. Saving here
+  // writes nothing to the card; that is still Save to card.
+  const afterConfirmRef = useRef('');
+  const confirmEndMarker = intent => {
+    afterConfirmRef.current = intent;
+    dispatch({ type: 'end-marker-yes' });
+  };
+  const addAnotherStrip = () => {
+    setPortRoles(current => normalizePortRoles(current.map(entry => {
+      const found = session.ports.find(port => port.pin === entry.pin);
+      return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry;
+    })));
+    setSelectedPort(null);
+    setSession(null);
+  };
   const record = async () => {
     if (recordingRef.current) return;
     recordingRef.current = true;
@@ -1243,6 +1407,16 @@ export function StripDiscoveryPanel({
   const warnings = discoveryWarnings(session);
   const activePort = session?.ports.find(port => port.pin === session.activePin) || null;
   const phase = session?.phase || 'idle';
+  const lastEndMarker = phase === 'end-marker' && (session?.ports || [])
+    .filter(port => port.probed && !port.skipped && !port.confirmed).length <= 1;
+  useEffect(() => {
+    if (phase !== 'record' || !afterConfirmRef.current) return;
+    const intent = afterConfirmRef.current;
+    afterConfirmRef.current = '';
+    if (intent === 'save') void record();
+    else if (intent === 'add') addAnotherStrip();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
   const matchingBenchPatterns = BENCH_AUDITION_PATTERNS.filter(pattern => {
     const query = patternSearch.trim().toLowerCase();
     return !query || `${pattern.label} ${pattern.description}`.toLowerCase().includes(query);
@@ -1493,13 +1667,6 @@ export function StripDiscoveryPanel({
 
   return (
     <div className={`${embedded ? '' : 'screen '}strip-discovery${embedded ? ' is-embedded' : ''}`} data-testid="strip-discovery">
-      <details className="strip-discovery-details">
-        <summary>Details</summary>
-        <p>{host || 'No card connected'} · Ports use the GPIO labels printed on the card.</p>
-        <p>Up to {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs. Ports used by controls are unavailable.</p>
-      </details>
-      {powerWarning && <p role="note" className="strip-discovery-power" data-testid="discovery-power-warning">{powerWarning}</p>}
-
       {/* Whether Studio is actually driving the strip right now. Without this a
           strip receiving nothing looks exactly like a strip that ends where the
           light stops, and every answer the owner gives from here on is a guess. */}
@@ -1512,74 +1679,68 @@ export function StripDiscoveryPanel({
               stays in flow. */}
           {!streamHealth?.failing && streamHealth?.sentFrames !== 0 && (
             <p className="strip-discovery-note" role="status" data-testid="discovery-stream-live">
-              Test lights are on.
+              Lights on.
             </p>
           )}
           <button type="button" className="btn" data-testid="discovery-relight" onClick={relight}>
-            Light these again
+            Light again
           </button>
         </div>
       )}
 
       {phase === 'idle' && (
-        <section className="strip-discovery-step" data-testid="discovery-plan">
-          <h3>Find your strip</h3>
-          <p>Tap a port to light its first few LEDs.</p>
-          {/* probeError moved to the notice layer (discovery-probe-error) —
-              it is a probe result, about the card's answer to the last port
-              pressed, not about any one row in the grid below. */}
-          {/* Every port, as buttons. Click one and it lights, so the owner looks at
-              the strip instead of reading a list. Under the grid, one check: is a
-              light actually installed on the port you just lit. */}
-          {probeBusy && (
-            <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">{probeBusy.message}</p>
-          )}
-          <div className="strip-discovery-grid" role="group" aria-label="Card output ports">
-            {selectablePortRoles.map(entry => {
-              const lit = pinnedPort === entry.pin;
-              const picked = entry.role === PORT_ROLE_STRIP;
-              return (
-                <button
-                  key={entry.pin}
-                  type="button"
-                  className={`strip-discovery-port${lit ? ' is-lit' : ''}${picked ? ' is-picked' : ''}${selectedPort === entry.pin ? ' is-selected' : ''}`}
-                  data-testid={`discovery-probe-${entry.pin}`}
-                  aria-pressed={lit}
-                  title={`Light it. ${describeCardPinPlace(entry.pin)}`}
-                  onClick={() => probePort(entry.pin)}
-                >
-                  <span className="strip-discovery-port-pin">{portLabel(entry)}</span>
-                  {probeBusy?.pin === entry.pin && <span className="strip-discovery-port-note">Lighting…</span>}
-                  {lit && <span className="strip-discovery-port-note">Lit — turn off</span>}
-                  {picked && !lit && <span className="strip-discovery-port-note">lights here</span>}
+        <section className="strip-discovery-step" data-testid="discovery-plan" data-find-mode={findMode}>
+          {findMode === 'watch' && selectedPort === null ? (
+            <>
+              <h3>Watch your strip.</h3>
+              <CardPinPicker
+                testId="discovery-pin-map"
+                pickable={sweepPins}
+                pulse={sweepPin}
+                labels={false}
+                onPick={pickPin}
+                label="Card pins. The lit pin is the one the card is lighting now."
+              />
+              <div className="strip-discovery-actions">
+                <button type="button" className="btn primary" data-testid="discovery-sweep-mine" disabled={busy || sweepPin === null} onClick={claimSweepPin}>
+                  {sweepPin === null ? 'Starting the lights…' : 'That\u2019s mine'}
                 </button>
-              );
-            })}
-          </div>
-          <p className="strip-discovery-note" data-testid="discovery-gpio-availability">
-            GPIO 36 and 37 are used by this card&apos;s PSRAM, so they cannot drive LED strips. GPIO 39 appears when this card reports it as available.
-          </p>
-          {selectedPort !== null && <div className="strip-discovery-confirm">
-            <h3>Did your strip light up?</h3>
-            <p className="strip-discovery-note" data-testid="discovery-start-note">Counting saves a temporary setup on the card, kept after restart until you install your project.</p>
-            <div className="strip-discovery-actions">
-              <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Setting up…' : 'Yes, count this strip'}</button>
-              <button type="button" className="btn" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another port</button>
+                <button type="button" className="btn btn-ghost" data-testid="discovery-pick-mode" onClick={() => setFindMode('pick')}>Pick the pin</button>
+              </div>
+            </>
+          ) : findMode === 'quiet' && selectedPort === null ? (
+            <>
+              <h3>Nothing lit?</h3>
+              <CardPinPicker testId="discovery-pin-map" pickable={[]} labels={false} ground label="Card pins, with the ground pins marked" />
+              <p className="strip-discovery-note" data-testid="discovery-quiet-hint">Check power and ground.</p>
+              <div className="strip-discovery-actions">
+                <button type="button" className="btn primary" data-testid="discovery-watch-again" onClick={watchAgain}>Watch again</button>
+                <button type="button" className="btn btn-ghost" data-testid="discovery-pick-mode" onClick={() => setFindMode('pick')}>Pick the pin</button>
+              </div>
+            </>
+          ) : selectedPort === null ? (
+            <>
+              <h3>Tap where your strip plugs in.</h3>
+              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
+              {canSweep && (
+                <div className="strip-discovery-actions">
+                  <button type="button" className="btn btn-ghost" data-testid="discovery-watch-again" onClick={watchAgain}>Watch instead</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="strip-discovery-confirm">
+              <h3>{probeError || probeUnlit ? 'Count the strip on this pin?' : 'Did your strip light up?'}</h3>
+              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
+              {probeBusy && (
+                <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">Lighting this pin…</p>
+              )}
+              <div className="strip-discovery-actions">
+                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
+                <button type="button" className="btn btn-ghost" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another pin</button>
+              </div>
             </div>
-          </div>}
-          {/* Shown once a port is tapped: the drawing answers "where is the one I
-              just lit", and before that it would only push the grid down. */}
-          {(selectedPort !== null || pinnedPort !== null) && (
-            <CardPinMap
-              testId="discovery-pin-map"
-              title="Where this port is on the card"
-              lit={[...new Set([selectedPort, pinnedPort].filter(pin => pin !== null))].map(pin => ({ pin }))}
-            />
           )}
-          {/* discovery-output-limit and discovery-no-outputs moved to the
-              notice layer — both are about the run's whole port selection,
-              never about one row (each skipped port keeps its own line in
-              the list below). */}
           {otherSkips.length > 0 && (
             <ul className="strip-discovery-skipped" data-testid="discovery-skipped">
               {otherSkips.map(entry => (
@@ -1589,16 +1750,20 @@ export function StripDiscoveryPanel({
               ))}
             </ul>
           )}
+          <details className="strip-discovery-why" data-testid="discovery-why">
+            <summary>Why?</summary>
+            <p>While counting, the card lights at most 8 lights dimly under 100 mA, then runs a temporary dim setup capped at {BENCH_MAX_MILLIAMPS} mA.</p>
+            <p data-testid="discovery-start-note">Counting saves a temporary setup on the card, kept after restart until you save your project.</p>
+            <p data-testid="discovery-gpio-availability">GPIO 36 and 37 are used by this card&apos;s PSRAM, so they cannot drive LED strips. GPIO 39 appears when this card reports it as available.</p>
+            <p>Up to {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs. {host || 'No card connected'}.</p>
+            {powerWarning && <p role="note" className="strip-discovery-power" data-testid="discovery-power-warning">{powerWarning}</p>}
+          </details>
         </section>
       )}
 
       {phase === 'bench-install' && (
         <section className="strip-discovery-step" data-testid="discovery-installing">
           {session.error ? (
-            // The install failed, so the card is still in whatever state it was
-            // in. Saying "setting the card up" here — the old behaviour — reads
-            // as progress and leaves the owner waiting on something that already
-            // stopped.
             <>
               <h3>The card could not be set up</h3>
               <p data-testid="discovery-install-error">{session.error}</p>
@@ -1614,13 +1779,13 @@ export function StripDiscoveryPanel({
                 </button>
               )}
               <button type="button" className="btn" data-testid="discovery-install-retry" onClick={() => setSession(null)} disabled={busy}>
-                Back to the port list
+                Back to the pins
               </button>
             </>
           ) : (
             <>
-              <h3>Setting the card up</h3>
-              <p>Keep the card powered. It restarts once, then the lights answer immediately.</p>
+              <h3>Getting the card ready</h3>
+              <p role="status" data-testid="discovery-installing-wait">Waiting for the card to restart with the counting setup.</p>
             </>
           )}
         </section>
@@ -1628,34 +1793,51 @@ export function StripDiscoveryPanel({
 
       {phase === 'probe' && activePort && (
         <section className="strip-discovery-step" data-testid="discovery-probe">
-          <h3>What color are the lights?</h3>
-          <p>{portLabel(activePort)} · Two quick checks make the counting colors accurate.</p>
-          {(channelProof.stage === 'first' || channelProof.stage === 'second') && channelProof.retry && (
-            <p role="alert" data-testid="discovery-color-proof-retry">
-              Those two answers were the same colour, which cannot happen — one of them was a
-              slip. The check starts over: look again.
-            </p>
-          )}
-          {/* A question the owner must answer lives in the page. As a
-              dismissible notice its answers vanished when it was closed,
-              leaving only "skip". */}
-          {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
-            <div role="group" aria-label="Strip color" data-testid="discovery-color-proof" className="strip-discovery-color-proof">
-              <p><strong>{channelProof.stage === 'first' ? 'Look at the strip and choose its color.' : 'And now?'}</strong></p>
-              <div className="strip-discovery-actions">
-                {['Red', 'Green', 'Blue'].map(label => (
-                  <button key={label} type="button" className="btn" data-testid={`discovery-color-${label.toLowerCase()}`} disabled={cardRestartedDuringLook} onClick={() => answerChannelProof(label.toLowerCase())}>{label}</button>
-                ))}
-              </div>
+          <h3>Tap what you see.</h3>
+          <StripLights count={12} lit={[0, 1, 2]} testId="discovery-colour-strip" />
+          {notLitWait ? (
+            <p className="strip-discovery-note" role="status" data-testid="discovery-not-lit-wait">Waiting for the card to take the counting setup off.</p>
+          ) : (
+            <div role="group" aria-label="The colours of lights 1, 2 and 3" data-testid="discovery-color-proof" className="strip-discovery-colour-rows">
+              {COLOUR_ROWS.map(row => (
+                <button
+                  key={row.join('-')}
+                  type="button"
+                  className="strip-discovery-colour-row"
+                  data-testid={`discovery-colour-row-${row.map(name => name[0]).join('')}`}
+                  aria-label={row.join(', ')}
+                  disabled={cardRestartedDuringLook || busy}
+                  onClick={() => answerColourRow(row)}
+                >
+                  {row.map(name => <i key={name} className={`is-${name}`} />)}
+                </button>
+              ))}
             </div>
           )}
-          {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
-            <div className="strip-discovery-actions">
-              <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" disabled={cardRestartedDuringLook} onClick={skipChannelProof}>
-                I can’t tell — skip this
-              </button>
+          <div className="strip-discovery-actions is-quiet">
+            <button type="button" className="btn btn-ghost" data-testid="discovery-colour-not-lit" disabled={busy} onClick={() => void notLit()}>Not lit</button>
+            <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" disabled={cardRestartedDuringLook || busy} onClick={skipChannelProof}>
+              I can’t tell
+            </button>
+          </div>
+        </section>
+      )}
+
+      {phase === 'run' && activePort && (
+        <section className="strip-discovery-step" data-testid="discovery-run">
+          <h3>Press Stop at the end.</h3>
+          <StripLights count={24} litCount={Math.min(24, Math.round((activePort.litCount / Math.max(1, activePort.provisioned)) * 24))} testId="discovery-run-strip" />
+          <p className="strip-discovery-bignum" data-testid="discovery-run-count" aria-live="off">{activePort.litCount}</p>
+          {benchNotice && <p className="strip-discovery-note" role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
+          {activePort.needsLargerBench && (
+            <div className="strip-discovery-actions is-quiet">
+              <p role="status" data-testid="discovery-run-at-end">The light reached the end of what is set up.</p>
+              <button type="button" className="btn" data-testid={`discovery-ruler-extend-${activePort.pin}`} disabled={busy} onClick={() => void extendBench(activePort.pin)}>{busy ? 'Waiting for the card to restart…' : 'Light more'}</button>
             </div>
           )}
+          <div className="strip-discovery-actions">
+            <button type="button" className="btn primary" data-testid="discovery-run-stop" disabled={busy || cardRestartedDuringLook} onClick={() => dispatch({ type: 'run-stop' })}>Stop</button>
+          </div>
         </section>
       )}
 
@@ -1665,8 +1847,6 @@ export function StripDiscoveryPanel({
           {channelProof.stage !== 'skipped' && <div className="strip-discovery-legend" aria-label="Counting markers">
             <span><i className="is-orange" />Every 5 · orange</span><span><i className="is-red" />Every 10 · red</span><span><i className="is-pink" />Every 50 · pink</span>
           </div>}
-          {channelProof.stage !== 'skipped' && <p>Count the markers, then the yellow lights at the end. Enter your total.</p>}
-          {channelProof.stage === 'skipped' && <p role="status">Colors are unverified. Enter a count you know, or <button type="button" className="btn" onClick={() => { setChannelProof({ stage: 'first', firstSeen: '', map: null, retry: false }); setSession(current => ({ ...current, phase: 'probe', activePin: current.ports.find(port => port.probed)?.pin })); }}>Check colors</button>.</p>}
           {benchNotice && <p role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
           <ul className="strip-discovery-counts">
             {session.ports.filter(port => port.probed && !port.skipped).map(port => (
@@ -1687,30 +1867,37 @@ export function StripDiscoveryPanel({
                     onChange={event => dispatch({ type: 'set-count', pin: port.pin, count: event.target.value })}
                   />
                 </label>
-                <button type="button" className="btn btn-ghost" data-testid={`discovery-ruler-extend-${port.pin}`} disabled={busy || cardRestartedDuringLook} onClick={() => void extendBench(port.pin)}>{busy ? 'Extending…' : `Strip goes past ${port.provisioned}? Light more`}</button>
               </li>
             ))}
           </ul>
           <button type="button" className="btn primary" data-testid="discovery-counts-done" disabled={busy || cardRestartedDuringLook || session.ports.some(port => port.probed && !port.skipped && port.count < 1)} onClick={() => dispatch({ type: 'counts-entered' })}>
-            Check the last LED
+            Check the last light
           </button>
         </section>
       )}
 
       {phase === 'end-marker' && activePort && (
         <section className="strip-discovery-step" data-testid="discovery-end-marker">
-          <h3>{portLabel(activePort)} — is that the last LED?</h3>
-          <p>
-            One purple LED is lit at position <strong>{activePort.count}</strong>. It should be the very
-            last light on this strip.
-          </p>
+          <h3>Is the next light dark?</h3>
+          <StripLights count={24} litCount={20} lastPurple testId="discovery-end-strip" />
+          <div className="strip-discovery-nudge" role="group" aria-label="Lights on this strip">
+            <button type="button" className="btn" data-testid="discovery-end-minus" aria-label="One light fewer" disabled={busy || cardRestartedDuringLook || activePort.count <= 1} onClick={() => dispatch({ type: 'set-count', count: activePort.count - 1 })}>−</button>
+            <span className="strip-discovery-nudge-count" data-testid="discovery-end-count">{activePort.count}</span>
+            <button type="button" className="btn" data-testid="discovery-end-plus" aria-label="One light more" disabled={busy || cardRestartedDuringLook} onClick={() => {
+              if (activePort.count >= activePort.provisioned) { void extendBench(activePort.pin).then(() => dispatch({ type: 'set-count', count: activePort.count + 1 })); return; }
+              dispatch({ type: 'set-count', count: activePort.count + 1 });
+            }}>+</button>
+          </div>
+          <p className="strip-discovery-note">No purple light? Press −.</p>
           <div className="strip-discovery-actions">
-            <button type="button" className="btn primary" data-testid="discovery-end-yes" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'end-marker-yes' })}>
-              Yes, that is the last one
+            <button type="button" className="btn primary" data-testid="discovery-end-yes" disabled={cardRestartedDuringLook || busy} onClick={() => confirmEndMarker(lastEndMarker ? 'save' : '')}>
+              Yes
             </button>
-            <button type="button" className="btn" data-testid="discovery-end-no" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'end-marker-no' })}>
-              Adjust my count
-            </button>
+            {lastEndMarker && (
+              <button type="button" className="btn btn-ghost" data-testid="discovery-end-add-strip" disabled={cardRestartedDuringLook || busy} onClick={() => confirmEndMarker('add')}>
+                Yes, and find another strip
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -1721,11 +1908,11 @@ export function StripDiscoveryPanel({
           <ul className="strip-discovery-counts">
             {session.ports.filter(port => port.confirmed && port.count > 0).map(port => (
               <li key={port.pin} data-testid={`discovery-result-${port.pin}`}>
-                {portLabel(port)} · {port.count} LEDs
+                Strip {session.ports.filter(item => item.confirmed && item.count > 0).indexOf(port) + 1} · {port.count} lights
               </li>
             ))}
           </ul>
-          <button type="button" className="btn" data-testid="discovery-add-strip" onClick={() => { setPortRoles(current => normalizePortRoles(current.map(entry => { const found = session.ports.find(port => port.pin === entry.pin); return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry; }))); setSelectedPort(null); setSession(null); }}>Add another strip</button>
+          <button type="button" className="btn" data-testid="discovery-add-strip" onClick={addAnotherStrip}>Add another strip</button>
           <button type="button" className="btn primary" data-testid="discovery-record-save" onClick={record} disabled={busy}>
             Save what we found
           </button>
@@ -1734,7 +1921,20 @@ export function StripDiscoveryPanel({
 
       {phase === 'done' && (
         <section className="strip-discovery-step" data-testid="discovery-done">
+          {/* What the record screen used to show before its Save: the counts,
+              one line per strip (simpler-journeys C8). */}
+          {session?.ports?.some(port => port.confirmed && port.count > 0) && (
+            <ul className="strip-discovery-counts" data-testid="discovery-found">
+              {session.ports.filter(port => port.confirmed && port.count > 0).map(port => (
+                <li key={port.pin} data-testid={`discovery-result-${port.pin}`}>
+                  Strip {session.ports.filter(item => item.confirmed && item.count > 0).indexOf(port) + 1} · {port.count} lights
+                </li>
+              ))}
+            </ul>
+          )}
           {!installed && measuredOutputs.length > 0 && (
+            <details className="strip-discovery-audition-fold" data-testid="discovery-pattern-audition-fold">
+            <summary data-testid="discovery-pattern-audition-open">Try a card pattern first</summary>
             <div className="strip-discovery-audition" data-testid="discovery-pattern-audition">
               <div className="strip-discovery-audition-heading">
                 <h3>Measured strips</h3>
@@ -1804,29 +2004,37 @@ export function StripDiscoveryPanel({
                 data-testid="discovery-open-patterns">Open full Patterns editor</button>
               {!layoutPrepared && <p className="strip-discovery-note">This artwork already has a layout. Open Layout to place these measured strips and confirm their GPIO wiring before installing.</p>}
             </div>
+            </details>
           )}
           {embedded ? (
             <>
-              <h3>Ready for Layout</h3>
-              <p>
-                Studio saved the output, color order, light count, and final-light boundary in this project.
-                The card is still running a temporary low-power setup; place the lights in the artwork before the final test and card install.
+              <p className="strip-discovery-bignum" data-testid="discovery-total">
+                {totalDiscoveredPixels(session)}<small>lights</small>
               </p>
-              {layoutPrepared && (
-                <p className="strip-discovery-note" data-testid="discovery-layout-guidance">
-                  {Number(committedPartsRef.current?.strips?.length) > 1
-                    ? 'Move these strips onto your artwork. Their counts and GPIO wiring are already filled in.'
-                    : 'Move this strip onto your artwork. Its count and GPIO wiring are already filled in.'}
-                </p>
-              )}
-              <button
-                type="button"
-                className="btn primary"
-                data-testid="discovery-continue-layout"
-                onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
-              >
-                Continue to Layout
-              </button>
+              {/* Layout gates nothing (setupJourney.js phasesFor: layout is
+                  `optional`, never current), so the one primary here is the
+                  write the owner came for. Layout stays a door beside it. */}
+              <div className="strip-discovery-actions">
+                {onSaveToCard && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    data-testid="discovery-save-to-card"
+                    onClick={() => { void stopBenchAudition().then(restored => { if (restored) onSaveToCard(); }); }}
+                  >
+                    Save to card
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={onSaveToCard ? 'btn btn-ghost' : 'btn primary'}
+                  data-testid="discovery-continue-layout"
+                  onClick={() => { void stopBenchAudition().then(restored => { if (restored) onComplete?.(); }); }}
+                >
+                  {onSaveToCard ? 'Place on artwork' : 'Continue to Layout'}
+                </button>
+              </div>
+              <p className="strip-discovery-note" data-testid="discovery-not-saved-yet">Not on the card until you save.</p>
             </>
           ) : installed ? (
             <div data-testid="discovery-installed">

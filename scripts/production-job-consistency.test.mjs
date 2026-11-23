@@ -192,7 +192,10 @@ test('fast Tests workflow relies on selected lane conclusions without a runner-o
     const segment = workflow.slice(start, end);
     const timeout = segment.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/m);
     assert.ok(timeout, `${job} must have a bounded timeout`);
-    assert.ok(Number(timeout[1]) <= 30, `${job} timeout must not exceed 30 minutes`);
+    // Browser smoke alone may run to 45 min (raised 2026-11-22 after the set
+    // outgrew 30 on GitHub runners); every other lane stays at 30.
+    const cap = job === 'browser' ? 45 : 30;
+    assert.ok(Number(timeout[1]) <= cap, `${job} timeout must not exceed ${cap} minutes`);
   }
   assert.doesNotMatch(workflow, /^  gate:/m, 'workflow conclusion must not require a separate billed runner');
   assert.doesNotMatch(workflow, /npm run launch:(?:source|check)/, 'fast lanes must not rerun the monolithic launch gate');

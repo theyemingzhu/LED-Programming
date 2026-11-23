@@ -231,6 +231,9 @@ export async function withCardReadRetry(read, {
   throw lastError;
 }
 
+/** The card answered, and has no room to store the change beside what it holds. */
+export const CARD_STORAGE_FULL_MESSAGE = 'The card has no room to store this change next to what it holds now, so nothing was changed. If it is running the temporary Find-my-strips setup, clear that setup, then save again.';
+
 export const CARD_DID_NOT_ANSWER_MESSAGE = 'The card did not answer. Check it has power and is on this Wi-Fi, then try again.';
 
 async function postConfigToHost(host, runtimePackage, options = {}) {
@@ -565,6 +568,23 @@ export async function requestCardReboot(host, options = {}) {
 function normalizeConfigPushError(host, err, transport = '') {
   if (err instanceof CardConfigCapacityError) return err;
   if (err instanceof CardPushError) return err;
+  // A wiring-safety refusal is the card's own answer ("candidate storage
+  // failed" when there is no room for a staged copy). It used to fall through
+  // to "the card did not answer", which made Studio treat the save as
+  // unconfirmed and report a read-back mismatch (F-F1, real card 2026-11-22).
+  if (err?.name === 'CardWiringSafetyError' && err.reason) {
+    const said = String(err.response?.error || err.message || '');
+    // Both of the real card's no-room answers: the staged copy does not fit
+    // ("candidate storage failed", 2026-11-22) and the project does not fit
+    // ("nvs write failed; previous project remains intact …", 2026-11-19, D8).
+    const storageFull = /candidate storage failed|nvs write failed|too large for card storage|has room for|no room|storage (is )?full|exceed storage/i.test(said);
+    const refusal = new CardPushError(storageFull ? 'card-storage-full' : err.reason,
+      storageFull ? CARD_STORAGE_FULL_MESSAGE : (err.message || 'The card refused this change.'), err, err.status);
+    if (Number(err.status) >= 400 && Number(err.status) < 500) refusal.delivery = 'rejected';
+    else if (storageFull || err.response?.ok === false) refusal.delivery = 'rejected';
+    refusal.response = err.response;
+    return refusal;
+  }
   if (transport === 'bridge' && err?.reason) {
     return new CardPushError(err.reason, err.message || 'The card bridge refused this configuration.', err);
   }

@@ -38,8 +38,6 @@ async function pressSaveOnPatterns(page: Page, p: InterruptionCard) {
 
 for (const backAfterMs of [20_000, 45_000]) {
   test(`card silent from just after the write until ${backAfterMs / 1000} s: Studio never says it was not saved, and ends Saved`, async ({ page }) => {
-    // D1c: back at 45 s is on Studio's own 45 s limit; red or green by a second until D1 is fixed.
-    test.fixme(backAfterMs === 45_000, 'D1c: Studio can say "has not come back" after the card answered at its 45 s limit');
     practice = realPracticeCard(cardState('playing'));
     const { button, writeAt } = await pressSaveOnPatterns(page, practice);
     // Let the save's own reply out (Real-timing: ~200 ms), then the card goes quiet.
@@ -78,7 +76,6 @@ test('card never answers again after the write: Studio does not say Saved, and d
 });
 
 test('card comes back at 75 s, after Studio gave up: Studio then sees the card holds the save', async ({ page }) => {
-  knownDefect('D1', 'nothing re-checks the card when it answers after the 45 s limit; Try saving again stays');
   practice = realPracticeCard(cardState('playing'));
   const { button, writeAt } = await pressSaveOnPatterns(page, practice);
   await page.waitForTimeout(400);

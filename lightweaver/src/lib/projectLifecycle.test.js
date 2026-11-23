@@ -639,3 +639,37 @@ test('a card-witnessed install is not this browser\'s own install', () => {
   const own = markInstalled(fresh, { generation: fresh.generation, revision: fresh.editedRevision, cardId: 'lw-one', projectRevision: 3, projectFingerprint: fp, verified: true });
   assert.ok(installedByThisBrowser(own));
 });
+
+// Interruption tests D1/D2 (todo/plans/practice-card-interruptions.md): a save
+// landed but its reply never reached this page — the owner reloaded, closed
+// the tab, or the card answered after the 45 s restart limit. The record still
+// names the OLDER install, and used to keep "Previously installed" / "Draft
+// kept separately" on screen about a card holding exactly the open project.
+test('a save whose reply was lost is recognised once the same card holds exactly the open project', () => {
+  const opened = 'a1b2c3d4e5f60708';
+  const saved = 'c8fa0374ee20844e';
+  const evidence = {
+    cardId: 'lw-aabbccddeeff', projectId: 'installed-piece-01', studioProjectId: 'installed-piece-01',
+    projectRevision: 1, projectFingerprint: saved, studioProjectFingerprint: saved,
+  };
+  // Restored after a reload: the record of the old install, unverified.
+  const edited = markEdited(markInstalled(createProjectLifecycle(), exactInstallation(0)));
+  const restored = lifecycleForRestoredProject(lifecycleRecordFromState(edited, opened));
+  const afterReload = reverifyInstallation(restored, evidence);
+  assert.equal(afterReload.installation.verified, true);
+  assert.equal(afterReload.installation.projectFingerprint, saved);
+  assert.equal(lifecycleLabel(afterReload), 'Installed on card');
+  // Same page, no reload: the old install's verified record, the project edited since.
+  const samePage = reverifyInstallation(edited, evidence);
+  assert.equal(lifecycleLabel(samePage), 'Installed on card');
+  // Still exact: another card, another project, or a card that does not hold
+  // the open project binds nothing.
+  for (const override of [
+    { cardId: 'lw-000000000000' },
+    { projectId: 'other-piece' },
+    { studioProjectFingerprint: 'ffffffffffffffff' },
+    { projectFingerprint: '' },
+  ]) {
+    assert.notEqual(lifecycleLabel(reverifyInstallation(edited, { ...evidence, ...override })), 'Installed on card', JSON.stringify(override));
+  }
+});
