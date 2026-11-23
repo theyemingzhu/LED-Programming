@@ -21,9 +21,15 @@ import { connectedFamilyForStrip } from '../../../lib/connectedSections.js';
 import { sideTint } from '../shared/sideTints.js';
 import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { symmetryEchoes } from '../../../lib/symmetryTurns.js';
-import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, useSymmetryFocus } from './mirrorEcho.js';
+import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, usePlacedLookPreview, useSymmetryFocus } from './mirrorEcho.js';
+import { placedLookFrame } from '../../../lib/placedLook.js';
+import { PlacedLookFrame, PlacedLookPicture, usePlacedLookClock } from './PlacedLookOverlay.jsx';
 import './symmetry-offer.css';
 import '../symmetry-by-eye.css';
+
+// Under a placed look, an LED outside the frame (or between bands) is dark:
+// a plain grey dot, not the strip's own warm colour, which would read as lit.
+const PLACED_DARK_LED = 'oklch(46% 0.008 75)';
 
 // "Left side" -> "the left side"; "Side 1" -> "side 1".
 const sideNoun = label => `${/^side\b/i.test(label) ? '' : 'the '}${label.charAt(0).toLowerCase()}${label.slice(1)}`;
@@ -118,9 +124,21 @@ export function LayoutCanvas({
   const sidePlaces = useMemo(() => symmetryStripPlaces(symmetry), [symmetry]);
   const axisLine = useMemo(() => symmetryAxisLine(symmetry, strips.filter(strip => !hidden[strip.id])), [symmetry, strips, hidden]);
   const {
-    effectiveShowLight, effectiveGlowMode, glowStdDev, directedGlow,
-    showHeat, showLeds, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
+    effectiveShowLight: lightShown, effectiveGlowMode, glowStdDev, directedGlow,
+    showHeat, showLeds: ledsShown, layoutPatternFrame: patternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
   } = lightPreview;
+  // A placed look being tried on the artwork takes over the LED colours: each
+  // dot shows the colour under it in the frame (lib/placedLook.js).
+  const placedLook = usePlacedLookPreview();
+  const placedActive = Boolean(placedLook) && draw.mode === 'draw' && !draw.drawMode;
+  const placedTime = usePlacedLookClock(placedActive);
+  const placedFrame = useMemo(
+    () => (placedActive ? placedLookFrame(placedLook, strips.filter(strip => !hidden[strip.id]), placedTime, { symmetry }).byStrip : null),
+    [placedActive, placedLook, strips, hidden, placedTime, symmetry],
+  );
+  const effectiveShowLight = placedActive || lightShown;
+  const showLeds = placedActive || ledsShown;
+  const layoutPatternFrame = placedFrame || patternFrame;
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     wiring, compiledWiring, selectedWiringRunId, onSeamMove,
@@ -510,8 +528,11 @@ export function LayoutCanvas({
               );
             })}
 
+            {/* ── Placed look: the picture the lights are looking at, faint ── */}
+            {placedActive && <PlacedLookPicture look={placedLook} time={placedTime}/>}
+
             {/* ── Light visualization ── */}
-            {effectiveShowLight && (
+            {effectiveShowLight && !placedActive && (
               <g filter={directedGlow ? undefined : 'url(#lw-light-glow)'} style={{ mixBlendMode: 'screen', pointerEvents: 'none' }}>
                 {strips.map(s => !hidden[s.id] && (stripSamples[s.id] || []).map((pt, i) => {
                   const stripFrame = layoutPatternFrame.get(s.id);
@@ -777,7 +798,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, s.color || 'oklch(58% 0.04 70)') : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, placedActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     // Keep unlit LEDs clearly visible so the strip's pixels are countable at rest.
                     const shellOpacity = Math.max(selected ? 0.95 : 0.62, restingLedAlpha(ledFrame, { selected }));
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
@@ -813,7 +834,7 @@ export function LayoutCanvas({
                     const ledFrame = layoutPatternFrame.get(s.id)?.leds?.[i];
                     const selected = s.id === selStripId;
                     // Warm identity color at rest; pattern-driven tint only when lit.
-                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, s.color || 'oklch(58% 0.04 70)') : (s.color || 'oklch(58% 0.04 70)');
+                    const ledColor = effectiveShowLight ? ledCssColor(ledFrame, placedActive ? PLACED_DARK_LED : (s.color || 'oklch(58% 0.04 70)')) : (s.color || 'oklch(58% 0.04 70)');
                     const coreOpacity = activeLedCoreAlpha(ledFrame, { selected });
                     const restOpacity = Math.max(selected ? 0.8 : 0.5, restingLedAlpha(ledFrame, { selected }));
                     return (
@@ -975,6 +996,12 @@ export function LayoutCanvas({
                   );
                 })}
               </g>
+            )}
+
+            {/* ── Placed look: its frame and corner handles. Under the
+                   symmetry centre mark, so the mark still drags. ── */}
+            {placedActive && !isEditingGesture && (
+              <PlacedLookFrame look={placedLook} svgRef={svgRef} scale={annotationScale} spaceRef={spaceRef}/>
             )}
 
             {/* ── Symmetry by eye: side 1 copied onto the other sides, the

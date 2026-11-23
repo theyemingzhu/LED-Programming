@@ -63,6 +63,7 @@ import { describeCardPinPlace } from '../../../lib/cardPinout.js';
 import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
 import '../symmetry-by-eye.css';
+import { PlacedLookControl } from './PlacedLookControl.jsx';
 
 // Metres formatter for the physical readouts: 2 decimals under 10 m, 1 above.
 function startedFromDragHandle(e) {
@@ -2476,6 +2477,10 @@ export function DrawModePanel({
                 <SymmetryControl symmetry={symmetry} problems={symmetryProblems} guess={symmetryGuess}
                                  onChooseFold={chooseSymmetryFold}/>
               </div>
+            )}
+            {strips.some(strip => strip.pixels?.length > 0) && (
+              <PlacedLookControl strips={strips} hidden={hidden} symmetry={symmetry}
+                                 compiledWiring={compiledWiring} artworkCentre={artworkCentre}/>
             )}
           </Fragment>
         )}

@@ -20,7 +20,7 @@ import {
 } from './standaloneController.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 
-const MAX_BAKE_FPS = 24;
+export const MAX_BAKE_FPS = 24;
 const MAX_BAKE_DURATION_SECONDS = 15 * 60;
 const EXPORT_FRAME_ESTIMATE_MS = PATTERN_LAB_WORKER_BUDGETS.exportWarningMs;
 const WORKER_REQUEST_TIMEOUT_MS = 10_000;
