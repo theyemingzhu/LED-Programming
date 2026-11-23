@@ -186,4 +186,37 @@
 .ld-pin-pattern { color: var(--text-mid); font-size: 12px; }
 .ld-pin:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
 
+/* Keep: a name, two plain buttons, and the list of looks kept in this project. */
+.ld-keep { gap: 8px; }
+.la .ld .ld-keep-name { margin: 0; border-color: var(--border); background: var(--bg-canvas); min-height: 34px; }
+.ld-kept-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ld-kept-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; }
+.la .ld .ld-kept-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  color: var(--text-mid);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.la .ld .ld-kept-open[aria-pressed="true"] { border-color: var(--text-hi); box-shadow: inset 0 0 0 1px var(--text-lo); background: var(--bg-elev-2); color: var(--text-hi); }
+.ld-kept-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-kept-tag { flex: none; color: var(--text-lo); font-size: 11px; }
+.la .ld .ld-kept-remove { min-height: 34px; }
+@media (pointer: coarse), (max-width: 600px) { .la .ld .ld-kept-open, .la .ld .ld-kept-remove, .la .ld .ld-keep-name { min-height: 44px; } }
+
+/* Keep: one full-width button per row, so a long target name wraps instead of being cut by the panel edge. */
+.ld-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.la .ld .ld-stack .btn { height: auto; min-height: 34px; padding-block: 6px; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; text-align: center; justify-content: center; }
+/* What Keep has just said reads at normal strength. */
+.la .ld .ld-keep-say.is-said { color: var(--text-hi); font-size: 12.5px; overflow-wrap: anywhere; }
 .ld-journeys button:disabled { opacity: 0.4; cursor: default; }

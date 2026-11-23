@@ -6,12 +6,13 @@ import { useSyncExternalStore } from 'react';
 // a reload starts without it.
 //
 //   { look, model, tiles, chosen, selected, tuneOpen, say, names }
+//   openKeptId the kept look that is open now, keepSay what Keep last said
 //   names     the owner's own area names, { [areaId]: string }; a pick does not touch them
 //   look      the look being played, or null when the designer is off
 //   model     lib/lookEngine/model.js: areas and the piece map of the shown strips
 //   tiles     the six looks on offer; chosen is the one picked, or -1
 //   selected  the area the drawer edits (an area id)
-const OFF = Object.freeze({ look: null, model: null, tiles: [], chosen: -1, selected: null, tuneOpen: false, say: '', names: {} });
+const OFF = Object.freeze({ look: null, model: null, tiles: [], chosen: -1, selected: null, tuneOpen: false, say: '', names: {}, openKeptId: null, keepSay: '' });
 let state = OFF;
 const listeners = new Set();
 

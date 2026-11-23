@@ -61,6 +61,10 @@ import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { saveAutosaveProjectSnapshot } from '../lib/projectAutosaveRepository.js';
 import { applyExpressionScenesUpdate } from '../lib/sceneExpressionProject.js';
 import { migrateRunSectionReferences } from '../lib/sectionRunConversion.js';
+import {
+  addDesignedLook, designedLooksProjectFields, normalizeDesignedLooks, removeDesignedLook,
+  renameDesignedLook, replaceDesignedLook,
+} from '../lib/designedLooks.js';
 
 const LS_AUTOSAVE_KEY = 'lw_autosave_v3';
 const LS_AUTOSAVE_BACKUP_KEY = 'lw_autosave_v3_backup';
@@ -556,6 +560,24 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // (no separate clearing action needed — see projectCopyLabel.js).
   const [origin,           setOrigin]           = useState(null);
   const [expressionScenes, setExpressionScenesRaw] = useState(defaults.expressionScenes);
+  // Looks the owner kept from the look designer: Studio only, stored beside the
+  // project and never read by anything that builds the card's files. The ref
+  // always holds the latest list, so each action can report its own result.
+  const [designedLooks, setDesignedLooksRaw] = useState([]);
+  const designedLooksRef = useRef([]);
+  const commitDesignedLooks = useCallback(next => { designedLooksRef.current = next; setDesignedLooksRaw(next); }, []);
+  const keepDesignedLook = useCallback(input => {
+    const result = addDesignedLook(designedLooksRef.current, input);
+    if (result.ok) commitDesignedLooks(result.looks);
+    return result;
+  }, [commitDesignedLooks]);
+  const replaceKeptLook = useCallback((id, input) => {
+    const result = replaceDesignedLook(designedLooksRef.current, id, input);
+    if (result.ok) commitDesignedLooks(result.looks);
+    return result;
+  }, [commitDesignedLooks]);
+  const renameKeptLook = useCallback((id, name) => commitDesignedLooks(renameDesignedLook(designedLooksRef.current, id, name)), [commitDesignedLooks]);
+  const removeKeptLook = useCallback(id => commitDesignedLooks(removeDesignedLook(designedLooksRef.current, id)), [commitDesignedLooks]);
   const setExpressionScenes = useCallback(update => {
     setExpressionScenesRaw(current => applyExpressionScenesUpdate(current, update));
   }, []);
@@ -803,6 +825,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     setProjectName(data.name || defaults.name);
     setOrigin(data.origin ?? null);
     setExpressionScenesRaw(data.expressionScenes);
+    commitDesignedLooks(normalizeDesignedLooks(data.designedLooks).looks);
     // Reset the whole layout slice AND clear undo history — loading a project is
     // not undoable back into the previous project.
     dispatchLayout({
@@ -946,6 +969,8 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       origin,
       expressionScenes,
       portRoles,
+      // Only written when the owner has kept a look, so a project without one saves exactly as before.
+      ...designedLooksProjectFields(designedLooks),
       layout: {
         strips, starterPending, viewBox, svgText, hidden, projectWarnings,
         layers: layoutLayers,
@@ -996,7 +1021,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
     return project;
   }, [
-    projectId, projectName, origin, expressionScenes, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
+    projectId, projectName, origin, expressionScenes, designedLooks, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
     layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, layoutSymmetry, layoutSymmetryOfferDismissed, sectionFamilies, layoutLayerOrder,
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
@@ -1219,6 +1244,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       projectName,     setProjectName,
       origin,          setOrigin,
       expressionScenes, setExpressionScenes,
+      designedLooks, keepDesignedLook, replaceKeptLook, renameKeptLook, removeKeptLook,
       motionSmoothing, setMotionSmoothing,
       // Timeline
       showDuration,    setShowDuration,
