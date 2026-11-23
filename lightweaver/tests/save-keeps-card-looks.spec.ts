@@ -30,10 +30,12 @@ function sixLookCard() {
 
 async function connect(page: Page, card: ReturnType<typeof createCardSimulator>, { shortReadBack = false } = {}) {
   await card.install(page);
-  // The card reading its looks back short (what the bench card on 1.2.6 is
-  // suspected of): only while Studio opens the installed project.
-  const short = async route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ currentIndex: 0, currentId: 'fire', patterns: [{ id: 'fire', label: 'Fire' }] }) });
-  if (shortReadBack) await page.route('http://lightweaver.local/api/patterns', short);
+  // The draft opening short. Studio now refuses a look list it cannot read
+  // whole, or one shorter than the card's own look count, so the second line
+  // of defence is proved on an older card that reports no look count and
+  // answers one valid look: only while Studio opens the installed project.
+  const state = card.state as { omitLookCount?: boolean; patternsReadBackLimit?: number };
+  if (shortReadBack) { state.omitLookCount = true; state.patternsReadBackLimit = 1; }
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
     if (localStorage.getItem('lw_card_identity_v1')) return;
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
@@ -50,7 +52,7 @@ async function connect(page: Page, card: ReturnType<typeof createCardSimulator>,
   await expect.poll(() => page.evaluate(() => {
     try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || ''; } catch { return ''; }
   }), { timeout: 30_000 }).toBe(card.state.projectId);
-  if (shortReadBack) await page.unroute('http://lightweaver.local/api/patterns', short);
+  if (shortReadBack) { delete state.omitLookCount; delete state.patternsReadBackLimit; }
 }
 
 const configWrites = (card: ReturnType<typeof createCardSimulator>) => card.requests.filter(r => r.method === 'POST' && ['/api/config', '/api/wiring/candidate'].includes(r.path));

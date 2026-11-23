@@ -62,5 +62,6 @@ for (const [name, answer] of [
     const card = await openCard(page, answer);
     await expect(page.getByText(/could not read every look on this card, so nothing was opened/).first()).toBeVisible({ timeout: 60_000 });
     expect((await draft(page)).id, 'the card\'s project was not opened').not.toBe(card.state.projectId);
+    await expect(page.getByText(/Your draft matches the installed project/), 'never claims a match it could not check').toHaveCount(0);
   });
 }

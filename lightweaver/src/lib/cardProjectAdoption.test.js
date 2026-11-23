@@ -752,6 +752,35 @@ test('a look list over the bound is refused by the reader, not truncated (L1)', 
   await assert.rejects(readCardPatternsFromCard({ host: 'lightweaver.local', authority: { request: async () => big } }), error => error.reason === 'response-too-large');
 });
 
+test('a look list shorter than the card\'s own look count opens nothing (L1)', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  deps.io.readCardFirmwareInfoEnvelope = async () => ({ lookCount: 6 });
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.reason, 'looks-unreadable', 'one look read, six on the card');
+  assert.equal(calls.appliedParts.length, 0);
+  const { cardLooksUnreadable, resetCardLookReadState } = await import('./cardLookReadState.js');
+  assert.equal(cardLooksUnreadable(CARD_ID), true, 'remembered, so Card Home never says the draft matches');
+  resetCardLookReadState();
+});
+
+test('the look list is read alone, before zones and firmware-info (L1: the card answers one request at a time)', async () => {
+  const { deps } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  const order = [];
+  deps.io.readCardPatternsFromCard = async () => {
+    order.push('patterns:start');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    order.push('patterns:end');
+    return { currentId: 'fire', currentIndex: 0, patterns: SIX_LOOKS };
+  };
+  deps.io.readCardZonesFromCard = async () => { order.push('zones'); return null; };
+  deps.io.readCardFirmwareInfoEnvelope = async () => { order.push('firmware-info'); return { lookCount: 6 }; };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(order.slice(0, 2), ['patterns:start', 'patterns:end']);
+});
+
 test('reconstruct opens nothing for a look list too large to read (L1)', async () => {
   const { deps, calls } = makeDeps();
   deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });

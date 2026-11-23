@@ -1057,12 +1057,18 @@ export function createCardSimulator(
           bridgeVersion: 6,
           build: state.buildId,
           pixels: state.pixels,
-          lookCount: state.patterns.length,
+          // Opt-out (state.omitLookCount): an older card that does not report it.
+          lookCount: (state as { omitLookCount?: boolean }).omitLookCount ? undefined : state.patterns.length,
           freeHeap: 180000,
           rssi: -52,
         });
-      case '/api/patterns':
-        return ok(patternsBody(state));
+      case '/api/patterns': {
+        // Opt-in (state.patternsReadBackLimit): the card answers only the
+        // first N looks, a short read-back (L1).
+        const limit = (state as { patternsReadBackLimit?: number }).patternsReadBackLimit;
+        const body = patternsBody(state) as { patterns?: unknown[] };
+        return ok(Number.isInteger(limit) ? { ...body, patterns: (body.patterns || []).slice(0, limit) } : body);
+      }
       case '/api/zones':
         return ok({ syncZones: true, kaleidoscopeMappings: [], zones: zonesFor(state) });
       case '/api/control':

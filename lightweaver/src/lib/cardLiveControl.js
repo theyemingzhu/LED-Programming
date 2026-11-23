@@ -918,7 +918,17 @@ async function readCardPatterns(host, options = {}) {
     else if (acquired?.reason === 'wrong-card') throw new CardPushError('wrong-card', 'A different Lightweaver card answered.');
   }
   const maxBytes = MAX_CARD_PATTERNS_RESPONSE_BYTES;
-  if (authority) return normalizeCardPatternsPayload(requireBoundedControlObject(await authority.request('/api/patterns'), maxBytes));
+  if (authority) {
+    // The direct card link had no time limit here at all: a card that never
+    // answered held the read open forever. Same allowance as the other paths.
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    try {
+      return normalizeCardPatternsPayload(requireBoundedControlObject(await authority.request('/api/patterns', ctrl ? { signal: ctrl.signal } : {}), maxBytes));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
   if (hasVerifiedBridgeForHost(host)) {
     return normalizeCardPatternsPayload(requireBoundedControlObject(await sendCardBridgeRequest('patterns', {}, { host, timeoutMs }), maxBytes));
   }
