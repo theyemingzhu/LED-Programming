@@ -96,7 +96,7 @@ export function CardPinPicker({
               data-testid={`discovery-probe-${pinLabel}`}
               role="button"
               tabIndex={disabled ? -1 : 0}
-              aria-label={`GPIO ${pinLabel}`}
+              aria-label={`Pin ${pinLabel}`}
               aria-pressed={isLit}
               aria-disabled={disabled || undefined}
               onClick={() => press(pinLabel)}
