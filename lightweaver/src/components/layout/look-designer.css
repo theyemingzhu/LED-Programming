@@ -152,3 +152,36 @@
 .ld-pname { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .la .ld .ld-more { justify-self: start; min-height: 32px; }
 @media (pointer: coarse), (max-width: 600px) { .la .ld .ld-ptile { min-height: 44px; } .la .ld .ld-more { min-height: 44px; } }
+
+/* THE PINNED STRIP. It lives in the inspector (`.side`, the scrolling element),
+   sticky just under the sticky mode bar. Its wrapper has no height, so showing
+   or hiding it never moves the content (no flicker at the threshold); the
+   strip itself hangs below the wrapper, opaque, 56px at most, under the mode
+   bar (z-index 3) and above the content. */
+.ld-pinwrap { position: sticky; top: var(--ld-pin-top, 0px); z-index: 2; height: 0; margin-inline: -10px; }
+.ld-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 8px 10px -8px color-mix(in oklab, var(--bg-app) 85%, transparent);
+  color: var(--text-hi);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-pin canvas { flex: none; width: 40px; height: 40px; border-radius: 6px; background: var(--bg-canvas); }
+.ld-pin-text { display: grid; gap: 2px; min-width: 0; }
+.ld-pin-area, .ld-pin-pattern { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-pin-area { font-size: 13px; font-weight: 500; }
+.ld-pin-pattern { color: var(--text-mid); font-size: 12px; }
+.ld-pin:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }

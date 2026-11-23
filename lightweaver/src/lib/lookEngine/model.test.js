@@ -31,3 +31,11 @@ test('a piece with no symmetry still previews, one area per strip', () => {
   const look = startingLooks(model.derived.areas)[1].look;
   assert.equal(frameByStrip(look, model, 1).size, strips.length);
 });
+
+test('thumbnail spots fit the piece inside the square, in LED order', async () => {
+  const { thumbnailSpots } = await import('./model.js');
+  const model = buildPieceModel(strips, { fold: 6, centre: C });
+  const spots = thumbnailSpots(model, 40, 3);
+  assert.equal(spots.length, model.map.leds.length);
+  assert.ok(spots.every(s => s && s.x >= 2.9 && s.x <= 37.1 && s.y >= 2.9 && s.y <= 37.1));
+});

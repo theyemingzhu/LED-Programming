@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   JOURNEYS, MOTIONS, applyBend, buildPieceModel, getMotion, nudgeLook, normalizeLook, randomLook,
-  readBend, hasPattern, patternChoices, thumbnailBytes, seededRng, setArea, setPiece, startingLooks,
+  readBend, hasPattern, patternChoices, thumbnailBytes, thumbnailSpots, seededRng, setArea, setPiece, startingLooks,
 } from '../../../lib/lookEngine/index.js';
 import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
 import { setPlacedLookPreview, usePlacedLookPreview } from '../canvas/mirrorEcho.js';
 import { setLookDesigner, useLookDesigner } from '../canvas/lookDesignerStore.js';
-import { LookPatternGrid } from './LookPatternGrid.jsx';
+import { GRID_PATTERNS, LookPatternGrid } from './LookPatternGrid.jsx';
+import { LookPin, PIN_HEIGHT } from './LookPin.jsx';
 import '../look-designer.css';
 
 const STILL_SECONDS = 2.6;
@@ -85,18 +86,7 @@ function Segment({ label, id, choices, value, onPick, testId }) {
 // seven moving pictures stay cheap. Reduced motion: one still frame each.
 function LookThumbs({ tiles, chosen, model, onPick }) {
   const canvases = useRef([]);
-  const spots = useMemo(() => {
-    const flat = model.strips.flatMap(strip => strip.pixels || []);
-    const finite = flat.filter(p => Number.isFinite(p?.x) && Number.isFinite(p?.y));
-    if (!finite.length) return flat.map(() => null);
-    const minX = Math.min(...finite.map(p => p.x)); const maxX = Math.max(...finite.map(p => p.x));
-    const minY = Math.min(...finite.map(p => p.y)); const maxY = Math.max(...finite.map(p => p.y));
-    const pad = 10;
-    const k = (TILE_SIZE - pad * 2) / Math.max(maxX - minX, maxY - minY, 1);
-    const ox = (TILE_SIZE - (maxX - minX) * k) / 2 - minX * k;
-    const oy = (TILE_SIZE - (maxY - minY) * k) / 2 - minY * k;
-    return flat.map(p => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x * k + ox, y: p.y * k + oy } : null));
-  }, [model]);
+  const spots = useMemo(() => thumbnailSpots(model, TILE_SIZE, 10), [model]);
   useEffect(() => {
     const draw = (index, t) => {
       const canvas = canvases.current[index];
@@ -194,6 +184,49 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const bend = look ? readBend(look) : null;
   const areaEdit = patch => edit(setArea(look, sel, patch));
 
+  // THE PINNED STRIP. It shows only while the thing it stands in for is out of
+  // view: the area chips (scrolled out of the inspector) or the canvas
+  // (scrolled out of the window). The scroll container is the inspector,
+  // `.side`; the strip is sticky inside it, just under the sticky mode bar.
+  const [pinned, setPinned] = useState(false);
+  const [navHeight, setNavHeight] = useState(0);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const side = wrapRef.current?.closest('.side');
+    const nav = side?.querySelector('.la-mode-nav');
+    if (!on || !state.tuneOpen || !side) { setPinned(false); return undefined; }
+    const measure = () => setNavHeight(Math.round(nav ? nav.getBoundingClientRect().height : 0));
+    measure();
+    const resize = typeof ResizeObserver === 'function' && nav ? new ResizeObserver(measure) : null;
+    resize?.observe(nav);
+    return () => { resize?.disconnect(); };
+  }, [on, state.tuneOpen]);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const side = wrap?.closest('.side');
+    const chips = document.querySelector('[data-testid="look-designer-chips"]');
+    const stage = document.querySelector('.la .lw-viewport');
+    if (!on || !state.tuneOpen || !side || !chips || typeof IntersectionObserver !== 'function') { setPinned(false); return undefined; }
+    wrap.style.setProperty('--ld-pin-top', `${navHeight}px`);
+    // A focused control or a tapped tile is never left under the strip.
+    side.style.scrollPaddingTop = `${navHeight + PIN_HEIGHT}px`;
+    const seen = { chips: true, stage: true };
+    const update = () => setPinned(!seen.chips || !seen.stage);
+    // The chips count as in view only below the mode bar and the strip.
+    const watchChips = new IntersectionObserver(([entry]) => { seen.chips = entry.isIntersecting; update(); },
+      { root: side, rootMargin: `-${navHeight + PIN_HEIGHT}px 0px 0px 0px` });
+    watchChips.observe(chips);
+    const watchStage = stage ? new IntersectionObserver(([entry]) => { seen.stage = entry.intersectionRatio >= 0.35; update(); }, { threshold: [0, 0.35, 1] }) : null;
+    if (stage) watchStage.observe(stage);
+    return () => { watchChips.disconnect(); watchStage?.disconnect(); side.style.scrollPaddingTop = ''; setPinned(false); };
+  }, [on, state.tuneOpen, navHeight, sel]);
+  const jumpToChips = () => {
+    const chips = document.querySelector('[data-testid="look-designer-chips"]');
+    chips?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+    chips?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+  };
+
+
   return (
     <section className="la-placed ld" data-testid="layout-look-designer" aria-label="Look designer">
       <span className="la-symmetry-k" id="layout-look-designer-label">Look designer</span>
@@ -256,9 +289,17 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
           <details className="ld-tune" data-testid="look-designer-tune" open={state.tuneOpen}
                    onToggle={event => { if (event.currentTarget.open !== state.tuneOpen) setLookDesigner({ tuneOpen: event.currentTarget.open }); }}>
             <summary>Tune it yourself</summary>
+            <div className="ld-pinwrap" ref={wrapRef}>
+              {pinned && rec && (
+                <LookPin look={look} model={model} areaIndex={ids.indexOf(sel)} areaName={selName}
+                         copies={model.derived.areas[ids.indexOf(sel)].copies.length}
+                         patternName={rec.source.kind === 'pattern' ? (GRID_PATTERNS.find(p => p.id === rec.source.id)?.label || rec.source.id) : 'The colours of the look'}
+                         onJump={jumpToChips}/>
+              )}
+            </div>
             {rec && (
               <div className="ld-tunebody">
-                <div className="ld-chips" role="group" aria-label="Which shape">
+                <div className="ld-chips" role="group" aria-label="Which shape" data-testid="look-designer-chips">
                   {model.derived.areas.map((area, index) => (
                     <button key={area.id} type="button" className="btn" aria-pressed={area.id === sel} data-testid={`look-designer-chip-${index}`}
                             onClick={() => setLookDesigner({ selected: area.id })}>

@@ -283,6 +283,42 @@ test('"Pattern" comes first in Tune it yourself as a picture grid, with mood chi
   expect(rows).toBe(2);
 });
 
+test('on a phone, a pinned strip names the chosen area and pattern once the shape buttons scroll away', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedPiece(page, LOTUS);
+  await openSheet(page);
+  await turnOn(page);
+  const pin = page.getByTestId('look-designer-pin');
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  // Shape buttons and canvas both in view: no strip at all.
+  await page.getByTestId('look-designer-chip-0').scrollIntoViewIfNeeded();
+  await expect(pin).toHaveCount(0);
+  // Down in the pattern grid the shape buttons are out of view: the strip shows the chosen area.
+  const tile = page.locator('.ld-ptile:not(.ld-ptile-plain)').nth(11);
+  await tile.scrollIntoViewIfNeeded();
+  await expect(pin).toBeVisible();
+  const area = (await page.getByTestId('look-designer-name').inputValue());
+  await expect(page.getByTestId('look-designer-pin-area')).toContainText(area);
+  const box = await pin.boundingBox();
+  expect(box!.height).toBeLessThanOrEqual(56);
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  // A tapped tile is not hidden under it, and the strip's pattern name follows the tap.
+  const label = (await tile.getAttribute('aria-label'))!;
+  const tileTop = (await tile.boundingBox())!.y;
+  expect(tileTop).toBeGreaterThanOrEqual(box!.y + box!.height - 1);
+  await tile.click();
+  await expect(page.getByTestId('look-designer-pin-pattern')).toHaveText(label);
+  // Back at the shape buttons the strip goes again.
+  await page.getByTestId('look-designer-chip-0').scrollIntoViewIfNeeded();
+  await expect(pin).toHaveCount(0);
+  // And tapping the strip takes you there.
+  await tile.scrollIntoViewIfNeeded();
+  await expect(pin).toBeVisible();
+  await pin.click();
+  await expect(pin).toHaveCount(0);
+});
+
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const ids = await seedPiece(page, LOTUS);

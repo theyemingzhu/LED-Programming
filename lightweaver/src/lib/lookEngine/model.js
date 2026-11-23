@@ -47,3 +47,22 @@ export function frameByStrip(look, model, t) {
   }
   return byStrip;
 }
+
+/**
+ * Where each LED sits in a small square picture of the piece, in strip order:
+ * [{ x, y } | null]. Shared by the six tiles and the pinned strip.
+ */
+export function thumbnailSpots(model, size = 120, pad = 10) {
+  const flat = model.strips.flatMap(strip => strip.pixels || []);
+  const ok = point => Number.isFinite(point?.x) && Number.isFinite(point?.y);
+  const finite = flat.filter(ok);
+  if (!finite.length) return flat.map(() => null);
+  const xs = finite.map(p => p.x);
+  const ys = finite.map(p => p.y);
+  const minX = Math.min(...xs); const maxX = Math.max(...xs);
+  const minY = Math.min(...ys); const maxY = Math.max(...ys);
+  const k = (size - pad * 2) / Math.max(maxX - minX, maxY - minY, 1);
+  const ox = (size - (maxX - minX) * k) / 2 - minX * k;
+  const oy = (size - (maxY - minY) * k) / 2 - minY * k;
+  return flat.map(p => (ok(p) ? { x: p.x * k + ox, y: p.y * k + oy } : null));
+}
