@@ -53,6 +53,16 @@ for (const file of ['LightweaverMedia.cpp', 'LightweaverProjectRepository.cpp',
     /lightweaverOwnerCapability\(\)\.validate\(/,
     `${file} still validates the owner permission against its exact binding`);
 }
+// Studio has to know which cards still need a touch (1.2.5 and older do).
+// Both status reports carry the flag, and only while no touch gate exists.
+assert.match(header, /LW_OWNER_NO_TOUCH_VERSION = 1;/);
+for (const file of ['main.cpp', 'LightweaverStorage.cpp']) {
+  const text = readFileSync(join(sourceRoot, file), 'utf8');
+  assert.match(text, /doc\["capabilities"\]\["ownerNoTouch"\] = LW_OWNER_NO_TOUCH_VERSION;/,
+    `${file} must report capabilities.ownerNoTouch`);
+  assert.match(text, /#include "LightweaverOwnerCapability\.h"/,
+    `${file} takes the flag from the owner-permission header`);
+}
 // The controls still work as controls: a press is recorded and reported.
 const mainSource = readFileSync(join(sourceRoot, 'main.cpp'), 'utf8');
 assert.match(mainSource, /lastControlEventAt = millis\(\)/);

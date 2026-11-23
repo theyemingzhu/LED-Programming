@@ -6,6 +6,11 @@ class WebServer;
 
 static constexpr uint32_t LW_OWNER_CAPABILITY_TTL_MS = 60000;
 static constexpr size_t LW_OWNER_CAPABILITY_MAX_BODY_BYTES = 1024;
+// Reported as /api/firmware-info and /api/status capabilities.ownerNoTouch.
+// Present (1) means this card issues the owner permission, and accepts a
+// firmware update, with no press on a card control. A card that does not
+// report it still answers 403 "touch a card control to pair".
+static constexpr uint8_t LW_OWNER_NO_TOUCH_VERSION = 1;
 
 struct LightweaverOwnerBinding {
   String cardId;

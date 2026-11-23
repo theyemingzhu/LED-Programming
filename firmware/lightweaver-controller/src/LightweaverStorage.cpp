@@ -6,6 +6,7 @@
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverProjectRepository.h"
 #include "LightweaverMedia.h"
+#include "LightweaverOwnerCapability.h"
 #include "LightweaverRecipe.h"
 #include "LightweaverLookModePolicy.h"
 #include "LightweaverWifiChannelPolicy.h"
@@ -3228,6 +3229,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilities"]["clientPattern"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
