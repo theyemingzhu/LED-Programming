@@ -1,0 +1,26 @@
+/* The card drawing as a pin picker (CardPinPicker, Find my strips). Studio's
+   own control tokens; no extra colours. */
+.lw-pinpicker { margin: 4px 0; display: flex; justify-content: center; }
+.lw-pinpicker svg { display: block; width: 100%; max-width: 620px; height: auto; color: var(--text-mid, rgba(255, 255, 255, 0.6)); }
+.lw-pinpicker.is-upright svg { max-width: 260px; }
+.lw-pinpicker-board { fill: var(--bg-elev, rgba(255, 255, 255, 0.04)); stroke: var(--border-soft, rgba(255, 255, 255, 0.16)); }
+.lw-pinpicker-end { fill: var(--text-lo, currentColor); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+.lw-pinpicker-pad { fill: none; stroke: currentColor; stroke-width: 1; }
+.lw-pinpicker-label { fill: var(--text-lo, currentColor); font-size: 10px; }
+.lw-pinpicker-pin.is-inert { opacity: 0.4; }
+.lw-pinpicker-pin.is-pickable { cursor: pointer; }
+.lw-pinpicker-pin.is-pickable .lw-pinpicker-pad { stroke: var(--control-selected-edge, #C8813F); stroke-width: 1.6; }
+.lw-pinpicker-pin.is-pickable .lw-pinpicker-label { fill: var(--text-hi, currentColor); font-weight: 600; }
+.lw-pinpicker-hit { fill: transparent; }
+.lw-pinpicker-pin.is-pickable:hover .lw-pinpicker-pad { fill: color-mix(in oklch, var(--control-selected-edge, #C8813F) 25%, transparent); }
+.lw-pinpicker-pin.is-pickable:focus-visible { outline: none; }
+.lw-pinpicker-pin.is-pickable:focus-visible .lw-pinpicker-pad { stroke-width: 3; }
+.lw-pinpicker-pin.is-lit .lw-pinpicker-pad,
+.lw-pinpicker-pin.is-pulse .lw-pinpicker-pad { fill: var(--control-selected-edge, #C8813F); stroke: var(--control-selected-edge, #C8813F); }
+.lw-pinpicker-pin.is-ground { opacity: 1; }
+.lw-pinpicker-pin.is-ground .lw-pinpicker-pad { stroke: var(--text-hi, currentColor); stroke-width: 2; }
+.lw-pinpicker-pin.is-ground .lw-pinpicker-label { fill: var(--text-hi, currentColor); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) {
+  .lw-pinpicker-pin.is-pulse .lw-pinpicker-pad { animation: lw-pinpicker-blink 1.5s infinite; }
+  @keyframes lw-pinpicker-blink { 0%, 40%, 55%, 80% { opacity: 1; } 41%, 54%, 81%, 100% { opacity: 0.25; } }
+}
