@@ -1962,11 +1962,19 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
     throw error;
   }
   const current = link.getState();
+  // A newer discovery poll of the SAME card at the SAME address, reporting the
+  // build this pairing just read back, has not moved anything. On a slow card
+  // every pairing attempt (two reads, seconds each) overlapped a poll, so all
+  // retries were refused as "a newer card discovery replaced this pairing
+  // attempt" (interruption test D5, todo/plans/practice-card-interruptions.md).
+  const sameCardNewerPoll = (current.directDiscoveryRevision || 0) !== snapshot.revision
+    && current.discoveredCard?.id === snapshot.cardId
+    && (!current.discoveredCard?.buildId || current.discoveredCard.buildId === verified.buildId);
   if (
     current.transport !== 'direct'
     || current.host !== snapshot.host
     || current.discoveredCard?.id !== snapshot.cardId
-    || (current.directDiscoveryRevision || 0) !== snapshot.revision
+    || ((current.directDiscoveryRevision || 0) !== snapshot.revision && !sameCardNewerPoll)
   ) {
     const error = new Error('A newer card discovery replaced this pairing attempt. Try again with the card now shown.');
     error.reason = 'stale-discovery';
