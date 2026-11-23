@@ -1800,3 +1800,9 @@ assert.equal(shared.getState().readiness, null,
 }
 
 console.log('card-link-state tests passed');
+
+// Every assertion above has run by this line; a failed one throws before it.
+// Some links under test leave retry and reconnect timers armed, and the
+// longer slow-card waits kept this process alive for minutes after passing,
+// long enough to exhaust the CI job's time limit. End the process here.
+process.exit(0);
