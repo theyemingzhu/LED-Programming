@@ -57,3 +57,8 @@ export function setPiece(look, patch) {
 export function setSource(look, areaId, source) {
   return setArea(look, areaId, { source });
 }
+
+/** True when at least one of these areas takes its colour from the look's colour journey (not from a pattern). */
+export function lookUsesJourney(look, areaIds = Object.keys(look?.areas || {})) {
+  return areaIds.some(id => look?.areas?.[id]?.source?.kind !== 'pattern');
+}
