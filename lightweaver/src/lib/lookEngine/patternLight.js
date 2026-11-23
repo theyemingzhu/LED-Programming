@@ -17,6 +17,7 @@
 import { renderPixelFrame, compilePattern, normalizePalette } from '../frameEngine.js';
 import { PALETTE_DEFAULT } from '../../data.js';
 import { getPatternById, listPatterns } from '../patternRegistry.js';
+import { resolvePreviewPatternId } from '../patternPiecePreview.js';
 
 const finite = point => point && Number.isFinite(point.x) && Number.isFinite(point.y);
 
@@ -25,10 +26,14 @@ export function patternChoices() {
   return listPatterns().map(pattern => ({ id: pattern.id, name: pattern.name || pattern.id }));
 }
 
-export const hasPattern = id => Boolean(id && getPatternById(id));
+// Ids on the Patterns screen are card pattern ids; most are library ids, a few map to one.
+const libraryId = id => (id ? resolvePreviewPatternId(id) : null);
+export const hasPattern = id => Boolean(libraryId(id));
 
 const compiled = new Map();
-function compiledPattern(id) {
+function compiledPattern(requested) {
+  const id = libraryId(requested);
+  if (!id) return null;
   const code = getPatternById(id)?.code;
   if (code === undefined) return null;
   const hit = compiled.get(id);
@@ -60,7 +65,7 @@ export function makePatternLights(strips = [], { params = {} } = {}) {
     if (last && last.id === patternId && last.t === t) return last.bytes;
     const fn = compiledPattern(patternId);
     if (!fn) return null;
-    const { pixels } = renderPixelFrame({ t, strips: frameStrips, patternId, activeFn: fn, paletteNorm: palette, params });
+    const { pixels } = renderPixelFrame({ t, strips: frameStrips, patternId: libraryId(patternId), activeFn: fn, paletteNorm: palette, params });
     const bytes = new Uint8Array(pixels.length * 3);
     pixels.forEach((px, i) => { bytes[i * 3] = px.r; bytes[i * 3 + 1] = px.g; bytes[i * 3 + 2] = px.b; });
     last = { id: patternId, t, bytes };
@@ -78,7 +83,7 @@ const toRgb = hex => [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 1
  * real pattern.
  */
 export function patternStandIn(patternId) {
-  const swatch = getPatternById(patternId)?.preview || '';
+  const swatch = getPatternById(libraryId(patternId) || '')?.preview || '';
   const colours = [...swatch.matchAll(HEX)].map(match => toRgb(match[1]));
   return colours.length >= 2 ? colours : null;
 }

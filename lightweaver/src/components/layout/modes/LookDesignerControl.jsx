@@ -7,6 +7,7 @@ import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
 import { setPlacedLookPreview, usePlacedLookPreview } from '../canvas/mirrorEcho.js';
 import { setLookDesigner, useLookDesigner } from '../canvas/lookDesignerStore.js';
+import { LookPatternGrid } from './LookPatternGrid.jsx';
 import '../look-designer.css';
 
 const STILL_SECONDS = 2.6;
@@ -192,7 +193,6 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const selName = (sel && state.names[sel]) || selDefault;
   const bend = look ? readBend(look) : null;
   const areaEdit = patch => edit(setArea(look, sel, patch));
-  const choices = useMemo(() => (on ? patternChoices() : []), [on]);
 
   return (
     <section className="la-placed ld" data-testid="layout-look-designer" aria-label="Look designer">
@@ -273,18 +273,11 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
                             if (next) names[sel] = next; else delete names[sel];
                             setLookDesigner({ names });
                           }}/>
-                <div className="ld-field">
-                  <label className="la-symmetry-k" htmlFor="look-designer-pattern">Pattern</label>
-                  <select id="look-designer-pattern" data-testid="look-designer-pattern" className="ld-select"
-                          value={rec.source.kind === 'pattern' ? rec.source.id : ''}
-                          onChange={event => areaEdit({ source: event.target.value ? { kind: 'pattern', id: event.target.value } : { kind: 'journey' } })}>
-                    <option value="">The colours of the look</option>
-                    {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
-                  </select>
-                </div>
+                <LookPatternGrid value={rec.source.kind === 'pattern' ? rec.source.id : ''}
+                                 onPick={id => areaEdit({ source: id ? { kind: 'pattern', id } : { kind: 'journey' } })}/>
                 <div className="ld-field">
                   <span className="la-symmetry-k" id="ld-plays">It shows as</span>
-                  <div className="ld-seg" role="group" aria-labelledby="ld-plays" data-testid="look-designer-motions">
+                  <div className="ld-seg is-two" role="group" aria-labelledby="ld-plays" data-testid="look-designer-motions">
                     {MOTIONS.map(entry => (
                       <button key={entry.id} type="button" className="btn" aria-pressed={entry.id === rec.motion.type}
                               data-testid={`look-designer-motion-${entry.id}`}

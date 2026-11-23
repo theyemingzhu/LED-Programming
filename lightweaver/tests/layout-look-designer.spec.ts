@@ -249,23 +249,38 @@ test('the chosen option looks different from the others', async ({ page }) => {
   expect(await look('look-designer-journey-dawn')).not.toBe(await look('look-designer-journey-tide'));
 });
 
-test('"Pattern" comes first in Tune it yourself, lists the project\'s patterns, and changes the light', async ({ page }) => {
+test('"Pattern" comes first in Tune it yourself as a picture grid, with mood chips and Show more; a tile sets the light', async ({ page }) => {
   const ids = await seedPiece(page, LOTUS);
   await turnOn(page);
   await page.getByTestId('look-designer-tune').locator('summary').click();
-  const pattern = page.getByTestId('look-designer-pattern');
-  await expect(pattern).toBeVisible();
-  expect(await pattern.locator('option').count()).toBeGreaterThan(20);
+  const grid = page.getByTestId('look-designer-grid');
+  await expect(grid).toBeVisible();
   const above = await page.evaluate(() => {
-    const select = document.querySelector('[data-testid="look-designer-pattern"]')!;
+    const grid = document.querySelector('[data-testid="look-designer-grid"]')!;
     const plays = [...document.querySelectorAll('.ld-tunebody .la-symmetry-k')].find(node => node.textContent === 'It shows as')!;
-    return Boolean(select.compareDocumentPosition(plays) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return Boolean(grid.compareDocumentPosition(plays) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
   expect(above).toBe(true);
+  // 12 tiles first (plus the look's own colours), then the rest on request.
+  const tiles = grid.locator('.ld-ptile:not(.ld-ptile-plain)');
+  await expect(tiles).toHaveCount(12);
+  await page.getByTestId('look-designer-pattern-more').click();
+  expect(await tiles.count()).toBeGreaterThan(40);
+  // Mood chips narrow the list.
+  for (const mood of ['all', 'calm', 'water', 'warm', 'spark', 'motion', 'electric']) await expect(page.getByTestId(`look-designer-mood-${mood}`)).toBeVisible();
+  await page.getByTestId('look-designer-mood-warm').click();
+  const warm = await tiles.count();
+  expect(warm).toBeGreaterThan(0);
+  await page.getByTestId('look-designer-mood-all').click();
+  // A tile sets the chosen area's pattern at once, and the name shows beside the heading.
   const before = await allColours(page, ids);
-  await changed(page, ids, before, () => pattern.selectOption({ label: 'Fire' }));
-  // "The whole pattern" is one of the choices, read from the registry.
+  await changed(page, ids, before, () => page.getByTestId('look-designer-pattern-fire').click());
+  await expect(page.getByTestId('look-designer-pattern-name')).toHaveText('Fire');
+  await expect(page.getByTestId('look-designer-pattern-fire')).toHaveAttribute('aria-pressed', 'true');
+  // "The whole pattern" is one of the choices, read from the registry; four choices sit two by two.
   await expect(page.getByTestId('look-designer-motion-whole')).toHaveText('The whole pattern');
+  const rows = await page.getByTestId('look-designer-motions').locator('button').evaluateAll((nodes: Element[]) => new Set(nodes.map(node => Math.round(node.getBoundingClientRect().top))).size);
+  expect(rows).toBe(2);
 });
 
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {
