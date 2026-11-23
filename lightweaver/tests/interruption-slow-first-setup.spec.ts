@@ -61,7 +61,7 @@ test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio nev
 });
 
 test('first setup after pairing, card answering in 5 s: every step finishes, the card holds the project, never silent for 3 s', async ({ page }) => {
-  knownDefect('D6+D7', 'probe 4 s timeout with raw abort text (D6, Find my strips session); setup write blamed on the card page (D7)');
+  knownDefect('D6', 'probe 4 s timeout with raw abort text (Find my strips session); D7 is fixed and must not return');
   practice = realPracticeCard(cardState('factory-blank'));
   const { card } = practice;
   await card.install(page);

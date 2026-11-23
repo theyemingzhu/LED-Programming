@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  BENCH_INSTALL_SLOW_CARD_MESSAGE,
+  BENCH_PREFLIGHT_TIMEOUT_MS,
   BENCH_INSTALL_EXISTING_PROJECT_MESSAGE,
   BENCH_INSTALL_STAGED_MESSAGE,
   BENCH_INSTALL_STAGED_UNKNOWN_MESSAGE,
@@ -596,4 +598,41 @@ test('waitForClearedCard stops immediately when a different card answers', async
     }),
     error => error.reason === 'wrong-card',
   );
+});
+
+// Interruption test D7 (todo/plans/practice-card-interruptions.md): on a local
+// Studio a slow card's exact-card check ran out at 1.5 s and the blank-card
+// write fell back to the card page, which a local Studio does not have — so
+// the owner read "The local card page is not connected". The check now gets
+// 6 s, and a timed-out check on a local Studio says the card was slow.
+test('a local Studio blames a slow card, not a card page, when the preflight times out', async () => {
+  let guardOptions = null;
+  let bridged = 0;
+  await assert.rejects(
+    installBenchConfig({
+      host: 'lightweaver.local',
+      config: { led: { pixels: 256 } },
+      initial: true,
+      direct: true,
+      guardImpl: async (_host, options) => {
+        guardOptions = options;
+        const error = new Error('signal is aborted without reason');
+        error.name = 'AbortError';
+        throw error;
+      },
+      authorizeImpl: () => { bridged += 1; return { ok: false, reason: 'bridge-missing' }; },
+      bridgeRequestImpl: async () => { bridged += 1; return {}; },
+      waitForPlaybackImpl: async () => {},
+    }),
+    error => {
+      assert.ok(error instanceof BenchInstallError);
+      assert.equal(error.reason, 'no-answer');
+      assert.equal(error.message, BENCH_INSTALL_SLOW_CARD_MESSAGE);
+      assert.doesNotMatch(error.message, /card page|abort/i);
+      return true;
+    },
+  );
+  assert.equal(guardOptions.timeoutMs, BENCH_PREFLIGHT_TIMEOUT_MS);
+  assert.ok(BENCH_PREFLIGHT_TIMEOUT_MS >= 6000);
+  assert.equal(bridged, 0, 'no card-page attempt from a local Studio');
 });
