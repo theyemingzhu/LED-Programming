@@ -255,7 +255,7 @@ test.describe('Real-timing with the card settling after its restart', () => {
       // Skipped, not test.fail(): the settling is random (p=0.5 per reply), so
       // the fault shows in most runs but not all — 3 of 4 failed on 2026-11-23.
       // An expected-fail that sometimes passes would put red into the lane.
-      test.fixme(true, 'FS2: Save after Find my strips fails while the card settles after its restart (TODO.md)');
+      test.fixme(true, 'FS1: "Needs attention" during the light test on a settling card. FS2 itself is fixed by D11 + #497; the FS1 PR removes this line (todo/plans/practice-card-interruptions.md)');
       test.setTimeout(360_000);
       await guardRealCard(page);
       const { card } = createPracticeCard(cardState('factory-blank'), {
