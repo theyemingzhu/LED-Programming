@@ -185,3 +185,5 @@
 .ld-pin-area { font-size: 13px; font-weight: 500; }
 .ld-pin-pattern { color: var(--text-mid); font-size: 12px; }
 .ld-pin:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
+
+.ld-journeys button:disabled { opacity: 0.4; cursor: default; }

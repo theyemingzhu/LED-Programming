@@ -126,13 +126,20 @@ test('picking a thumbnail changes the LEDs; More like this and Something else of
   expect(second.length).toBe(first.length);
 });
 
-test('each Bend slider and each colour journey changes the LEDs', async ({ page }) => {
+test('each Bend slider changes the LEDs; the colour journey changes them once a shape takes the look\'s colours', async ({ page }) => {
   const ids = await seedPiece(page, LOTUS);
   await turnOn(page);
   let colours = await allColours(page, ids);
   for (const [id, value] of [['look-designer-pace', '95'], ['look-designer-spread', '0'], ['look-designer-glow', '100']]) {
     colours = await changed(page, ids, colours, () => page.getByTestId(id).fill(value));
   }
+  // Every shape starts on a real pattern, so the colour row has nothing to colour and says so.
+  await expect(page.getByTestId('look-designer-journey-tide')).toBeDisabled();
+  await expect(page.getByTestId('look-designer-journey-note')).toContainText("The look's colours");
+  // Put one shape on the look's colours: now the row is live and changes the picture.
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  colours = await changed(page, ids, colours, () => page.getByTestId('look-designer-pattern-none').click());
+  await expect(page.getByTestId('look-designer-journey-tide')).toBeEnabled();
   colours = await changed(page, ids, colours, () => page.getByTestId('look-designer-journey-tide').click());
   await expect(page.getByTestId('look-designer-journey-tide')).toHaveAttribute('aria-pressed', 'true');
   expect(colours.length).toBeGreaterThan(20);
@@ -237,16 +244,22 @@ test('the chosen option looks different from the others', async ({ page }) => {
     const style = getComputedStyle(node);
     return `${style.borderTopColor}|${style.backgroundColor}|${style.color}`;
   });
+  // The shared .btn animates background and border for 120 ms, so a read taken just after a press can
+  // still be the old look: read again until it settles, and only then say the two are the same.
+  const differs = async (on: string, off: string) => {
+    await expect.poll(async () => (await look(on)) !== (await look(off)), { message: `${on} should look different from ${off}`, timeout: 3000 }).toBe(true);
+  };
   for (const [on, off] of [['look-designer-motion-pulse', 'look-designer-motion-chase'], ['look-designer-copies-together', 'look-designer-copies-after'],
     ['look-designer-direction-forward', 'look-designer-direction-bounce'], ['look-designer-speed-1', 'look-designer-speed-2'],
     ['look-designer-chip-0', 'look-designer-chip-1']]) {
     await expect(page.getByTestId(on), on).toHaveAttribute('aria-pressed', 'true');
-    expect(await look(on), `${on} vs ${off}`).not.toBe(await look(off));
+    await differs(on, off);
   }
   await page.getByTestId('look-designer-takeTurns').click();
-  expect(await look('look-designer-takeTurns')).not.toBe(await look('look-designer-petalByPetal'));
-  expect(await look('look-designer-tile-0')).not.toBe(await look('look-designer-tile-1'));
-  expect(await look('look-designer-journey-dawn')).not.toBe(await look('look-designer-journey-tide'));
+  await differs('look-designer-takeTurns', 'look-designer-petalByPetal');
+  await differs('look-designer-tile-0', 'look-designer-tile-1');
+  // The colour row is greyed while every shape plays a pattern; the chosen one still shows.
+  await differs('look-designer-journey-dawn', 'look-designer-journey-tide');
 });
 
 test('"Pattern" comes first in Tune it yourself as a picture grid, with mood chips and Show more; a tile sets the light', async ({ page }) => {
