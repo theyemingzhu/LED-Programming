@@ -142,6 +142,9 @@ export function normalizeCardReadiness(raw = {}) {
     // a damaged store can explicitly refuse them without being mistaken for a
     // playable readiness failure.
     firmwareUpdateReady: explicitBoolean(source.firmwareUpdateReady),
+    // Firmware 1.2.6+: nothing on the card needs touching. Written only when the
+    // card says so, so readiness from an older card keeps exactly its old shape.
+    ...(Number(source.capabilities?.ownerNoTouch) >= 1 ? { ownerNoTouch: true } : {}),
     // Reported separately from `commandReady` by the firmware. Playback is
     // entirely on-card, so it stays admitted while the radio reassociates.
     // Firmware from before that split omits the field, which normalizes to

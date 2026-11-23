@@ -196,6 +196,9 @@ function normalizeEvidenceCapabilities(value) {
     ...(Object.hasOwn(value, 'kaleidoscopeReflectionPoints')
       ? { kaleidoscopeReflectionPoints: Number.isFinite(capability) && capability >= 1 ? 1 : 0 }
       : {}),
+    ...(Object.hasOwn(value, 'ownerNoTouch')
+      ? { ownerNoTouch: Number.isFinite(Number(value.ownerNoTouch)) && Number(value.ownerNoTouch) >= 1 ? 1 : 0 }
+      : {}),
     ...(Object.hasOwn(value, 'symmetrySides')
       ? { symmetrySides: Number.isFinite(Number(value.symmetrySides)) && Number(value.symmetrySides) >= 1 ? 1 : 0 }
       : {}),

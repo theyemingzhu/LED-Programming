@@ -575,3 +575,23 @@ test('reload status is read through the real card route without restoring mutati
   assert.deepEqual(calls, [{ path: '/api/update/status', init: { method: 'GET' } }]);
   assert.equal(status.phase, 'probation');
 });
+
+test('Wi-Fi updater: an old card needs the owner confirmation, a card that reports ownerNoTouch does not', async () => {
+  const make = (readiness, physicalConfirmation) => {
+    const calls = [];
+    const card = { ...authority(calls, { '/api/update/preflight': { ok: true, chunkSize: FIRMWARE_UPDATE_CHUNK_BYTES } }), readiness };
+    return { calls, updater: () => createCardFirmwareUpdater({ authority: card, release: release(), physicalConfirmation }) };
+  };
+  // Old card, no confirmation: refused before anything is sent.
+  const oldWithout = make({ capabilities: {} }, '');
+  assert.throws(oldWithout.updater, /exact-card update authorization is required/);
+  // Old card with the confirmation: as before.
+  const oldWith = make({ capabilities: {} }, 'owner-confirmed-physical-control');
+  await oldWith.updater().preflight();
+  assert.equal(oldWith.calls[0].init.body.physicalConfirmationNonce, 'owner-confirmed-physical-control');
+  // A card that reports ownerNoTouch: no confirmation needed, none sent.
+  const noTouch = make({ capabilities: { ownerNoTouch: 1 } }, '');
+  await noTouch.updater().preflight();
+  assert.equal(noTouch.calls[0].init.body.physicalConfirmationNonce, '');
+  assert.equal(noTouch.calls[0].init.body.capability, 'owner-capability-secret');
+});

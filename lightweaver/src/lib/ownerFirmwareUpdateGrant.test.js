@@ -197,3 +197,19 @@ test('probeFirmwareUpdateGrantService reports ready only for the public signer r
     { state: 'unavailable', reason: 'no-grant-service' },
   );
 });
+
+test('the software grant is requested the same way from an old card and from a card that reports ownerNoTouch', async () => {
+  const run = async readiness => {
+    const calls = [];
+    const fetchCalls = [];
+    const authority = { ...exactAuthority(calls), readiness };
+    const result = await requestSoftwareFirmwareUpdateGrant({
+      authority, release: { manifest: { buildId: BUILD }, ticketSha256: TICKET }, origin: 'https://led.mandalacodes.com',
+      fetchImpl: async (url, init) => { fetchCalls.push({ url, init }); return { ok: true, async json() { return { grantPayload: '{"exact":"card-bytes"}', signature: SIGNATURE, algorithm: 'ECDSA_P256_SHA256_P1363' }; } }; },
+    });
+    return { result, paths: calls.map(call => call.path), urls: fetchCalls.map(call => call.url) };
+  };
+  const old = await run({ capabilities: {} });
+  const noTouch = await run({ capabilities: { ownerNoTouch: 1 } });
+  assert.deepEqual(noTouch, old);
+});

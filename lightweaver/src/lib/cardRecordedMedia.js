@@ -1,5 +1,6 @@
 import { sendCardBridgeRequest } from './cardBridge.js';
 import { readCardStatusEnvelope, readCardProjectEvidence } from './cardPushClient.js';
+import { cardNeedsTouch } from './cardNeedsTouch.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from './cardTransport.js';
 import { readRecordedMedia } from './recordedSequenceMedia.js';
 import { verifyStoredSequenceAsset, MAX_STORED_SEQUENCE_BYTES } from './recordedSequenceAsset.js';
@@ -140,7 +141,8 @@ export async function installRecordedMediaForRuntimePackage(runtimePackage, {
     || mediaCapability.chunkBytes < CHUNK_BYTES) {
     throw new Error('This card cannot safely play recorded physical output order and GPIO topology. Update its firmware and insert a writable microSD card, then retry.');
   }
-  if (!await confirmPairing()) {
+  // A card that reports ownerNoTouch is never asked; every caller's prompt is skipped here.
+  if (cardNeedsTouch(evidence) && !await confirmPairing()) {
     cancelled({ aborted: true });
   }
   cancelled(signal);
