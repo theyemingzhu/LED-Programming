@@ -34,6 +34,8 @@ const LABELS = Object.freeze({
   // The card is running Studio's own light test: the new wiring on probation,
   // commands held until the owner confirms. A step, not a fault (FS1).
   'wiring-test': 'Testing lights',
+  // Studio's own light test restarting the card on purpose (FS3).
+  'wiring-test-restart': 'Restarting card',
   'discovery-setup': 'Finding lights',
   confirming: 'Checking card',
   ready: 'Connected',
@@ -59,6 +61,7 @@ const SETUP_TASKS = Object.freeze({
   'content-mismatch': 'save-project',
   'attention-required': 'recover-operation',
   'wiring-test': 'install-project',
+  'wiring-test-restart': 'install-project',
   'discovery-setup': 'discover-lights',
   confirming: 'reconnect-card',
   ready: 'open-patterns',
@@ -89,6 +92,7 @@ const CONNECTION_LABELS = Object.freeze({
   'setup-required': 'Connected',
   'discovery-setup': 'Connected',
   'wiring-test': 'Connected',
+  'wiring-test-restart': 'Restarting card',
 });
 
 // 'verifying' covers three different moments. Only one of them is a restart
@@ -210,7 +214,7 @@ export function cardFooterNeedsSave(lifecycle) {
   return lifecycle?.label === 'Save to card';
 }
 
-export function deriveCardLifecycle({ link = {}, update = null, project = null } = {}) {
+export function deriveCardLifecycle({ link = {}, update = null, project = null, lightTestPhase = '' } = {}) {
   const readiness = link.readiness || {};
   const updateEvidence = update || readiness.firmwareUpdate || null;
   const observedId = normalized(link.card?.id || readiness.cardId);
@@ -338,6 +342,18 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   else if (verifiedTransport && readiness.wiringProbation?.active === true) state = 'wiring-test';
   else if (verifiedTransport) state = 'attention-required';
   else if (link.state === 'connecting') state = 'connecting';
+
+  // FS3: Studio's own light test restarts the card on purpose (start,
+  // confirm, restore). While it is in progress, the card going quiet or not
+  // yet ready is that restart — not "Card stopped responding" or "A Lightweaver
+  // card is not connected". Only for the card this Studio knows, and only the
+  // quiet/not-ready verdicts: a wrong card, a failed update or a blank card
+  // still say so.
+  const knownCard = Boolean(normalized(link.card?.id || link.expectedCard?.id));
+  if (lightTestPhase && knownCard
+    && ['disconnected', 'reconnecting', 'verifying', 'connecting', 'confirming', 'attention-required'].includes(state)) {
+    state = 'wiring-test-restart';
+  }
 
   return Object.freeze({
     state,

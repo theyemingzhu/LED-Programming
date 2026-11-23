@@ -44,6 +44,7 @@ import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperatio
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
 import { clearCardProject } from '../../../lib/cardClearProject.js';
 import { BENCH_PROJECT_ID } from '../../../lib/benchConfig.js';
+import { setLightTestActivity } from '../../../lib/lightTestActivity.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
@@ -735,6 +736,9 @@ export function CardPushControl({
     return withCardWriteOwnership('activate-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('activate-wiring', async () => {
     setWiringTestState('starting');
     setPushStatus('Restarting the card with the test wiring…');
+    // FS3: Card Home reads the card's silence during this restart as the
+    // light test, not a lost card. Wording only; the card link is untouched.
+    setLightTestActivity('starting');
     try {
       assertCurrentAttempt(wiringCandidate.attempt);
       const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
@@ -750,8 +754,10 @@ export function CardPushControl({
         expiryChecks: 0,
       } : current);
       setWiringTestState('testing');
+      setLightTestActivity('testing');
       setPushStatus('Testing the new wiring. The card will restore the working setup automatically if you do not confirm it.');
     } catch (error) {
+      setLightTestActivity('');
       setWiringTestState('failed');
       setPushStatus(error.message || 'The test wiring did not start. The working setup remains safe.');
     }
@@ -764,6 +770,7 @@ export function CardPushControl({
     await withCardWriteOwnership('finish-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('finish-wiring', async () => {
     if (!wiringCandidate) return;
     setWiringTestState(visible ? 'confirming' : 'rolling-back');
+    setLightTestActivity('finishing');
     try {
       if (visible) {
         assertCurrentAttempt(wiringCandidate.attempt);
@@ -798,6 +805,8 @@ export function CardPushControl({
     } catch (error) {
       setWiringTestState('failed');
       setPushStatus(error.message || 'The card could not finish the wiring test. It will roll back automatically when the timer ends.');
+    } finally {
+      setLightTestActivity('');
     }
     }));
     if (!confirmedAttempt) return;
@@ -878,6 +887,8 @@ export function CardPushControl({
   // Nothing about the protection moves: the card still holds its last working
   // setup, puts it back on its own if nobody confirms, and the confirm stays a
   // deliberate press beside "No, restore working setup".
+  // A control that goes away mid light test leaves no signal behind (FS3).
+  useEffect(() => () => setLightTestActivity(''), []);
   const testAfterStageRef = useRef('');
   useEffect(() => {
     if (wiringTestState !== 'staged' || !wiringCandidate?.activationId) return;

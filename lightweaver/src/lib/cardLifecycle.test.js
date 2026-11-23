@@ -497,3 +497,22 @@ test('a card running the light test on probation is testing lights, not needing 
   });
   assert.equal(notOnProbation.state, 'attention-required');
 });
+
+// FS3: Studio's own light test restarts the card on purpose. While it is in
+// progress a quiet or not-yet-ready card is that restart, never "Card stopped
+// responding" / "Not connected"; a wrong card still says so.
+test('during Studio\'s own light test a quiet card is restarting, not lost', () => {
+  const project = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) };
+  for (const linkState of ['reconnecting', 'revalidating', 'disconnected']) {
+    const link = { ...READY_LINK, state: linkState };
+    const during = deriveCardLifecycle({ link, project, lightTestPhase: 'starting' });
+    assert.equal(during.state, 'wiring-test-restart', linkState);
+    assert.equal(during.label, 'Restarting card');
+    assert.notEqual(during.connectionLabel, 'Not connected');
+    assert.notEqual(during.label, 'Card stopped responding');
+    const without = deriveCardLifecycle({ link, project });
+    assert.notEqual(without.state, 'wiring-test-restart', `${linkState}: no light test, no special wording`);
+  }
+  const wrong = deriveCardLifecycle({ link: { ...READY_LINK, expectedCard: { id: 'lw-card-b' } }, project, lightTestPhase: 'starting' });
+  assert.equal(wrong.state, 'wrong-card');
+});
