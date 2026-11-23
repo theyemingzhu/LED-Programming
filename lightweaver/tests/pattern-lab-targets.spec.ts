@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { applySavedLookToPatchBoard, normalizeSavedLooks, normalizeSectionVisualLook } from '../src/lib/sectionLookModel.js';
 import { choosePattern, openControls, openStep } from './helpers/pattern-lab';
+import { MIN_TAP } from './harness/tapSize';
 
 const PETALS = 'patch-default-outer-circle';
 const CENTRE = 'patch-default-inner-circle';
@@ -190,6 +191,6 @@ test('the artwork selects its section with a pointer on desktop and a phone-size
   await selectOnArtwork(1, CENTRE);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(2);
   const box = (await area.boundingBox())!;
-  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(MIN_TAP);
   await page.screenshot({ path: testInfo.outputPath('artwork-lab-phone.png') });
 });

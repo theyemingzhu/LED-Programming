@@ -7,6 +7,6 @@
 /* Mobile actions keep their labels visible without becoming equal-width tiles. */
 @media (max-width: 760px) {
   .sexp-head-actions { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
-  .sexp-head-actions select { width: min(180px, 100%); min-height: 44px; }
-  .sexp-head-actions button { width: auto; max-width: 100%; min-height: 44px; white-space: normal; }
+  .sexp-head-actions select { width: min(180px, 100%); min-height: var(--lw-tap, 44px); }
+  .sexp-head-actions button { width: auto; max-width: 100%; min-height: var(--lw-tap, 44px); white-space: normal; }
 }

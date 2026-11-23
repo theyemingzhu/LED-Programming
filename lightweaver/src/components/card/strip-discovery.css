@@ -59,7 +59,7 @@
 
 .strip-discovery-note { margin: 10px 0; opacity: 0.6; font-size: 0.9rem; }
 .strip-discovery-grid { margin: 8px 0 4px; }
-.strip-discovery-port { min-height: 44px; justify-content: center; }
+.strip-discovery-port { min-height: var(--lw-tap, 44px); justify-content: center; }
 
 .strip-discovery-details { font-size: .8rem; color: var(--text-muted, #aaa); margin-bottom: 8px; }
 .strip-discovery-details summary { cursor: pointer; width: fit-content; }
@@ -74,7 +74,7 @@
 .strip-discovery-counts input { font-size: 2rem; width: 160px; min-height: 56px; }
 @media (max-width: 480px) {
   .strip-discovery-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  .strip-discovery-port { min-height: 44px; padding: 6px; font-size: .8rem; }
+  .strip-discovery-port { min-height: var(--lw-tap, 44px); padding: 6px; font-size: .8rem; }
   .strip-discovery-legend { gap: 14px; font-size: .85rem; }
 }
 
@@ -95,7 +95,7 @@
 .strip-discovery-pattern-search { display: grid; gap: 5px; }
 .strip-discovery-pattern-all, .strip-discovery-pattern-choice { display: grid; gap: 5px; }
 .strip-discovery-pattern-tools input, .strip-discovery-pattern-tools select, .strip-discovery-pattern-choice select {
-  width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px;
+  width: 100%; min-width: 0; min-height: var(--lw-tap, 44px); padding: 8px 10px;
   border: 1px solid var(--border-soft); border-radius: var(--r-sm);
   background: var(--bg-elev); color: var(--text-hi);
   font: inherit; color-scheme: dark;
@@ -163,7 +163,9 @@
   .strip-discovery-step > h3 { font-size: 17px; }
   .strip-discovery-bignum { font-size: 15px; font-weight: 700; padding: 10px 0; letter-spacing: 0.04em; }
   .strip-discovery-bignum small { font-size: 13px; margin-top: 4px; }
-  .strip-discovery-nudge .btn { font-size: 15px; }
+  .strip-discovery-nudge .btn { font-size: 15px; min-width: 44px; min-height: 36px; }
+  .strip-discovery-colour-row { min-height: 36px; padding: 6px 8px; }
+  .strip-discovery-colour-row i { width: 20px; height: 20px; }
   .strip-discovery-nudge-count { font-size: 15px; font-weight: 700; }
 }
 

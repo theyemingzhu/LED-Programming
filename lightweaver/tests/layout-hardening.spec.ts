@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 
 async function gotoLayout(page: any) {
   await page.addInitScript(() => localStorage.clear());
@@ -181,12 +182,12 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
     page.getByTitle('Draw a new LED strip path on the artwork.'),
   ]) {
     const box = await control.boundingBox();
-    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
 
   const install = page.getByTestId('layout-check-and-install');
   let box = await install.boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
   await install.click();
   // Layout now hands the install to Card setup. With discovery explicitly
   // offline and no remembered card, the public start panel is the truthful
@@ -194,13 +195,13 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   const setup = page.getByTestId('public-worker-start')
     .getByRole('button', { name: /set up the card/i });
   box = await setup.boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
   await page.getByTestId('layout-specs-trigger').click();
   const advanced = page.getByTestId('advanced-installation-tools');
   box = await advanced.locator('summary').first().boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
   await expect(advanced.locator('details').first()).toHaveJSProperty('open', false);
   await context.close();
 });
@@ -215,7 +216,7 @@ test('mobile Layout keeps a useful canvas and presents the inspector as a bottom
   const collapse = page.getByRole('button', { name: 'Collapse inspector' });
   await expect(collapse).toBeVisible();
   const collapseBox = await collapse.boundingBox();
-  expect(collapseBox?.height).toBeGreaterThanOrEqual(44);
+  expect(collapseBox?.height).toBeGreaterThanOrEqual(MIN_TAP);
   const compactSheetBox = await sheet.boundingBox();
   expect(compactSheetBox?.height).toBeLessThanOrEqual(240);
   await collapse.click();

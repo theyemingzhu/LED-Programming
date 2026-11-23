@@ -377,7 +377,7 @@
    off the element and onto its track pseudo-element. */
 @media (pointer: coarse) {
   .pm .pm-pane .slider-row .sl-bar input[type=range].lw {
-    height: 44px;
+    height: var(--lw-tap, 44px);
     background: none;
     box-shadow: none;
   }
