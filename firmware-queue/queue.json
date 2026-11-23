@@ -20,6 +20,16 @@
         "kind": "patch",
         "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
       }
+    },
+    {
+      "id": "card-no-touch",
+      "what": "The card no longer asks anyone to touch it before saving a project, loading a recording, streaming or updating.",
+      "why": "It rides with the card-memory recordings change it is built on, and Studio's wording has to change with it.",
+      "added": "2026-11-23",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/card-no-touch"
+      }
     }
   ]
 }
