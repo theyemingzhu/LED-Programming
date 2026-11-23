@@ -1,4 +1,15 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": []
+  "waiting": [
+    {
+      "id": "relative-look-tuning-default-boot",
+      "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
+      "why": "FAILED the bench check on 23 Nov 2026 (card update 1.2.5 candidate 4e254c3b): after one tuned save, every later look save got 400 \"invalid pattern envelope\" (6 of 6), so a tuning cannot be undone. Do not send it until that is fixed and re-checked on a card. Left out of 1.2.5.",
+      "added": "2026-11-17",
+      "source": {
+        "kind": "patch",
+        "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
+      }
+    }
+  ]
 }
