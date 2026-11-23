@@ -188,8 +188,8 @@ export function CardSetupOverlay({
         )}
         <header className="card-setup-overlay-head" hidden={minimized}>
           <div>
-            <h2 id="card-setup-title">Count your lights</h2>
-            <p id="card-setup-description">Find the strip. Read the markers. Save the count.</p>
+            <h2 id="card-setup-title">Find my strips</h2>
+            <p id="card-setup-description" className="strip-discovery-visually-hidden">Lights stay dim and capped while Studio finds and counts them.</p>
           </div>
           <div className="card-setup-overlay-head-actions">
             <button type="button" className="btn btn-ghost" data-testid="card-setup-minimize" onClick={minimize}>Minimize</button>

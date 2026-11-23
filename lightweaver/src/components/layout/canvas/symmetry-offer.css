@@ -33,6 +33,6 @@
   .la .la-symmetry-offer h2 { font-size: 14px; margin-bottom: 4px; }
   .la .la-symmetry-offer p { font-size: 12px; margin-bottom: 10px; }
   .la-symmetry-offer-actions { gap: 6px; }
-  .la .la-symmetry-offer-actions .btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 8px; font-size: 12px; justify-content: center; }
+  .la .la-symmetry-offer-actions .btn { flex: 1 1 0; min-width: 0; min-height: var(--lw-tap, 44px); padding: 0 8px; font-size: 12px; justify-content: center; }
   .la .la-symmetry-offer-actions .la-symmetry-offer-keep { flex: 1 0 100%; margin-left: 0; }
 }

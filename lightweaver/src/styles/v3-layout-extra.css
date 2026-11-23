@@ -541,7 +541,7 @@
   width: 22px; min-width: 22px; height: 28px;
 }
 .la-strip-physical-field .la-size-readout { flex: 0 1 auto; gap: 3px; }
-.la-strip-physical-field .la-size-readout input[type=number] { width: 44px; height: 28px; }
+.la-strip-physical-field .la-size-readout input[type=number] { width: var(--lw-tap, 44px); height: 28px; }
 /* The count field is a cut-strip correction, not a resize. Say so where the
    surprise happens — the tooltips alone are not discoverable enough. Its own
    row, so it never competes with the controls for horizontal space. */

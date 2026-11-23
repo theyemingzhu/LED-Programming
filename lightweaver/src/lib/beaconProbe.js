@@ -37,8 +37,13 @@ import { guardDirectCardMutation } from './cardIdentity.js';
 // reads to the owner as "the light moved, so this is the wrong port".
 export const BEACON_PIN_RENEW_MS = 6000;
 
+// A real card can take 5 s to answer (practice card Real-timing, measured on
+// lw-b0fe81f61b44; D6 in todo/plans/practice-card-interruptions.md). A 4 s
+// limit aborted every probe on such a card, retry or not. 10 s outlasts the
+// slow reply and still ends a request to a card that has really gone.
+export const BEACON_REQUEST_TIMEOUT_MS = 10_000;
 function requestTimeout() {
-  return 4000;
+  return BEACON_REQUEST_TIMEOUT_MS;
 }
 
 async function directBeacon(host, { method = 'GET', body = null } = {}) {

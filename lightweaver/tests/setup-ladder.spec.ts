@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 
 // The guided Setup ladder, walked without hardware. The card is a route mock and
 // the link is driven straight through the shared card link, so every assertion
@@ -157,6 +158,6 @@ test('Setup controls remain touchable in the focused mobile task column', async 
 
   for (const control of await task.locator('button, input, select').all()) {
     if (!(await control.isVisible())) continue;
-    expect((await control.boundingBox())?.height || 0).toBeGreaterThanOrEqual(44);
+    expect((await control.boundingBox())?.height || 0).toBeGreaterThanOrEqual(MIN_TAP);
   }
 });

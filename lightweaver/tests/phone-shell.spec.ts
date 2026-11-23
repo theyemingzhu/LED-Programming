@@ -8,6 +8,8 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard } from './ux/journeyRecorder';
 import { bootSetUp } from './ux/journeySeed';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
+import { MIN_TAP, DESKTOP_TAP } from './harness/tapSize';
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
 const DESKTOP = { viewport: { width: 1280, height: 800 } };
@@ -65,6 +67,12 @@ function offScale(page: Page) {
     }
     return out;
   });
+}
+
+
+/** Heights of the visible .btn controls on the current screen. */
+function buttonHeights(page: Page) {
+  return page.locator('.app > .screen .btn:visible').evaluateAll(all => all.map(b => Math.round(b.getBoundingClientRect().height)));
 }
 
 test.describe('phone 390', () => {
@@ -165,6 +173,15 @@ test.describe('phone 390, one scale', () => {
     }
   });
 
+  test('buttons are 36px tall, not the 44px desktop size', async ({ page }) => {
+    await openInstalled(page);
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--lw-tap').trim())).toBe(`${MIN_TAP}px`);
+    const heights = await buttonHeights(page);
+    expect(heights.length).toBeGreaterThan(0);
+    for (const h of heights) expect(h).toBeLessThan(DESKTOP_TAP);
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(MIN_TAP);
+  });
+
   test('the LED count box is the same scale as the text around it', async ({ page }) => {
     test.setTimeout(90_000);
     await guardRealCard(page);
@@ -176,13 +193,18 @@ test.describe('phone 390, one scale', () => {
     await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
     await page.getByTestId('discovery-start').click();
     await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId('discovery-color-red').click();
-    await page.getByTestId('discovery-color-green').click();
-    const count = page.getByTestId('discovery-count-18');
-    await count.fill('41');
-    const box = await count.boundingBox();
-    expect(box!.height).toBeLessThanOrEqual(46);
-    expect(box!.width).toBeLessThanOrEqual(120);
+    // Colour rows and the end check's − / + follow the phone scale Adrian chose
+    // (36 px, harness/tapSize MIN_TAP): big enough to tap, not oversized.
+    const row = page.getByTestId('discovery-colour-row-rgb');
+    const rowBox = (await row.boundingBox())!;
+    expect(rowBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(rowBox.height).toBeLessThanOrEqual(DESKTOP_TAP);
+    expect(await offScale(page)).toEqual([]);
+    await row.click();
+    await stopRunAt(page, 41);
+    const minusBox = (await page.getByTestId('discovery-end-minus').boundingBox())!;
+    expect(minusBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(minusBox.height).toBeLessThanOrEqual(DESKTOP_TAP);
     expect(await offScale(page)).toEqual([]);
   });
 });
@@ -197,6 +219,8 @@ test.describe('desktop 1280 is unchanged', () => {
     expect(rail.w).toBeLessThan(80);
     expect(rail.h).toBeGreaterThan(rail.vh / 2);
     await expect(page.locator('.rail-workshop')).toBeVisible();
+    // Only the phone sheet lowers the tap size; desktop and touch tablets keep 44px.
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--lw-tap').trim())).toBe('');
     const bar = await rect(page, '.status-bar');
     expect(bar.bottom).toBeGreaterThanOrEqual(bar.vh - 1);
     await publishWarning(page);

@@ -167,6 +167,6 @@
   .pl-index { grid-template-columns: 44px minmax(0, 1fr); }
   .pl-grip,
   .pl-remove,
-  .pl-more { width: 44px; min-width: 44px; height: 44px; }
-  .pl-row-menu-item { min-height: 44px; }
+  .pl-more { width: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); }
+  .pl-row-menu-item { min-height: var(--lw-tap, 44px); }
 }

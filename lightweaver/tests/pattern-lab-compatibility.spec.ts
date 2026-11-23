@@ -1,6 +1,7 @@
 import { type Route } from '@playwright/test';
 import { test, expect } from './studioTest';
 import { choosePattern } from './helpers/pattern-lab.ts';
+import { MIN_TAP } from './harness/tapSize';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 let cardMutationRequests: string[];
@@ -52,7 +53,7 @@ test('exposes card compatibility and clock-linked diagnostics without mutating t
   await expect(tools).not.toHaveAttribute('open', '');
   const toolsSummary = tools.locator(':scope > summary');
   await expect(toolsSummary).toHaveText(/Card compatibility & diagnostics/);
-  expect(await toolsSummary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
+  expect(await toolsSummary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(MIN_TAP);
   await toolsSummary.click();
 
   const compatibility = page.getByTestId('pattern-lab-export');
@@ -127,7 +128,7 @@ test('keeps the advanced tools usable in the phone controls drawer', async ({ pa
   await expect(page.getByTestId('pattern-lab-export')).toBeVisible();
   const step = page.getByTestId('pattern-lab-diagnostics').getByRole('button', { name: 'Step one frame' });
   await page.getByTestId('pattern-lab-diagnostics').locator(':scope > summary').click();
-  expect(await step.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
+  expect(await step.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(MIN_TAP);
 
   const drawer = page.getByLabel('Pattern Lab controls');
   const overflow = await drawer.evaluate(element => element.scrollWidth - element.clientWidth);

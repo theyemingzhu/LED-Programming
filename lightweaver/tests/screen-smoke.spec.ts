@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { MIN_TAP } from './harness/tapSize';
 
 // Every primary Studio destination must retain the shared shell controls.
 // 'Card' is the single card destination — the old 'Setup' and 'Hardware' rail
@@ -837,11 +838,11 @@ test('mobile connection sheet fits without horizontal overflow', async ({ page }
     dialog.getByText('Connection details', { exact: true }),
   ];
   for (const target of interactiveTargets) {
-    expect((await target.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await target.boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
   await dialog.getByText('Connection details', { exact: true }).click();
-  expect((await dialog.getByLabel('Card hostname').boundingBox())?.height).toBeGreaterThanOrEqual(44);
-  expect((await dialog.getByRole('button', { name: 'Save', exact: true }).boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  expect((await dialog.getByLabel('Card hostname').boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
+  expect((await dialog.getByRole('button', { name: 'Save', exact: true }).boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
 });
 
 test('layout opens with the primitive-first starter', async ({ page }) => {

@@ -116,7 +116,7 @@
   .la .la-divide-toggle,
   .la .la-divide-panel .btn,
   .la-divide-sections,
-  .la-divide-count { min-height: 44px; }
+  .la-divide-count { min-height: var(--lw-tap, 44px); }
 }
 
 .la-divide-sections {
@@ -409,7 +409,7 @@
   .la .la-strip-connection .la-gpio-select,
   .la .la-strip-menu > summary,
   .la .la-strip-menu-popover .btn,
-  .la .la-divide-toggle { min-height: 44px; }
+  .la .la-divide-toggle { min-height: var(--lw-tap, 44px); }
 }
 @media (max-width: 600px) {
   .la .la-strip-connection :is(.btn, .la-gpio-select) {
@@ -473,7 +473,7 @@
 .la-pattern-preview { flex: 0 0 34px; height: 25px; border-radius: 2px; background-size: 220% 100% !important; animation: la-pattern-shift 3.6s ease-in-out infinite alternate; }
 @keyframes la-pattern-shift { to { background-position: 100% 50%; } }
 @media (prefers-reduced-motion: reduce) { .la-pattern-preview { animation: none; } }
-@media (pointer: coarse), (max-width: 600px) { .la-row-count { height: 44px; } .la-row-count button { width: 24px; } .la-row-count input { width: 36px; } .la-pattern-choice { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 600px) { .la-row-count { height: var(--lw-tap, 44px); } .la-row-count button { width: 24px; } .la-row-count input { width: 36px; } .la-pattern-choice { min-height: var(--lw-tap, 44px); } }
 .la .la-gpio-group .la-strip-row .la-row-unit { font-size: 9px; flex: 0 0 auto; }
 .la .la-gpio-group .la-section-pattern-action { flex-basis: 62px; }
 .lw-connected-editor-frame { gap: 7px; }
@@ -481,7 +481,7 @@
 .lw-connected-editor-frame > .lw-connected-summary span { color: var(--text-mid); font-size: 11px; }
 .lw-connected-child > label { min-width: 0; }
 .lw-connected-child > .btn { min-height: 30px; }
-@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > input, .lw-connected-child > select { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > input, .lw-connected-child > select { min-height: var(--lw-tap, 44px); } }
 .lw-section-boundary-details { grid-column: 1 / -1; color: var(--text-mid); font-size: 11px; }
 .lw-section-boundary-details summary { cursor: pointer; padding: 5px 0; }
 .lw-section-boundary-details label { display: grid; grid-template-columns: 1fr 64px; gap: 5px; }
@@ -505,14 +505,14 @@
 .lw-connected-child, .lw-connected-child.selected { border: 0; border-radius: 0; background: transparent; padding: 0; }
 .lw-connected-child > label { min-width: 0; }
 .lw-connected-child > label input, .lw-connected-child > label select { min-height: 30px; }
-@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > label input, .lw-connected-child > label select { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > label input, .lw-connected-child > label select { min-height: var(--lw-tap, 44px); } }
 .la-part-actions { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; padding-top: 7px; border-top: 1px solid var(--border-soft); }
 .la-part-actions .btn { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 34px; padding: 5px; }
 .la-part-action-icon { display: flex; align-items: center; justify-content: center; }
 .la-part-actions .btn svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .la-part-actions .btn:disabled { opacity: .45; }
 @media (max-width: 420px) { .la-part-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (pointer: coarse), (max-width: 600px) { .lw-family-controls select, .la-part-actions .btn { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 600px) { .lw-family-controls select, .la-part-actions .btn { min-height: var(--lw-tap, 44px); } }
 
 /* Symmetry sides. The control heads the strip list; with sides on, the list
    groups by side. A side's quiet tint (--side-tint, set per group) is the same
@@ -639,5 +639,5 @@
 @media (pointer: coarse), (max-width: 600px) {
   .la .la-symmetry-seg .btn,
   .la .la-side-head .la-side-flip,
-  .la .la-side-choice .btn { min-height: 44px; }
+  .la .la-side-choice .btn { min-height: var(--lw-tap, 44px); }
 }

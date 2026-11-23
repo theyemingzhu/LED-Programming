@@ -112,7 +112,7 @@ input[type=number]::-webkit-outer-spin-button {
 }
 
 @media (pointer: coarse) {
-  button, [role="button"], input, select { min-height: 44px; min-width: 44px; }
+  button, [role="button"], input, select { min-height: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -436,7 +436,7 @@ input[type=number]::-webkit-outer-spin-button {
 .rail .spring { flex: 1; }
 .rail-item {
   position: relative;
-  width: 44px; height: 46px;
+  width: var(--lw-tap, 44px); height: 46px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; border-radius: var(--r-md);
   color: var(--text-lo);
@@ -966,7 +966,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-commissioning-steps li.active { color: var(--text-hi); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .card-commissioning-network { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
 .card-commissioning-network > .btn { min-width: 0; height: auto; white-space: normal; }
-.card-commissioning-ap-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; }
+.card-commissioning-ap-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: var(--lw-tap, 44px); }
 .card-commissioning-next-steps { display: grid; gap: 6px; margin: 0; padding-left: 22px; line-height: 1.5; }
 .card-commissioning-address { color: var(--text-lo); font-size: 12px; }
 /* The setup-hotspot wait. Reads as guidance while the network is still coming,
@@ -1072,7 +1072,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   .topbar .crumb:empty { display: none; }
   .top-right { grid-area: actions; justify-self: end; gap: 2px; }
   .top-div { display: none; }
-  .top-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .top-action { width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); }
   .top-action.btn.primary::before { inset: 7px; }
 
   .status-bar {
@@ -1106,13 +1106,13 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   .card-connection-details .btn,
   .card-connection-close,
   .card-connection-details summary,
-  .card-connection-details input { min-height: 44px; }
+  .card-connection-details input { min-height: var(--lw-tap, 44px); }
   .card-connection-details summary { display: flex; align-items: center; }
 }
 
 @media (min-width: 641px) and (max-width: 720px) {
   .topbar { gap: 8px; padding-inline: 12px; }
-  .top-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .top-action { width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); }
 }
 
 @media (max-width: 360px) {
@@ -1189,7 +1189,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .prod-recovery dt { color: var(--prod-secondary); font-size: 10px; }
 .prod-recovery dd { color: var(--text-hi); font-family: var(--font-mono); font-size: 10px; }
 .prod-recovery-actions { display: flex; flex-wrap: wrap; gap: 7px; }
-.prod-recovery-actions .btn { min-height: 44px; }
+.prod-recovery-actions .btn { min-height: var(--lw-tap, 44px); }
 .prod-recovery > small { color: var(--prod-secondary); font-size: 10px; }
 .prod-job-selected { display: flex; justify-content: space-between; gap: 16px; }
 .prod-job-selected p { color: var(--text-mid); }
@@ -1211,23 +1211,23 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .prod-marker.blue { color: var(--physical-start-marker); background: currentColor; }
 .prod-marker.red { color: var(--physical-end-marker); background: currentColor; }
 .prod-output-tabs { display: flex; flex-wrap: wrap; width: 100%; gap: 5px; overflow: hidden; }
-.prod-output-tabs button { min-width: 0; min-height: 44px; flex: 1 1 120px; display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-mid); text-align: left; }
+.prod-output-tabs button { min-width: 0; min-height: var(--lw-tap, 44px); flex: 1 1 120px; display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-mid); text-align: left; }
 .prod-output-tabs button.selected { border-color: var(--accent-line); background: color-mix(in srgb, var(--accent) 10%, var(--bg-elev)); color: var(--text-hi); }
 .prod-output-tabs button span { color: var(--ok); font-family: var(--font-mono); }
 .prod-test-state { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--border-soft)); border-radius: var(--r-sm); background: color-mix(in srgb, var(--ok) 5%, var(--bg-panel)); color: var(--text-mid); font-size: 11px; }
 .prod-test-state.failed { border-color: color-mix(in srgb, var(--danger) 60%, var(--border-soft)); background: color-mix(in srgb, var(--danger) 8%, var(--bg-panel)); color: var(--text-hi); }
-.prod-looks-right { min-height: 44px; justify-self: start; }
+.prod-looks-right { min-height: var(--lw-tap, 44px); justify-self: start; }
 .prod-observation { min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); }
 .prod-observation legend { padding: 0 5px; color: var(--prod-secondary); font-size: 10px; }
 .prod-observation > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.prod-observation button, .prod-diagnosis button, .prod-candidate button { min-height: 44px; padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-mid); }
+.prod-observation button, .prod-diagnosis button, .prod-candidate button { min-height: var(--lw-tap, 44px); padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-mid); }
 .prod-observation button:hover, .prod-diagnosis button:hover { border-color: var(--accent-line); color: var(--text-hi); }
 .prod-output-pass { margin: 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--border)); border-radius: var(--r-sm); background: color-mix(in srgb, var(--ok) 8%, var(--bg-panel)); color: var(--ok); }
 .prod-diagnosis, .prod-candidate { min-width: 0; padding: 11px; border: 1px solid var(--accent-line); border-radius: var(--r-sm); background: color-mix(in srgb, var(--accent) 7%, var(--bg-panel)); }
 .prod-diagnosis p, .prod-candidate p { margin: 3px 0 9px; color: var(--text-mid); font-size: 11px; line-height: 1.45; }
 .prod-inline-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 7px; }
 .prod-inline-actions label { min-width: 0; display: grid; gap: 4px; color: var(--prod-secondary); font-size: 10px; }
-.prod-inline-actions input, .prod-inline-actions select { width: min(150px, 100%); min-height: 44px; padding: 0 8px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-hi); }
+.prod-inline-actions input, .prod-inline-actions select { width: min(150px, 100%); min-height: var(--lw-tap, 44px); padding: 0 8px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-hi); }
 .prod-candidate { border-color: var(--warn); }
 .prod-local-note { margin-bottom: 10px; padding: 9px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); color: var(--warn); font-size: 11px; line-height: 1.45; }
 .prod-latest { margin-bottom: 10px; color: var(--text-mid); font-size: 11px; }

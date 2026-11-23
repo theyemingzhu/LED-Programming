@@ -365,3 +365,75 @@ test('namedColorOrderFromChannelMap is empty when the map is unknown or incomple
   assert.equal(namedColorOrderFromChannelMap({ red: 0, green: 1 }), '', 'a missing blue leaves no resolvable order');
   assert.equal(namedColorOrderFromChannelMap({ red: 0, green: 0, blue: 2 }), '', 'a repeated slot is not any real order');
 });
+
+// ── Combined Find my strips (2026-11-23): running light, one-tap colour, end check ──
+import {
+  buildColourCheckFrame,
+  buildEndCheckFrame,
+  channelMapFromColourRow,
+  createStripDiscoverySession as createSessionForRun,
+  advance as advanceRun,
+  discoveryFrame as frameForRun,
+} from './stripDiscovery.js';
+
+function runSession() {
+  let session = createSessionForRun({ portRoles: [{ pin: 18, role: 'strip' }], benchLayout: [{ pin: 18, count: 20 }] });
+  session = advanceRun(session, { type: 'bench-installed' });
+  return session;
+}
+
+test('the running light counts up from zero and Stop becomes the count, then the end check', () => {
+  let session = advanceRun(runSession(), { type: 'run-start' });
+  assert.equal(session.phase, 'run');
+  assert.equal(session.ports[0].litCount, 0);
+  session = advanceRun(session, { type: 'run-tick', litCount: 12 });
+  assert.deepEqual(frameForRun(session).filter(color => color !== DISCOVERY_OFF_COLOR).length, 12);
+  session = advanceRun(session, { type: 'run-stop' });
+  assert.equal(session.phase, 'end-marker');
+  assert.equal(session.ports[0].count, 12);
+  assert.equal(session.ports[0].confirmed, false);
+});
+
+test('the running light stops at what is set up and says it reached the end', () => {
+  let session = advanceRun(advanceRun(runSession(), { type: 'run-start' }), { type: 'run-tick', litCount: 999 });
+  assert.equal(session.ports[0].litCount, 20);
+  assert.equal(session.ports[0].needsLargerBench, true);
+});
+
+test('a Stop before anything lit still counts one light, never zero', () => {
+  const session = advanceRun(advanceRun(runSession(), { type: 'run-start' }), { type: 'run-stop' });
+  assert.equal(session.ports[0].count, 1);
+});
+
+test('the end check lights every set-up light and makes the counted last one purple', () => {
+  const frame = buildEndCheckFrame({ benchLayout: [{ pin: 18, count: 6 }], pin: 18, index: 3 });
+  assert.deepEqual(frame, [DISCOVERY_PROBE_COLOR, DISCOVERY_PROBE_COLOR, DISCOVERY_PROBE_COLOR, DISCOVERY_END_MARKER_COLOR, DISCOVERY_PROBE_COLOR, DISCOVERY_PROBE_COLOR]);
+  let session = advanceRun(advanceRun(runSession(), { type: 'run-start' }), { type: 'run-tick', litCount: 5 });
+  session = advanceRun(session, { type: 'run-stop' });
+  assert.equal(frameForRun(session)[4], DISCOVERY_END_MARKER_COLOR);
+  assert.equal(frameForRun(session)[5], DISCOVERY_PROBE_COLOR, 'the light after the count is lit, so a longer strip shows it');
+});
+
+test('the colour check lights lights 1, 2, 3 in one send slot each', () => {
+  assert.deepEqual(buildColourCheckFrame({ benchLayout: [{ pin: 18, count: 5 }], pin: 18 }), ['3C0000', '003C00', '00003C', DISCOVERY_OFF_COLOR, DISCOVERY_OFF_COLOR]);
+});
+
+test('a colour row is the full channel map, and a row that repeats a colour is refused', () => {
+  assert.deepEqual(channelMapFromColourRow(['red', 'green', 'blue']), { red: 0, green: 1, blue: 2 });
+  assert.deepEqual(channelMapFromColourRow(['green', 'red', 'blue']), { green: 0, red: 1, blue: 2 });
+  assert.equal(channelMapFromColourRow(['red', 'red', 'blue']), null);
+  assert.equal(channelMapFromColourRow(['red', 'green']), null);
+});
+
+test('finding another strip counts only the new one; the strip counted before keeps its count', () => {
+  let session = createSessionForRun({
+    portRoles: [{ pin: 18, role: 'strip', pixelCount: 41 }, { pin: 21, role: 'strip' }],
+    benchLayout: [{ pin: 18, start: 0, count: 256 }, { pin: 21, start: 256, count: 256 }],
+  });
+  session = advanceRun(session, { type: 'bench-installed', focusPin: 21 });
+  assert.equal(session.activePin, 21);
+  assert.deepEqual(session.ports.find(port => port.pin === 18), { ...session.ports.find(port => port.pin === 18), count: 41, confirmed: true, probed: true });
+  session = advanceRun(advanceRun(advanceRun(session, { type: 'run-start' }), { type: 'run-tick', litCount: 27 }), { type: 'run-stop' });
+  session = advanceRun(session, { type: 'end-marker-yes' });
+  assert.equal(session.phase, 'record', 'no second walk of the first strip');
+});

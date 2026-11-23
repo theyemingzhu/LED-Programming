@@ -164,7 +164,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0 16px;
   border-bottom: 1px solid var(--border-hair);
   color: var(--text-mid);
@@ -564,7 +564,7 @@
 
 .plab-tile-search input {
   width: 100%;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0 12px;
   border: 1px solid var(--border-soft);
   border-radius: var(--r-sm);
@@ -603,7 +603,7 @@
 
 .plab-tile {
   position: relative;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -911,7 +911,7 @@
 }
 
 .plab-macro input[type="range"] {
-  min-block-size: 44px;
+  min-block-size: var(--lw-tap, 44px);
 }
 
 .plab-macro input[type="range"]:focus-visible {
@@ -945,7 +945,7 @@
 }
 
 .plab-advanced summary {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1101,7 +1101,7 @@
 .plab-project-handoff h3,
 .plab-handoff-review strong { color: var(--text-hi); font-size: 11px; }
 .plab-project-handoff p { color: var(--text-mid); font-size: 11px; line-height: 1.5; }
-.plab-project-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; justify-content: center; }
+.plab-project-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: var(--lw-tap, 44px); justify-content: center; }
 
 .plab-handoff-review {
   display: grid;
@@ -1203,7 +1203,7 @@
 
 .plab-private-library li button.plab-draft-delete {
   flex: 0 0 auto;
-  width: 44px;
+  width: var(--lw-tap, 44px);
   min-height: 48px;
   display: grid;
   place-items: center;
@@ -1271,7 +1271,7 @@
 
 .plab-use-in-project-promoted .btn {
   grid-row: 1 / 3;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   justify-content: center;
 }
 
@@ -1488,7 +1488,7 @@
 }
 
 @media (max-width: 720px) {
-  .plab-workflow-step { width: auto; height: 44px; min-width: 44px; min-height: 44px; padding-inline: 7px; }
+  .plab-workflow-step { width: auto; height: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); padding-inline: 7px; }
   .plab-workflow-label { font-size: 8px; }
 }
 
@@ -1523,10 +1523,10 @@
     border: 0;
   }
   .plab-live-preview { left: 10px; right: 10px; bottom: 10px; max-width: none; }
-  .plab-live-preview-action { min-height: 44px; }
+  .plab-live-preview-action { min-height: var(--lw-tap, 44px); }
   .plab-drawer-trigger,
   .plab-drawer-close {
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1612,7 +1612,7 @@
   .plab-sheet-handle {
     flex: 0 0 auto;
     width: 100%;
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1627,7 +1627,7 @@
   }
   .plab-sheet-handle > span {
     display: block;
-    width: 44px;
+    width: var(--lw-tap, 44px);
     height: 4px;
     border-radius: 999px;
     background: var(--border-soft);
@@ -1700,7 +1700,7 @@
   .plab-control-section.plab-compact-step { padding: 0; }
   .plab-compact-step-heading { padding-inline: 14px; }
   .plab-compact-step-body { padding: 14px; }
-  .plab-source-field select { min-height: 44px; }
+  .plab-source-field select { min-height: var(--lw-tap, 44px); }
   .plab-runtime-tools { padding-inline: 14px; }
   .plab-use-in-project-promoted { margin-inline: 14px; }
   /* The footer (undo bar + actions) is the sheet's pinned foot at every
@@ -1713,7 +1713,7 @@
   }
   .plab-undo-bar { padding-inline: 14px; }
   .plab-undo-bar .btn,
-  .plab-undo-dismiss { min-width: 44px; min-height: 44px; }
+  .plab-undo-dismiss { min-width: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); }
   /* On the play strip the undo has to be present without costing the
      sliders a row: one clipped line of explanation, full-size Undo button. */
   .plab-screen[data-sheet-detent="peek"] .plab-undo-bar,
@@ -1733,14 +1733,14 @@
     margin-top: 0;
     padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
   }
-  .plab-play { min-height: 44px; }
+  .plab-play { min-height: var(--lw-tap, 44px); }
   .plab-actions .btn,
   .plab-field select,
-  .plab-private-library li button { min-height: 44px; }
+  .plab-private-library li button { min-height: var(--lw-tap, 44px); }
   .plab-position-buttons .btn { min-height: 42px; }
   .plab-export-actions .btn,
   .plab-diagnostic-playback .btn,
-  .plab-runtime-cleanup .btn { min-height: 44px; }
+  .plab-runtime-cleanup .btn { min-height: var(--lw-tap, 44px); }
 }
 
 @media (max-width: 360px) {
@@ -2085,7 +2085,7 @@
   font-size: 12px;
   cursor: pointer;
 }
-.plab-build-scene { min-height: 44px; }
+.plab-build-scene { min-height: var(--lw-tap, 44px); }
 .plab-build-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .plab-back:hover, .plab-build-scene:hover { color: var(--text-hi); background: var(--bg-elev); }
 .plab-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -2286,10 +2286,10 @@
 .plab-kept-looks b { max-width: 112px; overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .plab-journey-details { border-top: 1px solid var(--border-hair); }
 .plab-journey-details summary,
-.plab-fine-tune > summary { min-height: 44px; display: flex; align-items: center; color: var(--text-mid); font-size: 11px; font-weight: 650; cursor: pointer; }
+.plab-fine-tune > summary { min-height: var(--lw-tap, 44px); display: flex; align-items: center; color: var(--text-mid); font-size: 11px; font-weight: 650; cursor: pointer; }
 .plab-journey-details > div { display: grid; gap: 8px; }
 .plab-journey-policy,
-.plab-journey-loop { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-mid); font-size: 10px; }
+.plab-journey-loop { min-height: var(--lw-tap, 44px); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-mid); font-size: 10px; }
 .plab-journey-policy select { min-width: 112px; min-height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-hi); font: inherit; }
 .plab-journey-loop { justify-content: flex-start; }
 .plab-journey-details .plab-journey-loop input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: var(--accent); }
@@ -2335,7 +2335,7 @@
   .plab-color-order button { min-width: 36px; min-height: 36px; }
   .plab-palette-choices { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
   .plab-palette-choices button { min-width: 146px; scroll-snap-align: start; }
-  .plab-character-control button { min-height: 44px; font-size: 8.5px; }
+  .plab-character-control button { min-height: var(--lw-tap, 44px); font-size: 8.5px; }
   .plab-creative-intro { align-items: start; }
   .plab-creative-save-state { max-width: 92px; }
   .plab-composition-start,
@@ -2344,7 +2344,7 @@
   .plab-rehearsal,
   .plab-variation-trigger,
   .plab-creative-undo,
-  .plab-palette-choices button { min-height: 44px; }
+  .plab-palette-choices button { min-height: var(--lw-tap, 44px); }
   .plab-keep-row,
   .plab-variation-actions { flex-wrap: wrap; }
   .plab-keep-look { width: fit-content; max-width: 100%; }
@@ -2360,7 +2360,7 @@
     align-self: flex-start;
     width: fit-content !important;
     max-width: 100%;
-    min-height: 44px !important;
+    min-height: var(--lw-tap, 44px) !important;
     font-size: 13px !important;
   }
   .plab-live-preview.plab-live-preview-headline > span {
@@ -2380,7 +2380,7 @@
    and the title is the one thing that must survive every width. */
 @media (max-width: 1000px) {
   .plab-back { display: none; }
-  .plab-workflow-step { min-width: 44px; height: 44px; min-height: 44px; }
+  .plab-workflow-step { min-width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); min-height: var(--lw-tap, 44px); }
 }
 
 /* Keep the existing scene action beside the workflow on a phone. Its text is
@@ -2391,7 +2391,7 @@
   .plab-toolbar-identity { flex: 0 0 auto; }
   .plab-build-scene { margin-left: 0; padding-inline: 8px; white-space: nowrap; }
   .plab-toolbar .plab-workflow { gap: 0; margin-left: auto; }
-  .plab-workflow-step { width: 44px; padding: 0; }
+  .plab-workflow-step { width: var(--lw-tap, 44px); padding: 0; }
   .plab-workflow-label { display: none; }
 }
 
@@ -2494,7 +2494,7 @@
 @media (max-width: 640px) {
   .plab-view-controls { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 4px; padding-inline: 4px; }
   .plab-edit-area { gap: 5px; }
-  .plab-edit-area select { min-width: 0; width: 100%; min-height: 44px; }
+  .plab-edit-area select { min-width: 0; width: 100%; min-height: var(--lw-tap, 44px); }
   .plab-edit-area > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
 
