@@ -67,7 +67,7 @@
     width: auto;
     max-width: 76px;
     height: 54px;
-    min-height: 44px;
+    min-height: var(--lw-tap);
     border-radius: var(--r-sm);
   }
   .rail-item .lbl { font-size: 10.5px; }
@@ -182,10 +182,14 @@
    One scale for every phone screen:
      screen title 17 · section title 15 · body 13 · labels 11
      panel padding 10–12 · button side-padding 12
-   Buttons keep the 44px height: it is the phone tap minimum the
-   suite enforces (~38 checks). Everything around them shrinks.
+   Controls are 36px tall (Adrian, 2026-11-23: "36", over the 44px
+   platform guideline). Every component sheet reads --lw-tap, which
+   defaults to 44px; only this phone sheet lowers it, so desktop,
+   coarse-pointer tablets and the card's own page keep 44px. The tab
+   bar keeps its own 54px row.
    ============================================================ */
 @media (max-width: 640px) {
+  :root { --lw-tap: 36px; }
   /* Titles */
   .app > .screen h1 { font-size: 17px; line-height: 1.25; }
   .app > .screen h2 { font-size: 15px; line-height: 1.3; }
@@ -197,7 +201,7 @@
   /* Buttons: same height, less padding and type */
   .app > .screen .btn,
   .card-setup-overlay .btn { padding-inline: 12px; font-size: 13px; }
-  .app > .screen .btn-lg { padding: 0 12px; font-size: 13px; min-height: 44px; }
+  .app > .screen .btn-lg { padding: 0 12px; font-size: 13px; min-height: var(--lw-tap); }
   .app > .screen .btn.primary { box-shadow: none; }
 
   /* Panels: Card workspace, install and update */
@@ -234,11 +238,11 @@
      guarded by tests/phone-shell.spec.ts ("one scale"). */
   .strip-discovery .strip-discovery-counts label { display: inline-flex; align-items: center; gap: 10px; }
   .strip-discovery .strip-discovery-counts input {
-    width: 88px; min-height: 44px; height: 44px;
+    width: 88px; min-height: var(--lw-tap); height: var(--lw-tap);
     font-size: 15px; font-family: var(--font-mono);
   }
   .strip-discovery .strip-discovery-counts input::placeholder { font-size: 13px; }
-  .strip-discovery .strip-discovery-grid .strip-discovery-port { min-height: 44px; height: auto; padding: 6px; }
+  .strip-discovery .strip-discovery-grid .strip-discovery-port { min-height: var(--lw-tap); height: auto; padding: 6px; }
   .app > .screen .set .set-stat b { font-size: 15px; }
   .app > .screen .pm .pl-stat .v { font-size: 15px; }
   .app > .screen .card-support-grid { gap: 6px; }

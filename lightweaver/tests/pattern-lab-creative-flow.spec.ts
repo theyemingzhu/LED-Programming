@@ -1,5 +1,6 @@
 import { test, expect } from './studioTest';
 import { openControls } from './helpers/pattern-lab';
+import { MIN_TAP } from './harness/tapSize';
 
 test.beforeEach(async ({ page }) => {
   // This authoring proof must never reach a physical controller.
@@ -39,7 +40,7 @@ test('the creative controls stay usable on a phone without horizontal overflow',
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   const keepBox = await page.getByRole('button', { name: /Save private draft|Update private draft/i }).first().boundingBox();
-  expect(keepBox?.height).toBeGreaterThanOrEqual(44);
+  expect(keepBox?.height).toBeGreaterThanOrEqual(MIN_TAP);
 });
 
 test('color ordering is reversible and works without precise dragging', async ({ page }) => {

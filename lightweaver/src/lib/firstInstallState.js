@@ -9,7 +9,7 @@
 // restarts, one press). Kept here, the state outlives any rebuild, so one
 // press is one write whichever panel is on screen.
 //
-// phase: '' (no first install), 'running', 'done'.
+// phase: '' (no first install), 'running', 'checking', 'done', 'failed'.
 // status/message: what the blank-card Save to card button shows.
 const IDLE = Object.freeze({ phase: '', status: 'idle', message: '' });
 let state = IDLE;
@@ -33,3 +33,6 @@ export function subscribeFirstInstallState(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+// 'checking': a first install succeeded and its light check is open
+// (FirstInstallCheckSheet, one app-level owner). The check sets 'done'.

@@ -15,7 +15,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard, recordJourney } from './ux/journeyRecorder';
-import { driveCardUpdate, driveChangeCount, driveFirstSetup, driveFreshBrowserPickup, driveRename } from './ux/drivers';
+import { driveCardUpdate, driveChangeCount, driveFirstSetup, driveFreshBrowserPickup, driveRename, findStrip } from './ux/drivers';
 import { seedFirmwareUpdate } from './ux/updateSeed';
 import { seedCompleteProject, seedKnownCard } from './ux/_seed';
 import { MATRIX_PATTERNS } from './harness/cardStates';
@@ -26,7 +26,10 @@ const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false };
 
 /** Presses each journey takes today, per width. Lower a number only with the cut that earns it. */
 export const PRESSES = {
-  'first-setup': { 390: 10, 1280: 10 },
+  // 10 → 8: Find my strips combined flow (todo/plans/find-strips-redesign.md §6).
+  // That's mine replaces pin + Yes; one colour row replaces two answers; Stop
+  // replaces typing the count plus "Check the last LED". − / + are not presses.
+  'first-setup': { 390: 8, 1280: 8 },
   'change-count': { 390: 2, 1280: 2 },
   'fresh-browser-pickup': { 390: 2, 1280: 2 },
   'card-update': { 390: 2, 1280: 2 },
@@ -146,13 +149,7 @@ test('[C1] Layout still opens from the light check, and nothing is written to th
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
   await page.getByTestId('setup-lights-action').click();
-  await page.getByTestId('discovery-probe-18').click();
-  await page.getByTestId('discovery-start').click();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await page.getByTestId('discovery-count-18').fill('41');
-  await page.getByTestId('discovery-counts-done').click();
-  await page.getByTestId('discovery-end-yes').click();
+  await findStrip(page, { via: 'tap', pin: 18, count: 41 });
   await expect(page.getByTestId('discovery-save-to-card')).toBeVisible({ timeout: 15_000 });
   const door = page.getByTestId('discovery-continue-layout');
   await expect(door).toHaveText('Place on artwork');
@@ -270,14 +267,7 @@ test('[C8] "Yes, and add another strip" keeps the first strip and opens the port
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
   await page.getByTestId('setup-lights-action').click();
-  await page.getByTestId('discovery-probe-18').click();
-  await page.getByTestId('discovery-start').click();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await page.getByTestId('discovery-count-18').fill('41');
-  await page.getByTestId('discovery-counts-done').click();
-  await expect(page.getByTestId('discovery-end-yes')).toBeVisible();
-  await page.getByTestId('discovery-end-add-strip').click();
+  await findStrip(page, { via: 'tap', pin: 18, count: 41, addAnother: true });
   await expect(page.getByTestId('discovery-probe-18')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('discovery-done')).toHaveCount(0);
   expect(card.state.projectId, 'nothing was saved to the card').toBe('lightweaver-bench-discovery-v1');

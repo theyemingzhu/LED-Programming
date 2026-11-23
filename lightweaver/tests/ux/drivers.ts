@@ -39,6 +39,76 @@ async function pressAsShown(page: Page, j: Journey, steps: { locator: Locator; l
   throw new Error(`journey did not finish at ${page.url()}; pressed ${[...pressed].join(', ') || 'nothing'}`);
 }
 
+type PressRecorder = { press: (target: Locator, label: string) => Promise<unknown> };
+const plainPress: PressRecorder = { press: target => target.click() };
+
+/**
+ * Find my strips, combined flow (todo/plans/find-strips-redesign.md §6-7):
+ * from the open discovery screen to the count confirmed.
+ *
+ * via 'sweep': wait for the card's sweep to light `pin`, then "That's mine".
+ * via 'tap':   tap `pin` on the card drawing, then "Yes".
+ * The running light is stopped at `count` and the end check's − / + settle a
+ * late Stop. Those nudges are fine-tuning, like typing a number, so they are
+ * clicked directly and not counted as presses.
+ */
+export async function findStrip(page: Page, {
+  pin = 18, count = 41, via = 'sweep', colours = 'rgb', j = plainPress, addAnother = false,
+}: { pin?: number; count?: number; via?: 'sweep' | 'tap'; colours?: string; j?: PressRecorder; addAnother?: boolean } = {}) {
+  if (via === 'sweep') {
+    const lit = page.locator(`[data-testid="discovery-pin-map"] .is-pulse[data-pin="${pin}"]`);
+    await expect(lit, `the sweep reaches GPIO ${pin}`).toBeVisible({ timeout: 60_000 });
+    // A press within 500 ms of a change means the pin before; look first.
+    await page.waitForTimeout(700);
+    await j.press(page.getByTestId('discovery-sweep-mine'), "That's mine");
+  } else {
+    await j.press(page.getByTestId(`discovery-probe-${pin}`), `Tap the pin where the strip plugs in`);
+    await j.press(page.getByTestId('discovery-start'), 'Yes, it lit');
+  }
+  // The colour is measured once per setup; a further strip goes straight to its count.
+  const colourStep = page.getByTestId('discovery-color-proof');
+  await expect(colourStep.or(page.getByTestId('discovery-run'))).toBeVisible({ timeout: 60_000 });
+  if (await colourStep.isVisible()) await j.press(page.getByTestId(`discovery-colour-row-${colours}`), 'Tap the colours you see');
+  await stopRunAt(page, count, j);
+  await settleEndCheck(page, count);
+  await j.press(page.getByTestId(addAnother ? 'discovery-end-add-strip' : 'discovery-end-yes'), addAnother ? 'Yes, and find another strip' : 'Yes, the next light is dark');
+}
+
+/**
+ * Way in 1's light check after a blank card's first save: the colour row as
+ * sent (red, green, blue), every strip's end, then on to Patterns. Frames only.
+ */
+export async function answerFirstInstallCheck(page: Page, { timeout = 120_000 } = {}) {
+  const row = page.getByTestId('first-install-colour-row-rgb');
+  await expect(row).toBeEnabled({ timeout });
+  await row.click();
+  await expect(page.getByTestId('first-install-ends-yes')).toBeEnabled({ timeout: 30_000 });
+  await page.getByTestId('first-install-ends-yes').click();
+  await page.getByTestId('first-install-check-done').click();
+}
+
+/** Press Stop once the running light shows `count` (or the closest it gets). */
+export async function stopRunAt(page: Page, count: number, j: PressRecorder = plainPress) {
+  const shownCount = page.getByTestId('discovery-run-count');
+  await expect(shownCount).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => Number(await shownCount.textContent()), { timeout: 120_000, intervals: [50] })
+    .toBeGreaterThanOrEqual(Math.max(1, count - 1));
+  await j.press(page.getByTestId('discovery-run-stop'), 'Stop at the end');
+}
+
+/** − / + until the end check holds `count`. */
+export async function settleEndCheck(page: Page, count: number) {
+  const current = page.getByTestId('discovery-end-count');
+  await expect(current).toBeVisible({ timeout: 20_000 });
+  for (let guard = 0; guard < 400; guard += 1) {
+    const value = Number(await current.textContent());
+    if (value === count) return;
+    await page.getByTestId(value < count ? 'discovery-end-plus' : 'discovery-end-minus').click();
+    await expect(current).not.toHaveText(String(value), { timeout: 10_000 });
+  }
+  throw new Error(`the end check never reached ${count}`);
+}
+
 /** First setup from a blank card: pair, count the lights, save to card, confirm the light test. */
 export async function driveFirstSetup(page: Page, j: Journey, { stopBeforeConfirm = false } = {}) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -49,14 +119,7 @@ export async function driveFirstSetup(page: Page, j: Journey, { stopBeforeConfir
   if (!(await shown(pair, 8000))) await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await j.press(pair, 'Pair this card');
   await j.press(page.getByTestId('setup-lights-action'), 'Find and count the lights');
-  await j.press(page.getByTestId('discovery-probe-18'), 'GPIO 18 (the one that lit)');
-  await j.press(page.getByTestId('discovery-start'), 'Yes, count this strip');
-  await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 20_000 });
-  await j.press(page.getByTestId('discovery-color-red'), 'Colour check: red');
-  await j.press(page.getByTestId('discovery-color-green'), 'Colour check: green');
-  await j.type(page.getByTestId('discovery-count-18'), '41', 'Type the LED count');
-  await j.press(page.getByTestId('discovery-counts-done'), 'Check the last LED');
-  await j.press(page.getByTestId('discovery-end-yes'), 'Yes, that is the last one');
+  await findStrip(page, { pin: 18, count: 41, j });
   const record = page.getByTestId('discovery-record-save');
   const done = page.getByTestId('discovery-done');
   // Builds before C8 asked again on a record screen; since C8 the last confirm

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import {
@@ -143,7 +144,7 @@ test('Pattern Lab toolbar keeps labeled workflow steps in one row from workspace
       await expect(step).toBeVisible();
       await expect(step.locator('svg')).toHaveCount(1);
       expect((await step.boundingBox())!.height)
-        .toBeGreaterThanOrEqual(viewport.width <= 720 ? 44 : 36);
+        .toBeGreaterThanOrEqual(viewport.width <= 640 ? MIN_TAP : viewport.width <= 720 ? 44 : 36);
     }
 
     if (viewport.width <= 640) {
@@ -260,7 +261,7 @@ test('compact project actions never overlap project identity at constrained widt
       await expect(action.locator('svg')).toHaveCount(1);
       await expect(action.locator('.top-action-label')).toBeHidden();
       expect((await action.boundingBox())!.height)
-        .toBeGreaterThanOrEqual(viewport.width <= 720 ? 44 : 36);
+        .toBeGreaterThanOrEqual(viewport.width <= 640 ? MIN_TAP : viewport.width <= 720 ? 44 : 36);
     }
 
     if (viewport.width <= 360) {
@@ -416,7 +417,7 @@ test('no two Studio status-bar chips occupy the same rectangle at Pattern Lab wi
   }
 });
 
-test('primary Pattern Lab controls meet the 44px touch target floor on a phone', async ({ page }) => {
+test('primary Pattern Lab controls meet the phone tap size', async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   if (!(await isMobileDrawerViewport(page))) {
     // Touch-target sizing is a mobile-viewport concern; desktop chromium

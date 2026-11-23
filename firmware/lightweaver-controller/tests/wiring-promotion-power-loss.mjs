@@ -68,14 +68,14 @@ function assertRecoverableCommittedState(state, message) {
 }
 
 const restoreBody = functionBody('restorePreviousKnownGood', 'finalizeCommittedPromotion');
-const armedRestoreBody = restoreBody.slice(restoreBody.indexOf('String previous'));
+const armedRestoreBody = restoreBody.slice(restoreBody.indexOf('uint8_t previous'));
 assert.match(armedRestoreBody,
-  /String currentKnownGood = readKnownGood\(prefs[\s\S]*currentKnownGood == previous[\s\S]*writeKnownGood\(prefs/,
+  /liveSlot\(prefs\) == previous \|\| prefs\.putUChar\(NVS_KG_SLOT_KEY, previous\)/,
   'rollback must treat an unchanged old canonical as already restored instead of appending another full string under NVS pressure');
 const restoreActions = orderedActions(armedRestoreBody, [
-  ['restore-known-good', 'writeKnownGood(prefs'],
+  ['restore-known-good', 'prefs.putUChar(NVS_KG_SLOT_KEY, previous)'],
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
-  ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
+  ['drop-journal', 'removePrevious(prefs'],
 ]);
 assert.deepEqual(restoreActions, ['restore-known-good', 'disarm', 'drop-journal'],
   'rollback must durably disarm before deleting its only recovery payload');
@@ -100,8 +100,8 @@ for (let firstCut = 1; firstCut <= restoreActions.length; firstCut += 1) {
 const finalizeBody = functionBody('finalizeCommittedPromotion', 'makeActivationId');
 const finalizeActions = orderedActions(finalizeBody, [
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
-  ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
-  ['drop-candidate', 'prefs.remove(NVS_CANDIDATE_CONFIG_KEY'],
+  ['drop-journal', 'removePrevious(prefs'],
+  ['drop-candidate', 'removeCandidate(prefs'],
   ['drop-candidate-id', 'prefs.remove(NVS_CANDIDATE_ID_KEY'],
 ]);
 assert.deepEqual(finalizeActions, ['disarm', 'drop-journal', 'drop-candidate', 'drop-candidate-id'],
@@ -286,7 +286,7 @@ const rollbackBody = functionBody('rollbackCandidateRuntimeConfig', 'getRuntimeW
 const rollbackCleanupActions = orderedActions(rollbackBody, [
   ['state-none', 'writeCandidateState(prefs, WIRING_CANDIDATE_NONE)'],
   ['drop-confirmed', 'prefs.remove(NVS_CONFIRMED_ID_KEY)'],
-  ['drop-candidate', 'prefs.remove(NVS_CANDIDATE_CONFIG_KEY)'],
+  ['drop-candidate', 'removeCandidate(prefs)'],
   ['drop-candidate-id', 'prefs.remove(NVS_CANDIDATE_ID_KEY)'],
 ]);
 assert.deepEqual(rollbackCleanupActions,
@@ -371,7 +371,7 @@ const stageBody = functionBody('stageRuntimeConfigJson', 'activateStagedRuntimeC
 const stageValidateMetadata = stageBody.indexOf('validateCandidateMetadataForBoot');
 const stageCleanupPrior = stageBody.indexOf('finalizeCommittedPromotion');
 const stagePruneLegacy = stageBody.indexOf('prefs.remove(NVS_LEGACY_CONFIG_KEY)');
-const stageStoreCandidate = stageBody.indexOf('prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json)');
+const stageStoreCandidate = stageBody.indexOf('writeCandidate(prefs, json)');
 const stageClearConfirmation = stageBody.indexOf('prefs.remove(NVS_CONFIRMED_ID_KEY)');
 const stageMarkCandidate = stageBody.indexOf('writeCandidateState(prefs, WIRING_CANDIDATE_STAGED)');
 assert.ok(stageValidateMetadata >= 0 && stageCleanupPrior > stageValidateMetadata,
@@ -382,7 +382,7 @@ assert.match(stageBody.slice(stagePruneLegacy, stageStoreCandidate),
   /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)/,
   'staging must commit legacy pruning before allocating a full candidate config');
 assert.match(stageBody.slice(stageStoreCandidate),
-  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*prefs\.getString\(NVS_CANDIDATE_CONFIG_KEY/,
+  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*readCandidate\(prefs/,
   'staging must exactly read back the candidate before assigning an activation id');
 assert.ok(stageClearConfirmation >= 0 && stageMarkCandidate > stageClearConfirmation,
   'staging must clear the prior confirmation fence before making candidate A bootable');
@@ -390,7 +390,7 @@ assert.match(stageBody, /confirmationCleared/,
   'staging must check confirmation-fence removal before committing candidate state');
 
 const stageActions = orderedActions(stageBody, [
-  ['store-candidate', 'prefs.putString(NVS_CANDIDATE_CONFIG_KEY, json)'],
+  ['store-candidate', 'writeCandidate(prefs, json)'],
   ['store-candidate-id', 'prefs.putString(NVS_CANDIDATE_ID_KEY, activationId)'],
   ['drop-confirmed', 'prefs.remove(NVS_CONFIRMED_ID_KEY)'],
   ['mark-staged', 'writeCandidateState(prefs, WIRING_CANDIDATE_STAGED)'],
@@ -426,7 +426,7 @@ assert.match(storage, /knownGood == candidate &&\s*\(!candidateId\.length\(\)/,
   'only candidate bytes already equal to known-good require committed candidate identity');
 
 assert.match(restoreBody,
-  /if \(!prefs\.getBool\(NVS_PROMOTION_ARMED_KEY, false\)\) \{[\s\S]*NVS_PREVIOUS_KNOWN_GOOD_KEY[\s\S]*prefs\.remove/,
+  /if \(!prefs\.getBool\(NVS_PROMOTION_ARMED_KEY, false\)\) \{[\s\S]*removePrevious\(prefs\)/,
   'unarmed rollback must durably remove any pre-arm journal before continuing');
 
 const OLD = 'known-good-b';
@@ -528,9 +528,9 @@ const confirmWrites = [
 ];
 const confirmBody = functionBody('confirmCandidateRuntimeConfig', 'rollbackCandidateRuntimeConfig');
 const confirmPrefixWrites = orderedActions(confirmBody, [
-  ['journal-old', 'prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
+  ['journal-old', 'writePreviousSlot(prefs'],
   ['arm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, true)'],
-  ['promote-candidate', 'writeKnownGood(prefs, candidate)'],
+  ['promote-candidate', 'prefs.putUChar(NVS_KG_SLOT_KEY, promotedSlot)'],
   ['confirm-id', 'prefs.putString(NVS_CONFIRMED_ID_KEY, activationId)'],
   ['mark-none', 'writeCandidateState(prefs, WIRING_CANDIDATE_NONE)'],
 ]);

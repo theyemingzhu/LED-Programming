@@ -70,5 +70,20 @@ int main() {
   assert(evaluateFirmwareBootHandoffEvidence(
       false, FirmwareBootHandoffOutcome::RollbackRequested, false) ==
       FirmwareBootEvidenceDecision::None);
+
+  // A rollback is reported by the build it restored. Zero means not reported.
+  using lightweaver::firmwareBuildTag;
+  using lightweaver::firmwareRollbackRecordIsStale;
+  const uint8_t restored = firmwareBuildTag("1111111111111111111111111111111111111111");
+  const uint8_t flashedLater = firmwareBuildTag("56c00ce80e638b779e94653be5bd9700e8339070");
+  assert(restored != 0 && flashedLater != 0 && firmwareBuildTag("") != 0 &&
+         firmwareBuildTag(nullptr) != 0 && firmwareBuildTag("dev") != 0);
+  assert(restored != flashedLater);
+  // First boot after the rollback: nothing recorded yet, so it is reported.
+  assert(!firmwareRollbackRecordIsStale(0, restored));
+  // The same build restarting keeps the diagnosis.
+  assert(!firmwareRollbackRecordIsStale(restored, restored));
+  // A different image flashed afterwards did not roll back.
+  assert(firmwareRollbackRecordIsStale(restored, flashedLater));
   return 0;
 }

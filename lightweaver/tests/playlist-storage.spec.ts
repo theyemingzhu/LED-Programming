@@ -5,6 +5,7 @@ import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../src/lib/cardStoragePayload.js';
 import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
+import { MIN_TAP } from './harness/tapSize';
 
 function makePlaylistProject({ count = 19, oversized = false } = {}) {
   const project = createDefaultProject();
@@ -283,15 +284,15 @@ test('Playlist keeps a full drag target beside slim Live and More buttons', asyn
     const more = page.getByRole('button', { name: 'More actions for Aurora', exact: true });
     const reorder = page.getByRole('button', { name: 'Reorder Aurora', exact: true });
     const live = page.getByRole('button', { name: 'Live', exact: true }).first();
-    for (const [control, height] of [[reorder, 44], [live, 30], [more, 30]] as const) {
+    for (const [control, height] of [[reorder, MIN_TAP], [live, 30], [more, 30]] as const) {
       const box = await control.boundingBox();
-      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.width).toBeGreaterThanOrEqual(MIN_TAP);
       expect(box?.height).toBe(height);
     }
     await more.click();
     const remove = page.getByRole('menuitem', { name: 'Remove Aurora', exact: true });
     const removeBox = await remove.boundingBox();
-    expect(removeBox?.height).toBeGreaterThanOrEqual(44);
+    expect(removeBox?.height).toBeGreaterThanOrEqual(MIN_TAP);
   } finally {
     await context.close();
   }

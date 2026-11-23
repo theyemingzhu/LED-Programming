@@ -161,7 +161,7 @@
   .la .la-workspace-toolbar .la-preview-tools.is-open { display: flex; }
   .la .la-workspace-toolbar .la-preview-tools .tb-btn > svg { display: none; }
   .la .la-workspace-toolbar .la-light-pop { left: 0; right: auto; }
-  .la .la-workspace-toolbar .la-light-item { min-height: 44px; }
+  .la .la-workspace-toolbar .la-light-item { min-height: var(--lw-tap, 44px); }
 }
 
 @media (max-width: 600px) {
@@ -178,11 +178,11 @@
     padding-block: 0;
   }
   .la .la-workspace-toolbar .tb-btn.icon,
-  .la .la-workspace-toolbar .la-zoom button { min-width: 44px; }
+  .la .la-workspace-toolbar .la-zoom button { min-width: var(--lw-tap, 44px); }
 
   .la .la-gpio-group .la-strip-row button,
   .la .la-mode-nav .btn { min-height: 30px; }
-  .la .la-gpio-group .la-strip-row-eye { width: 44px; min-width: 44px; }
+  .la .la-gpio-group .la-strip-row-eye { width: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); }
   .la .la-gpio-group .la-strip-row span.layer-name,
   .la .la-gpio-group .la-section-pattern-action { white-space: normal; overflow-wrap: anywhere; }
   .la .la-gpio-group .la-section-pattern-action { flex-basis: 34%; text-align: end; }
@@ -226,7 +226,7 @@
   .la .la-overlay.br > div { gap: 4px; }
   .la .la-overlay.br .la-canvas-cursor { flex-basis: 100%; order: -1; justify-content: start; }
   .la .la-overlay.br .la-canvas-view-actions { margin: 0 0 0 auto; }
-  .la .la-fit-board { width: 44px; height: 30px; }
+  .la .la-fit-board { width: var(--lw-tap, 44px); height: 30px; }
 }
 
 @media (max-width: 600px) and (max-height: 520px) {
