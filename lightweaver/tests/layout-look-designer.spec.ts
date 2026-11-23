@@ -97,7 +97,7 @@ test('turning it on lights the LEDs, says what it is, and adds no filled button;
   await turnOn(page);
   await expect(page.getByTestId('look-designer-on')).toHaveAttribute('aria-pressed', 'true');
   expect(lit(await allColours(page, ids)).length).toBeGreaterThan(20);
-  await expect(page.getByTestId('look-designer-session-note')).toContainText('not saved with the project yet');
+  await expect(page.getByTestId('look-designer-session-note')).toContainText('until you keep the look');
   await expect(page.getByTestId('look-designer-card-note')).toContainText('only until a card update');
   await expect(page.locator('[data-testid="layout-look-designer"] .primary, [data-testid="layout-look-designer"] .cta')).toHaveCount(0);
   await expect(page.getByTestId('look-designer-tiles').locator('button')).toHaveCount(6);
@@ -105,7 +105,7 @@ test('turning it on lights the LEDs, says what it is, and adds no filled button;
   // The drawer starts closed.
   await expect(page.getByTestId('look-designer-tune')).not.toHaveAttribute('open', '');
   // Nothing about it is written into the project.
-  expect(JSON.stringify(await saved(page))).not.toContain('look-designer');
+  expect(JSON.stringify(await saved(page))).not.toContain('designedLooks');
   await page.getByTestId('look-designer-off').click();
   await expect(touch(page)).toHaveCount(0);
   expect(lit(await allColours(page, ids))).toHaveLength(0);
@@ -317,6 +317,40 @@ test('on a phone, a pinned strip names the chosen area and pattern once the shap
   await expect(pin).toBeVisible();
   await pin.click();
   await expect(pin).toHaveCount(0);
+});
+
+test('Keep a look in Studio, open it again after a reload, and remove it', async ({ page }) => {
+  const ids = await seedPiece(page, LOTUS);
+  await turnOn(page);
+  await page.getByTestId('look-designer-tile-2').click();
+  await page.getByTestId('look-designer-keep-name').fill('Evening bloom');
+  await page.getByTestId('look-designer-keep-button').click();
+  await expect(page.getByTestId('look-designer-keep-say')).toHaveText('Kept in Studio as "Evening bloom".');
+  await expect(page.getByTestId('layout-look-designer')).not.toContainText('Saved');
+  // Keeping again under the same name makes a second look with a numbered name; Replace names its target.
+  await page.getByTestId('look-designer-keep-name').fill('Evening bloom');
+  await page.getByTestId('look-designer-keep-button').click();
+  await expect(page.getByTestId('look-designer-keep-say')).toHaveText('Kept in Studio as "Evening bloom 2".');
+  await expect(page.getByTestId('look-designer-keep-replace')).toContainText('Evening bloom 2');
+  const kept = page.getByTestId('look-designer-kept');
+  await expect(kept).toContainText('Evening bloom');
+  await expect(kept.getByText('Studio only')).toHaveCount(2);
+  // Nothing about it reaches the card's files: the project has it, the standalone controller does not.
+  await expect.poll(async () => (await saved(page))?.designedLooks?.length).toBe(2);
+  expect(JSON.stringify((await saved(page)).devices.standaloneController)).not.toContain('Evening bloom');
+  // A reload keeps both; opening one plays it again.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-designer-kept')).toContainText('Evening bloom 2');
+  const before = await allColours(page, ids);
+  await page.getByTestId('look-designer-kept').getByRole('button', { name: /^Evening bloom Studio only$/ }).click();
+  await expect(touch(page)).toHaveCount(1);
+  expect(lit(await allColours(page, ids)).length).toBeGreaterThan(20);
+  expect(before.length).toBeGreaterThan(0);
+  // Remove takes one away, and the project stops writing the field when none are left.
+  await page.getByRole('button', { name: 'Remove Evening bloom 2' }).click();
+  await page.getByRole('button', { name: 'Remove Evening bloom', exact: true }).click();
+  await expect(page.getByTestId('look-designer-kept')).toHaveCount(0);
+  await expect.poll(async () => 'designedLooks' in ((await saved(page)) || {})).toBe(false);
 });
 
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {

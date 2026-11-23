@@ -9,6 +9,8 @@ import { setPlacedLookPreview, usePlacedLookPreview } from '../canvas/mirrorEcho
 import { setLookDesigner, useLookDesigner } from '../canvas/lookDesignerStore.js';
 import { GRID_PATTERNS, LookPatternGrid } from './LookPatternGrid.jsx';
 import { LookPin, PIN_HEIGHT } from './LookPin.jsx';
+import { KeptLooks, LookKeep } from './LookKeep.jsx';
+import { restoreDesignedLook } from '../../../lib/designedLooks.js';
 import '../look-designer.css';
 
 const STILL_SECONDS = 2.6;
@@ -175,6 +177,20 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
     setLookDesigner({ look: offers[0].look, model: first, tiles: offers, chosen: 0, selected: first.derived.areas[0]?.id ?? null, tuneOpen: false, say: '' });
   };
   const edit = next => setLookDesigner({ look: next, chosen: -1 });
+  // Open a kept look on the piece as it is now. Areas that no longer match start plain, and it says so.
+  const openKept = record => {
+    const live = model || buildPieceModel(shown, { fold, centre: findCentre() });
+    const restored = restoreDesignedLook(record, live);
+    setPlacedLookPreview(null);
+    setLookDesigner({
+      look: restored.look, model: live, names: restored.names, tiles: tiles.length ? tiles : startingLooks(live.derived.areas, { patterns: offered() }),
+      chosen: -1, selected: live.derived.areas[0]?.id ?? null, tuneOpen: false, openKeptId: record.id,
+      say: restored.unmatched.length
+        ? `Opened "${record.name}". ${restored.unmatched.length === 1 ? 'One shape' : `${restored.unmatched.length} shapes`} changed since you kept it and start plain.`
+        : `Opened "${record.name}".`,
+      keepSay: '',
+    });
+  };
   const ids = model ? model.derived.areas.map(area => area.id) : [];
   const sel = state.selected && ids.includes(state.selected) ? state.selected : ids[0];
   const rec = look && sel ? look.areas[sel] : null;
@@ -236,10 +252,11 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
         <button type="button" className="btn" aria-pressed={on} data-testid="look-designer-on" onClick={turnOn}>Design a look</button>
       </div>
       {!on && <p className="la-symmetry-note">Six living versions of your own piece to pick from, then bend, then touch. A try-out for now.</p>}
+      <KeptLooks onOpen={openKept}/>
       {on && model && (
         <div className="ld-body">
           <p className="la-symmetry-note" data-testid="look-designer-session-note">
-            This is a try-out: it is not saved with the project yet.
+            Changes here are a try-out until you keep the look.
           </p>
           <p className="la-symmetry-note" data-testid="look-designer-card-note">
             It plays in Studio only until a card update: the card cannot play it yet.
@@ -285,6 +302,8 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
           <p className="la-symmetry-note" role="status" data-testid="look-designer-say">
             {state.say || 'Tap a shape on the artwork to change its pattern. Drag across shapes to set the order they play in.'}
           </p>
+
+          <LookKeep model={model} fold={fold}/>
 
           <details className="ld-tune" data-testid="look-designer-tune" open={state.tuneOpen}
                    onToggle={event => { if (event.currentTarget.open !== state.tuneOpen) setLookDesigner({ tuneOpen: event.currentTarget.open }); }}>
