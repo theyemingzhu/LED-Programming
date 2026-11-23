@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
+import { FirstSaveOrFind } from '../components/card/FirstSaveOrFind.jsx';
 import './lw-setup.css';
 import {
   CONNECTED_CARD_LINK_STATES,
@@ -1076,13 +1078,29 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
-            {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
-              ? 'Review the connected lights'
-              : ledCountEntry
-                ? 'Find the lights'
-                : 'Find and count the lights'}
-          </button>
+          {/* Way in 1 (Find my strips, combined flow): a blank card and an open
+              project whose wiring is known get the project in one save, then a
+              light check. Otherwise finding comes first, as before. */}
+          <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
+                {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
+                  ? 'Review the connected lights'
+                  : ledCountEntry
+                    ? 'Find the lights'
+                    : 'Find and count the lights'}
+              </button>
+            )}
+          />
         </div>
       );
     }
@@ -1126,10 +1144,25 @@ export function SetupScreen({
           // (setup-open-patterns) for the identical click, and this rung used
           // to print the same button a second time directly beneath it, with
           // a paragraph describing an install that had already happened.
-          <>
-            <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
-          </>
+          // A blank card takes the whole project in one save right here, then
+          // the light check (Find my strips way in 1). Otherwise as before.
+          <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <>
+                <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
+                <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
+              </>
+            )}
+          />
         ) : null}
       </div>
     );

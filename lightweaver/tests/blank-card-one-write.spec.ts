@@ -7,6 +7,7 @@
 // here (14 s restart), which is what opens the window; on the instant
 // simulator the second install never mounted (blank-card-first-install.spec.ts).
 import { test, expect } from '@playwright/test';
+import { answerFirstInstallCheck } from './ux/drivers';
 import type { Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { createBenchDiscoveryPracticeCard } from './harness/benchDiscoveryCard';
@@ -117,7 +118,7 @@ test('a landed first install whose read-back fails stops offering the blank-card
   card.silenceFor(70000);
   await expect(page.getByTestId('blank-card-save')).toHaveText(/Try saving again/, { timeout: 120000 });
   // The card comes back holding the project: the blank panel must go.
-  await expect(page.getByText('This card is blank')).toHaveCount(0, { timeout: 90000 });
+  await expect(page.getByText('Put your project on this card.')).toHaveCount(0, { timeout: 90000 });
   await expect(page.getByTestId('blank-card-save')).toHaveCount(0);
   expect(card.state.pixels).toBe(41);
   // And nothing wrote again on its own.
@@ -160,9 +161,12 @@ test('a second blank card does not show the previous card\'s "Installed on card"
   await expect(page.getByText(/no room/i).first()).toBeVisible({ timeout: 90000 });
   await page.getByTestId('card-install-clear-temporary').click();
   await expect.poll(() => card.state.pixels, { timeout: 60000 }).toBe(0);
+  const writesBeforeSave = card.requests.filter(r => r.method === 'POST' && r.path === '/api/config').length;
   await page.getByTestId('blank-card-save').click({ timeout: 90000 });
-  // First install done: Studio moves on to Patterns.
+  // First install done: the light check (Find my strips way in 1), then Patterns.
+  await answerFirstInstallCheck(page);
   await expect.poll(() => page.url(), { timeout: 120000 }).toContain('screen=pattern');
+  expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/config').length - writesBeforeSave, 'one write; the check writes nothing').toBe(1);
   expect(card.state.pixels).toBe(41);
 
   // The card is cleared again, as on the real card between runs.
@@ -177,7 +181,7 @@ test('a second blank card does not show the previous card\'s "Installed on card"
   }), { timeout: 90000 }).toBe(true);
   await page.evaluate(() => { window.location.hash = '#screen=layout'; });
   await page.getByTestId('layout-check-and-install').first().click({ timeout: 30000 });
-  await expect(page.getByText('This card is blank')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText('Put your project on this card.')).toBeVisible({ timeout: 60000 });
   await expect(page.getByText(/Installed on card\. Next, check the lights/)).toHaveCount(0);
   await expect(page.getByTestId('blank-card-save')).toHaveText('Save to card');
 });

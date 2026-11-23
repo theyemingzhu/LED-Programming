@@ -264,7 +264,7 @@
 .lw-setup-task input,
 .lw-setup-task select,
 .lw-setup-banner button {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
 }
 
 .lw-setup-task button:focus-visible,
@@ -351,7 +351,7 @@
   .lw-setup-task > .btn {
     width: auto;
     max-width: 100%;
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     height: auto;
     white-space: normal;
     text-align: center;

@@ -574,7 +574,10 @@ function normalizeConfigPushError(host, err, transport = '') {
   // unconfirmed and report a read-back mismatch (F-F1, real card 2026-11-22).
   if (err?.name === 'CardWiringSafetyError' && err.reason) {
     const said = String(err.response?.error || err.message || '');
-    const storageFull = /candidate storage failed|no room|storage (is )?full|exceed storage/i.test(said);
+    // Both of the real card's no-room answers: the staged copy does not fit
+    // ("candidate storage failed", 2026-11-22) and the project does not fit
+    // ("nvs write failed; previous project remains intact …", 2026-11-19, D8).
+    const storageFull = /candidate storage failed|nvs write failed|too large for card storage|has room for|no room|storage (is )?full|exceed storage/i.test(said);
     const refusal = new CardPushError(storageFull ? 'card-storage-full' : err.reason,
       storageFull ? CARD_STORAGE_FULL_MESSAGE : (err.message || 'The card refused this change.'), err, err.status);
     if (Number(err.status) >= 400 && Number(err.status) < 500) refusal.delivery = 'rejected';

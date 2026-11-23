@@ -707,8 +707,8 @@
   .la .la-strip-detail .lw-sel-grid .la-led-count-field .btn,
   .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number],
   .la .la-strip-detail .lw-sel-grid .la-strip-density .btn,
-  .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: 44px; height: 44px; }
-  .la .la-strip-detail .actions .btn { min-height: 44px; }
+  .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: var(--lw-tap, 44px); height: var(--lw-tap, 44px); }
+  .la .la-strip-detail .actions .btn { min-height: var(--lw-tap, 44px); }
 }
 
 /* Wiring controls and build references share one disclosure treatment. */
@@ -908,7 +908,7 @@
 .la .la-wire-panel > .lww-tools-panel { margin: 0; }
 
 @media (pointer: coarse) {
-  .la .lww-tools-panel details > summary { min-height: 44px; }
+  .la .lww-tools-panel details > summary { min-height: var(--lw-tap, 44px); }
 }
 
 /* Wire order: two word buttons that make the drag handle's move with a thumb. */
@@ -919,7 +919,7 @@
 .la .lwbs-summary > .lwbs-schedule { margin: 0; }
 .la .lwbs-summary > summary.panel-head .meta { white-space: normal; }
 @media (pointer: coarse) {
-  .la .lww-tools-panel > summary.panel-head { min-height: 44px; }
+  .la .lww-tools-panel > summary.panel-head { min-height: var(--lw-tap, 44px); }
 }
 
 
@@ -928,6 +928,6 @@
   .la .la-install-actions > .btn {
     padding: 0 6px; min-height: 32px; white-space: nowrap;
   }
-  .la .la-install-actions > .la-specs-trigger { min-width: 44px; }
+  .la .la-install-actions > .la-specs-trigger { min-width: var(--lw-tap, 44px); }
   .la .la-change-help > summary { width: 26px; }
 }
