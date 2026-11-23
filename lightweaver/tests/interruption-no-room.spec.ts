@@ -9,6 +9,7 @@
 //       "Clear temporary setup", then install again.
 // Real-timing practice card. Plan: todo/plans/practice-card-interruptions.md.
 import { test, expect } from '@playwright/test';
+import { findStrip } from './ux/drivers';
 import type { Page } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import {
@@ -73,16 +74,8 @@ async function walkToInstall(page: Page, p: InterruptionCard) {
   await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
   await expect.poll(() => linkState(page), { timeout: 30_000 }).toMatch(/^connected-/);
   await page.getByTestId('setup-lights-action').click();
-  await page.getByTestId('discovery-probe-18').click();
-  await expect(page.getByTestId('discovery-start')).toBeEnabled({ timeout: 30_000 });
-  await page.getByTestId('discovery-start').click();
-  await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await page.getByTestId('discovery-count-18').fill('41');
-  await page.getByTestId('discovery-counts-done').click();
-  await page.getByTestId('discovery-end-yes').click();
-  await page.getByTestId('discovery-record-save').click();
+  // Find my strips, combined flow: tap the pin, one colour row, Stop, end check.
+  await findStrip(page, { pin: 18, count: 41, via: 'tap' });
   await expect(page.getByTestId('discovery-done')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId('discovery-continue-layout').click();
   await expect(page).toHaveURL(/#screen=layout/, { timeout: 30_000 });
@@ -94,7 +87,6 @@ async function walkToInstall(page: Page, p: InterruptionCard) {
 }
 
 test('install over the temporary setup, card has no room: Studio says so and offers Clear temporary setup; after it, install lands', async ({ page }) => {
-  knownDefect('D8', 'no room is reported as Finish Wi-Fi then read-back-mismatch (Find my strips session)');
   practice = realPracticeCard(cardState('factory-blank'));
   const projectId = await walkToInstall(page, practice);
   const before = holds(practice.card);

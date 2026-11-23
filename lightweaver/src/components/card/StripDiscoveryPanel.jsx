@@ -570,7 +570,11 @@ export function StripDiscoveryPanel({
     } catch (error) {
       setProbeBusy(null);
       setPinnedPort(null);
-      setProbeError(`Could not light that pin: ${error?.message || 'the card did not answer'}.`);
+      // Never the browser's own words ("signal is aborted without reason"):
+      // say what happened and what to do (D6).
+      setProbeError(isTransientCardFailure(error)
+        ? 'The card is slow to answer and did not light that pin yet. Tap the pin to try again.'
+        : 'The card did not light that pin. Tap the pin to try again, or pick another.');
     }
   }, [host, cardLink?.transport, pinnedPort, serializeProject, projectRevision]);
 
@@ -1717,7 +1721,7 @@ export function StripDiscoveryPanel({
           ) : (
             <div className="strip-discovery-confirm">
               <h3>{probeError || probeUnlit ? 'Count the strip on this pin?' : 'Did your strip light up?'}</h3>
-              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={selectedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
+              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
               {probeBusy && (
                 <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">Lighting this pin…</p>
               )}
@@ -1814,6 +1818,7 @@ export function StripDiscoveryPanel({
           <h3>Press Stop at the end.</h3>
           <StripLights count={24} litCount={Math.min(24, Math.round((activePort.litCount / Math.max(1, activePort.provisioned)) * 24))} testId="discovery-run-strip" />
           <p className="strip-discovery-bignum" data-testid="discovery-run-count" aria-live="off">{activePort.litCount}</p>
+          {benchNotice && <p className="strip-discovery-note" role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
           {activePort.needsLargerBench && (
             <div className="strip-discovery-actions is-quiet">
               <p role="status" data-testid="discovery-run-at-end">The light reached the end of what is set up.</p>
