@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -179,7 +180,7 @@ test('an interrupted browser install inspects the exact result and never flashes
   expect(buttonBox).not.toBeNull();
   expect(buttonBox!.width).toBeLessThan(recoveryBox!.width - 16);
   expect(buttonBox!.x - recoveryBox!.x).toBeLessThan(32);
-  expect(buttonBox!.height).toBeGreaterThanOrEqual(44);
+  expect(buttonBox!.height).toBeGreaterThanOrEqual(MIN_TAP);
   await page.setViewportSize({ width: 1280, height: 720 });
   const desktopRecoveryBox = await recovery.boundingBox();
   const desktopButtonBox = await reconnect.boundingBox();
@@ -234,7 +235,7 @@ test('an interrupted install does not offer USB Wi-Fi resume for a freshly verif
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeLessThan(recoveryBox!.width - 16);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
   await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');

@@ -3,6 +3,7 @@ import { test, expect } from './studioTest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { choosePattern, closeControls, openControls, openStep, patternSearchInput, pickPatternTile } from './helpers/pattern-lab.ts';
+import { MIN_TAP } from './harness/tapSize';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 const PREVIEW_SOURCE = await readFile(fileURLToPath(new URL('../src/v3/PatternPreview.jsx', import.meta.url)), 'utf8');
@@ -621,7 +622,7 @@ test('uses an accessible lower controls drawer on a phone while keeping preview 
   const saveHeight = await page.getByRole('button', { name: 'Save private draft' }).evaluate(element => {
     return Number.parseFloat(getComputedStyle(element).height);
   });
-  expect(saveHeight).toBeGreaterThanOrEqual(44);
+  expect(saveHeight).toBeGreaterThanOrEqual(MIN_TAP);
   await page.getByRole('button', { name: 'Close pattern controls' }).click();
   // Pattern Lab opens already playing (patternlab-rebuild.md Phase 1) and
   // choosePattern above never paused it, so the button reads "Pause" here --
@@ -629,7 +630,7 @@ test('uses an accessible lower controls drawer on a phone while keeping preview 
   const playHeight = await page.getByRole('button', { name: 'Pause', exact: true }).evaluate(element => {
     return Number.parseFloat(getComputedStyle(element).height);
   });
-  expect(playHeight).toBeGreaterThanOrEqual(44);
+  expect(playHeight).toBeGreaterThanOrEqual(MIN_TAP);
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 });
 
@@ -645,7 +646,7 @@ test('keeps all four controls reachable with 44px slider hit areas in the phone 
     const control = page.getByRole('slider', { name: label, exact: true });
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeVisible();
-    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
 });
 
