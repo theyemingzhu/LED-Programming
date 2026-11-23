@@ -1,0 +1,59 @@
+/* Look designer: the control beside Placed look in the Layout strip list, and
+   the touch layer on the artwork. Its own file on purpose: it borrows the
+   Symmetry and Placed look classes and only adds to them. Single dark look,
+   plain choices, no icons, no filled buttons (Save to card stays the one). */
+
+.ld-body { display: grid; gap: 14px; margin-top: 4px; min-width: 0; }
+.ld-field { display: grid; gap: 6px; min-width: 0; }
+.ld-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ld .btn { min-width: 0; }
+
+.ld-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ld-tiles button {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 1;
+  min-width: 0;
+}
+.ld-tiles button[aria-pressed="true"] { border-color: var(--accent-hi); }
+.ld-tiles canvas { display: block; width: 100%; height: 100%; }
+
+/* A dial: low end, slider, high end. */
+.ld-dial {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(60px, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  color: var(--text-mid);
+  font-size: 12px;
+}
+.ld-dial span:last-child { text-align: right; }
+.ld-dial span:first-child { max-width: 11em; }
+.ld-dial input[type="range"] { width: 100%; min-width: 0; margin: 0; padding: 0; accent-color: var(--accent-hi); }
+
+.ld-journeys { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+.ld-journeys button { height: 32px; border: 2px solid transparent; border-radius: 8px; cursor: pointer; min-width: 0; }
+.ld-journeys button[aria-pressed="true"] { border-color: var(--text-hi); }
+
+.ld-tune { border-top: 1px solid var(--border-soft); padding-top: 10px; }
+.ld-tune summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; gap: 8px; color: var(--text-hi); font-size: 13px; list-style: none; }
+.ld-tune summary::-webkit-details-marker { display: none; }
+.ld-tune summary::before { content: "+"; display: inline-block; width: 14px; color: var(--text-lo); }
+.ld-tune[open] summary::before { content: "\2212"; }
+.ld-tunebody { display: grid; gap: 14px; margin-top: 10px; min-width: 0; }
+.ld-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ld-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ld-seg.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ld .ld-seg .btn, .ld .ld-chips .btn { white-space: normal; line-height: 1.2; justify-content: center; text-align: center; }
+
+.ld button:focus-visible, .ld summary:focus-visible, .ld input:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+@media (pointer: coarse), (max-width: 600px) {
+  .ld-dial, .ld-tune summary { min-height: 44px; }
+  .ld .ld-seg .btn, .ld .ld-chips .btn, .ld .ld-pair .btn { min-height: 44px; }
+}
