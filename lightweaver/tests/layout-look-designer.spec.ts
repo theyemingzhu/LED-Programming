@@ -228,6 +228,27 @@ test('an area can be renamed in place: Enter keeps, Escape reverts, empty restor
   expect(JSON.stringify(await saved(page))).not.toContain('Kept on leaving');
 });
 
+// The chosen option must be visible, not only marked: a pressed button looks different from an unpressed one.
+test('the chosen option looks different from the others', async ({ page }) => {
+  await seedPiece(page, LOTUS);
+  await turnOn(page);
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  const look = (id: string) => page.getByTestId(id).evaluate((node: Element) => {
+    const style = getComputedStyle(node);
+    return `${style.borderTopColor}|${style.backgroundColor}|${style.color}`;
+  });
+  for (const [on, off] of [['look-designer-motion-pulse', 'look-designer-motion-chase'], ['look-designer-copies-together', 'look-designer-copies-after'],
+    ['look-designer-direction-forward', 'look-designer-direction-bounce'], ['look-designer-speed-1', 'look-designer-speed-2'],
+    ['look-designer-chip-0', 'look-designer-chip-1']]) {
+    await expect(page.getByTestId(on), on).toHaveAttribute('aria-pressed', 'true');
+    expect(await look(on), `${on} vs ${off}`).not.toBe(await look(off));
+  }
+  await page.getByTestId('look-designer-takeTurns').click();
+  expect(await look('look-designer-takeTurns')).not.toBe(await look('look-designer-petalByPetal'));
+  expect(await look('look-designer-tile-0')).not.toBe(await look('look-designer-tile-1'));
+  expect(await look('look-designer-journey-dawn')).not.toBe(await look('look-designer-journey-tide'));
+});
+
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const ids = await seedPiece(page, LOTUS);

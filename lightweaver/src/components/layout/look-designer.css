@@ -77,3 +77,28 @@
 .ld .ld-name:focus { border-color: var(--accent-hi); background: var(--bg-canvas); }
 .ld-count { margin-left: 6px; color: var(--text-lo); font-size: 11px; }
 @media (pointer: coarse), (max-width: 600px) { .ld .ld-name { min-height: 44px; } }
+
+/* The chosen option must show. The app's shared .btn rule is as specific as a
+   plain pressed rule, so these follow .la-symmetry-seg in divide-strip.css:
+   chained under .la .ld so they win. A lighter surface, a visible border and
+   full-strength text; never a filled accent (Save to card stays the one). */
+.la .ld .ld-seg .btn,
+.la .ld .ld-chips .btn,
+.la .ld .la-symmetry-seg .btn {
+  color: var(--text-mid);
+  font-weight: 400;
+}
+.la .ld .ld-seg .btn[aria-pressed="true"],
+.la .ld .ld-chips .btn[aria-pressed="true"],
+.la .ld .la-symmetry-seg .btn[aria-pressed="true"] {
+  border-color: var(--text-mid);
+  background: var(--bg-elev-2);
+  box-shadow: inset 0 0 0 1px var(--text-lo);
+  color: var(--text-hi);
+  font-weight: 500;
+}
+.la .ld .ld-seg .btn:hover,
+.la .ld .ld-chips .btn:hover { color: var(--text-hi); }
+.la .ld .ld-tiles button[aria-pressed="true"] { border-color: var(--text-hi); }
+.la .ld .ld-journeys button[aria-pressed="true"] { border-color: var(--text-hi); box-shadow: 0 0 0 1px var(--bg-canvas) inset; }
+.la .ld .ld-tiles button:not([aria-pressed="true"]) { border-color: transparent; }
