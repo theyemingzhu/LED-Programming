@@ -40,7 +40,6 @@ async function saveAndWaitForRestart(page, p: InterruptionCard, context?: Browse
 }
 
 test('reload while the card restarts after Save: Studio then knows the save landed', async ({ page }) => {
-  knownDefect('D2', 'after a reload Studio says Previously installed / Draft kept separately about a save that landed');
   practice = realPracticeCard(cardState('playing'));
   const sent = await saveAndWaitForRestart(page, practice);
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -57,7 +56,6 @@ test('reload while the card restarts after Save: Studio then knows the save land
 });
 
 test('tab closed while the card restarts after Save, Studio reopened 30 s later: it knows the save landed', async ({ page, context }) => {
-  knownDefect('D2b', 'reopened Studio says Previously installed / Draft kept separately about a save that landed');
   practice = realPracticeCard(cardState('playing'));
   const sent = await saveAndWaitForRestart(page, practice, context);
   await page.close();
