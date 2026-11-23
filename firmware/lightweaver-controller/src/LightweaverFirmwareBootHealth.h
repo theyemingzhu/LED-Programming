@@ -40,6 +40,34 @@ inline FirmwareBootEvidenceDecision evaluateFirmwareBootHandoffEvidence(
   return FirmwareBootEvidenceDecision::None;
 }
 
+// A rollback record lives in RTC memory, which survives every restart and
+// every USB flash. Without a note of which build it was first reported on, the
+// card repeats it forever and restamps it with whatever build is running: a
+// card flashed to build B over USB went on saying an update had rolled back
+// and "restored" build B (measured on lw-b0fe81f61b44, 2026-11-19).
+//
+// The record has one spare byte, so it holds a one-byte tag of the build that
+// first reported the rollback. The layout is unchanged on purpose: an older
+// build arms the record and a newer one reads it during an update, and a
+// record the new build could not read would fail its own health check.
+// Zero means "not reported yet", so a tag is never zero.
+inline uint8_t firmwareBuildTag(const char* buildId) {
+  uint32_t hash = 2166136261U;
+  for (const char* cursor = buildId ? buildId : ""; *cursor; cursor++) {
+    hash ^= static_cast<uint8_t>(*cursor);
+    hash *= 16777619U;
+  }
+  const uint8_t tag = static_cast<uint8_t>(hash ^ (hash >> 8) ^ (hash >> 16) ^ (hash >> 24));
+  return tag ? tag : 1;
+}
+
+// True when the rollback was first reported by a different build than the one
+// running now: the image has been replaced since, so the record describes a
+// card that no longer exists.
+inline bool firmwareRollbackRecordIsStale(uint8_t reportedByTag, uint8_t runningTag) {
+  return reportedByTag != 0 && reportedByTag != runningTag;
+}
+
 struct FirmwareBootHealthFacts {
   bool pendingVerification = false;
   bool compiledIdentityMatches = false;
