@@ -2,16 +2,6 @@
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
   "waiting": [
     {
-      "id": "client-pattern-after-query-get",
-      "what": "Let a look save through the phone player go through when it comes straight after reading that look's settings.",
-      "why": "On every card since 1.2.4, a look save sent right after a GET /api/client-pattern?patternId=… is refused with \"invalid pattern envelope\": the GET's query argument is still counted when the save is checked. No owner path reaches it today: Studio saves looks through /api/config, and the phone player reads the card status before each save, which clears it. One line in handleClientPatternPost plus a host test; it rides the next card release.",
-      "added": "2026-11-23",
-      "source": {
-        "kind": "patch",
-        "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
-      }
-    },
-    {
       "id": "card-memory-recordings",
       "what": "Let a card with no microSD keep one short recorded look in its own memory and play it after a power cut.",
       "why": "Not yet tried on a real card: it has only passed tests on a computer. Do not send it until the bench plan in its pull request has passed on the test card.",
