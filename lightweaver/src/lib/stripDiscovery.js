@@ -37,6 +37,7 @@ export const DISCOVERY_END_MARKER_COLOR = '3C003C'; // the last LED — magenta
 export const DISCOVERY_PHASES = Object.freeze([
   'bench-install',
   'probe',
+  'run',
   'decade',
   'end-marker',
   'record',
@@ -126,6 +127,22 @@ export function buildEndMarkerFrame({ benchLayout = [], pin, index = 0 } = {}) {
   const local = Math.trunc(Number(index) || 0);
   if (local < 0 || local >= entry.count) return frame;
   frame[entry.start + local] = DISCOVERY_END_MARKER_COLOR;
+  return frame;
+}
+
+/**
+ * The combined Find-my-strips end check: every set-up light on the port dimly
+ * lit, with the counted last one purple. A strip longer than the count shows a
+ * lit light after the purple one, so "is the next light dark?" is answerable
+ * by looking. A count past the strip's end shows no purple at all.
+ */
+export function buildEndCheckFrame({ benchLayout = [], pin, index = 0 } = {}) {
+  const frame = blankFrame(benchLayoutTotalPixels(benchLayout));
+  const entry = layoutEntry(benchLayout, pin);
+  if (!entry) return frame;
+  for (let offset = 0; offset < entry.count; offset += 1) frame[entry.start + offset] = DISCOVERY_PROBE_COLOR;
+  const local = Math.trunc(Number(index) || 0);
+  if (local >= 0 && local < entry.count) frame[entry.start + local] = DISCOVERY_END_MARKER_COLOR;
   return frame;
 }
 
@@ -292,6 +309,29 @@ export function advance(session, event = {}) {
       });
       return enterProbe(marked, nextProbePin(marked, pin));
     }
+    case 'run-start': {
+      // The colour is known; a light now runs down the strip until Stop.
+      if (session.phase !== 'probe' || pin === null) return session;
+      return Object.freeze({ ...patchPort(session, pin, { litCount: 0, needsLargerBench: false }), phase: 'run', activePin: pin });
+    }
+    case 'run-tick': {
+      if (session.phase !== 'run' || pin === null) return session;
+      const port = session.ports.find(item => item.pin === pin);
+      if (!port) return session;
+      const litCount = Math.min(port.provisioned, Math.max(0, Math.trunc(Number(event?.litCount) || 0)));
+      return patchPort(session, pin, { litCount, needsLargerBench: litCount >= port.provisioned });
+    }
+    case 'run-stop': {
+      // Stop is the count. The end check that follows fixes a late press.
+      if (session.phase !== 'run' || pin === null) return session;
+      const port = session.ports.find(item => item.pin === pin);
+      if (!port) return session;
+      const count = Math.min(port.provisioned, Math.max(1, port.litCount));
+      const counted = patchPort(session, pin, {
+        probed: true, probedCeiling: port.provisioned, count, role: 'strip', confirmed: false, needsLargerBench: false,
+      });
+      return Object.freeze({ ...counted, phase: 'end-marker', activePin: pin });
+    }
     case 'set-count': {
       if (pin === null) return session;
       const port = session.ports.find(item => item.pin === pin);
@@ -341,6 +381,10 @@ export function discoveryFrame(session) {
     const port = session.ports.find(item => item.pin === session.activePin);
     return buildExpandingProbeFrame({ benchLayout: session.benchLayout, pin: session.activePin, litCount: port?.litCount || 0 });
   }
+  if (session.phase === 'run' && session.activePin !== null) {
+    const port = session.ports.find(item => item.pin === session.activePin);
+    return buildExpandingProbeFrame({ benchLayout: session.benchLayout, pin: session.activePin, litCount: port?.litCount || 0 });
+  }
   if (session.phase === 'decade') {
     const counts = Object.fromEntries(session.ports
       .filter(port => port.probed && !port.skipped)
@@ -349,7 +393,7 @@ export function discoveryFrame(session) {
   }
   if (session.phase === 'end-marker' && session.activePin !== null) {
     const port = session.ports.find(item => item.pin === session.activePin);
-    return buildEndMarkerFrame({ benchLayout: session.benchLayout, pin: session.activePin, index: Math.max(0, (port?.count || 0) - 1) });
+    return buildEndCheckFrame({ benchLayout: session.benchLayout, pin: session.activePin, index: Math.max(0, (port?.count || 0) - 1) });
   }
   return null;
 }
@@ -435,6 +479,22 @@ export function buildChannelProofFrame({ benchLayout = [], pin, litCount = 0, st
     .map(color => (color === DISCOVERY_PROBE_COLOR ? proofColor : color));
 }
 
+/**
+ * The one-tap colour check: lights 1, 2 and 3 of the port in send-slot 1, 2
+ * and 3 alone, everything else dark. The colours the owner sees, in order, are
+ * the colour-order measurement (channelMapFromColourRow).
+ */
+export const DISCOVERY_COLOUR_CHECK_COLORS = Object.freeze(['3C0000', '003C00', '00003C']);
+export function buildColourCheckFrame({ benchLayout = [], pin } = {}) {
+  const frame = blankFrame(benchLayoutTotalPixels(benchLayout));
+  const entry = layoutEntry(benchLayout, pin);
+  if (!entry) return frame;
+  DISCOVERY_COLOUR_CHECK_COLORS.forEach((color, offset) => {
+    if (offset < entry.count) frame[entry.start + offset] = color;
+  });
+  return frame;
+}
+
 const PROOF_COLOR_NAMES = Object.freeze(['red', 'green', 'blue']);
 
 /**
@@ -444,6 +504,13 @@ const PROOF_COLOR_NAMES = Object.freeze(['red', 'green', 'blue']);
  * twice, or not a colour name) — callers re-ask instead of recording a map
  * that lies.
  */
+/** The six-row answer: the three colours seen on lights 1, 2, 3, in order. */
+export function channelMapFromColourRow(row = []) {
+  if (!Array.isArray(row) || row.length !== 3 || new Set(row).size !== 3) return null;
+  if (!row.every(name => PROOF_COLOR_NAMES.includes(name))) return null;
+  return channelMapFromProofAnswers(row[0], row[1]);
+}
+
 export function channelMapFromProofAnswers(seenFirst, seenSecond) {
   if (!PROOF_COLOR_NAMES.includes(seenFirst) || !PROOF_COLOR_NAMES.includes(seenSecond)) return null;
   if (seenFirst === seenSecond) return null;
