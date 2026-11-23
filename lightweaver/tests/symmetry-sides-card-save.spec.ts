@@ -21,6 +21,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createPracticeCard, defaultTimingName } from './harness/practiceTiming.js';
 import { cardState } from './harness/cardStates';
+import { answerFirstInstallCheck } from './ux/drivers';
 
 type StripDef = { name: string; d: string };
 
@@ -162,6 +163,11 @@ test('six sides save to a blank card, are confirmed, and are still the card\'s p
   await expect(blankSave).toBeVisible({ timeout: SETTLE_MS });
   const pressedAt = Date.now();
   await blankSave.click();
+
+  // Since the first-install light check landed on main, a blank card's first
+  // save is followed by that check (the colour row as sent, each strip's end)
+  // before Studio moves on. Answer it, then expect Patterns.
+  await answerFirstInstallCheck(page, { timeout: SETTLE_MS });
 
   // Confirmed, not just sent: Studio hands off to Patterns only after it has
   // read the exact project back from the restarted card.
