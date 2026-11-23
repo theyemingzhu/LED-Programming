@@ -237,3 +237,47 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
     });
   }
 }
+
+// Known defect FS2 (TODO.md, 2026-11-23): on the practice card with the REAL
+// card's settling after a restart — the measured ~14 s restart after a save,
+// then replies of 1.1–9.7 s about half the time for ~45 s
+// (practiceTiming.ts unsettledAfterRestart, save-trace-NOSAVE.json) — Save in
+// way in 2 never reaches the light test. Tap: "Studio could not verify this
+// install (read-back-mismatch)" with the card still on the temporary setup.
+// Sweep: no light test and nothing said. The tests above switch that settling
+// off (QUIET) and so cannot see it; these two keep it on. Skipped (fixme)
+// until the save read-back fix lands; that fix removes the marker and must
+// show them green on repeated runs (--repeat-each=4).
+test.describe('Real-timing with the card settling after its restart', () => {
+  test.use({ viewport: { width: PHONE.width, height: PHONE.height } });
+  for (const via of ['tap', 'sweep'] as const) {
+    test(`way in 2 by ${via}: Save reaches the light test and the light test finishes`, async ({ page }) => {
+      // Skipped, not test.fail(): the settling is random (p=0.5 per reply), so
+      // the fault shows in most runs but not all — 3 of 4 failed on 2026-11-23.
+      // An expected-fail that sometimes passes would put red into the lane.
+      test.fixme(true, 'FS2: Save after Find my strips fails while the card settles after its restart (TODO.md)');
+      test.setTimeout(360_000);
+      await guardRealCard(page);
+      const { card } = createPracticeCard(cardState('factory-blank'), {
+        timing: 'real',
+        seed: 11,
+        restartAfterSaveMs: 14_200,
+        overrides: { spontaneousSilence: null },
+      });
+      await card.install(page);
+      await pair(page);
+      await expect.poll(() => linkConnected(page), { timeout: 40_000 }).toBe(true);
+      await startFalseFailureWatch(page, WORDING);
+      await page.getByTestId('setup-lights-action').click();
+      await findStrip(page, { pin: 18, count: 41, via });
+      await expect(page.getByTestId('discovery-done')).toBeVisible({ timeout: 30_000 });
+      await page.getByTestId('discovery-save-to-card').click();
+      const confirm = page.getByTestId('wiring-test-confirm');
+      await expect(confirm, 'Save opens the light test').toBeVisible({ timeout: 200_000 });
+      await confirm.click();
+      await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 90_000 })
+        .toEqual({ pixels: 41, provisional: false });
+      expect(await falseFailures(page), 'no failure words on a save that worked').toEqual([]);
+    });
+  }
+});
