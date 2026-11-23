@@ -378,6 +378,10 @@ function statusBody(state: CardSimulator['state']) {
     productionJobDigest: '',
     capabilities: {
       kaleidoscopeReflectionPoints: 1,
+      // Opt-in (state.symmetrySides), like firmwareUpdateReady below: the real
+      // card reports it (fixtures/real-card-bench-2026-11-21/status.json), and
+      // fixtures that predate it keep today's shape.
+      ...((state as { symmetrySides?: boolean }).symmetrySides ? { symmetrySides: 1 } : {}),
       firmwareUpdate: { version: 1, network: true, softwareGrant: true },
     },
     // F35: real firmware reports this live bit separately from the
@@ -1041,6 +1045,15 @@ export function createCardSimulator(
           // The card's button/dial pins, as firmware-info reports them. Opt-in
           // (state.firmwareControls) so fixtures without them keep today's shape.
           ...((state as { firmwareControls?: unknown }).firmwareControls ? { controls: (state as { firmwareControls?: unknown }).firmwareControls } : {}),
+          // Firmware-info, not status, carries physicalFrameOrder on the real
+          // card (firmware LightweaverWeb.cpp handleFirmwareInfo; trace
+          // fixtures/real-card-bench-2026-11-21/firmware-info.json). Without it
+          // every physical-order light frame from Studio was refused here.
+          capabilities: {
+            ...(statusBody(state) as { capabilities?: Record<string, unknown> }).capabilities,
+            outputColor: 1,
+            physicalFrameOrder: { version: 1 },
+          },
           bridgeVersion: 6,
           build: state.buildId,
           pixels: state.pixels,

@@ -93,7 +93,7 @@ test('full store on the temporary setup: Clear temporary setup, then Save to car
   // heading and no second blank-card save (shipper review of fcf80c80).
   // The instant practice card never restarts, so the read-back waits out the
   // restart allowance before accepting the project as it is.
-  await expect(page.getByText('This card is blank')).toHaveCount(0, { timeout: 90000 });
+  await expect(page.getByText('Put your project on this card.')).toHaveCount(0, { timeout: 90000 });
   await expect(page.getByTestId('blank-card-save')).toHaveCount(0);
   expect(await falseFailures(page)).toEqual([]);
 });

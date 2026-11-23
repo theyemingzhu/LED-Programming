@@ -6,6 +6,7 @@
 // owner's actions Studio must show it is working within 3 s.
 // Real-timing practice card. Plan: todo/plans/practice-card-interruptions.md.
 import { test, expect } from '@playwright/test';
+import { settleEndCheck, stopRunAt } from './ux/drivers';
 import type { Locator, Page } from '@playwright/test';
 import { cardState } from './harness/cardStates';
 import { FALSE_FAILURE_WORDING } from './harness/falseFailureWatch';
@@ -61,7 +62,9 @@ test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio nev
 });
 
 test('first setup after pairing, card answering in 5 s: every step finishes, the card holds the project, never silent for 3 s', async ({ page }) => {
-  knownDefect('D6+D7', 'probe 4 s timeout with raw abort text (D6, Find my strips session); setup write blamed on the card page (D7)');
+  // D6 (probe 4 s timeout, raw abort text) is fixed in beaconProbe.js and the
+  // Find my strips panel. D7 is benchInstall.js, outside that change.
+  knownDefect('D7', 'setup write blamed on the card page (D7)');
   practice = realPracticeCard(cardState('factory-blank'));
   const { card } = practice;
   await card.install(page);
@@ -88,15 +91,11 @@ test('first setup after pairing, card answering in 5 s: every step finishes, the
   await expect(page.getByTestId('discovery-start')).toBeEnabled({ timeout: STEP_MS });
   await step(page, gaps, 'start (bench install)', () => page.getByTestId('discovery-start').click(),
     visible(page.getByTestId('discovery-color-proof')));
-  await page.getByTestId('discovery-color-red').click();
-  await step(page, gaps, 'colour proof', () => page.getByTestId('discovery-color-green').click(),
-    visible(page.getByTestId('discovery-decade')));
-  await page.getByTestId('discovery-count-18').fill('41');
-  await step(page, gaps, 'counts done', () => page.getByTestId('discovery-counts-done').click(),
-    visible(page.getByTestId('discovery-end-marker')));
-  await step(page, gaps, 'end marker', () => page.getByTestId('discovery-end-yes').click(),
-    visible(page.getByTestId('discovery-record')));
-  await step(page, gaps, 'record', () => page.getByTestId('discovery-record-save').click(),
+  await step(page, gaps, 'colour row', () => page.getByTestId('discovery-colour-row-rgb').click(),
+    visible(page.getByTestId('discovery-run')));
+  await stopRunAt(page, 41);
+  await settleEndCheck(page, 41);
+  await step(page, gaps, 'end check', () => page.getByTestId('discovery-end-yes').click(),
     visible(page.getByTestId('discovery-done')));
   await step(page, gaps, 'continue to layout', () => page.getByTestId('discovery-continue-layout').click(),
     () => expect(page).toHaveURL(/#screen=layout/, { timeout: STEP_MS }));

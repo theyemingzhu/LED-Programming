@@ -8,6 +8,7 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { guardRealCard } from './ux/journeyRecorder';
 import { bootSetUp } from './ux/journeySeed';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 import { MIN_TAP, DESKTOP_TAP } from './harness/tapSize';
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
@@ -192,13 +193,18 @@ test.describe('phone 390, one scale', () => {
     await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
     await page.getByTestId('discovery-start').click();
     await expect(page.getByTestId('discovery-color-proof')).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId('discovery-color-red').click();
-    await page.getByTestId('discovery-color-green').click();
-    const count = page.getByTestId('discovery-count-18');
-    await count.fill('41');
-    const box = await count.boundingBox();
-    expect(box!.height).toBeLessThanOrEqual(MIN_TAP + 2);
-    expect(box!.width).toBeLessThanOrEqual(120);
+    // Colour rows and the end check's − / + follow the phone scale Adrian chose
+    // (36 px, harness/tapSize MIN_TAP): big enough to tap, not oversized.
+    const row = page.getByTestId('discovery-colour-row-rgb');
+    const rowBox = (await row.boundingBox())!;
+    expect(rowBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(rowBox.height).toBeLessThanOrEqual(DESKTOP_TAP);
+    expect(await offScale(page)).toEqual([]);
+    await row.click();
+    await stopRunAt(page, 41);
+    const minusBox = (await page.getByTestId('discovery-end-minus').boundingBox())!;
+    expect(minusBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(minusBox.height).toBeLessThanOrEqual(DESKTOP_TAP);
     expect(await offScale(page)).toEqual([]);
   });
 });

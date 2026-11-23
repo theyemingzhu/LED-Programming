@@ -2,6 +2,7 @@
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { FirstInstallCheckSheet } from '../components/card/FirstInstallCheckSheet.jsx';
 import { cardChangedSinceSeen } from '../lib/patternGate.js';
 import { ProjectProvider, useProject } from '../state/ProjectContext.jsx';
 import { CloudLibraryProvider, useCloudLibrary } from '../state/CloudLibraryContext.jsx';
@@ -2573,6 +2574,7 @@ function Shell({ offlineUpdateController = null }) {
         </Suspense>
       </ScreenErrorBoundary>
 
+      <FirstInstallCheckSheet cardHost={cardLink.host || cardStatus.host} />
       {cardSetupOpen && (
         <Suspense fallback={<div className="card-setup-backdrop"><div className="card-setup-loading" role="status">Opening the light check…</div></div>}>
           <CardSetupOverlay
