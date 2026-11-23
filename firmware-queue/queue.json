@@ -1,25 +1,4 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": [
-    {
-      "id": "card-memory-recordings",
-      "what": "Let a card with no microSD keep one short recorded look in its own memory and play it after a power cut.",
-      "why": "Not yet tried on a real card: it has only passed tests on a computer. Do not send it until the bench plan in its pull request has passed on the test card.",
-      "added": "2026-11-23",
-      "source": {
-        "kind": "branch",
-        "branch": "claude/card-memory-recordings"
-      }
-    },
-    {
-      "id": "card-no-touch",
-      "what": "The card no longer asks anyone to touch it before saving a project, loading a recording, streaming or updating.",
-      "why": "It rides with the card-memory recordings change it is built on, and Studio's wording has to change with it.",
-      "added": "2026-11-23",
-      "source": {
-        "kind": "branch",
-        "branch": "claude/card-no-touch"
-      }
-    }
-  ]
+  "waiting": []
 }
