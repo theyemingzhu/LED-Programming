@@ -141,7 +141,7 @@ assert.match(wiringSafety,
   /hasKnownGood\(prefs\)[\s\S]*readKnownGood\(prefs/,
   'an erased card must not call getString for a missing known-good key');
 assert.match(wiringSafety,
-  /prefs\.isKey\(NVS_CANDIDATE_CONFIG_KEY\)[\s\S]*prefs\.getString\(NVS_CANDIDATE_CONFIG_KEY/,
+  /hasCandidateConfig\(prefs\)[\s\S]*readCandidate\(prefs/,
   'an erased card must not call getString for a missing candidate key');
 
 const discoverySetup = functionBody(main, 'bool setupSafeDiscoveryOutputs(uint8_t stepIndex)', 'void showFactoryBeaconFrame()');

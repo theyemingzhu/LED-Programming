@@ -27,7 +27,7 @@ struct BootHandoffRecord {
   uint32_t magic;
   uint16_t version;
   uint8_t outcome;
-  uint8_t reserved;
+  uint8_t rollbackReportedByTag;  // was reserved; 0 = rollback not reported yet
   char expectedBuildId[41];
   char expectedProjectHead[65];
   char rebootCorrelation[48];
@@ -132,6 +132,15 @@ bool beginLightweaverFirmwareBootHealth() {
   const auto evidence = lightweaver::evaluateFirmwareBootHandoffEvidence(
       handoffValid, handoffOutcome,
       handoffValid && strcmp(g_bootHandoff.expectedBuildId, LW_BUILD_ID) == 0);
+  const uint8_t runningTag = lightweaver::firmwareBuildTag(LW_BUILD_ID);
+  if (evidence == lightweaver::FirmwareBootEvidenceDecision::RolledBack &&
+      lightweaver::firmwareRollbackRecordIsStale(
+          g_bootHandoff.rollbackReportedByTag, runningTag)) {
+    // The image was replaced after this rollback was reported. Nothing about
+    // the running build rolled back, so the record is dropped, not restamped.
+    cancelLightweaverFirmwareBootHealthHandoff();
+    return false;
+  }
   if (evidence == lightweaver::FirmwareBootEvidenceDecision::RolledBack) {
     const esp_partition_t* invalid = esp_ota_get_last_invalid_partition();
     if (handoffOutcome == lightweaver::FirmwareBootHandoffOutcome::Armed) {
@@ -140,6 +149,10 @@ bool beginLightweaverFirmwareBootHealth() {
       g_bootHandoff.outcome = static_cast<uint8_t>(
           lightweaver::FirmwareBootHandoffOutcome::RollbackRequested);
       setReason(reason);
+    }
+    if (g_bootHandoff.rollbackReportedByTag == 0) {
+      g_bootHandoff.rollbackReportedByTag = runningTag;
+      sealHandoff();
     }
     const String restoredFirmwareVersion = LW_FIRMWARE_VERSION;
     lightweaverFirmwareUpdateSetBootEvidence(FirmwareUpdatePhase::RolledBack,

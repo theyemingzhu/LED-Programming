@@ -4,7 +4,7 @@
     {
       "id": "relative-look-tuning-default-boot",
       "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
-      "why": "UI release is independent; card firmware awaits safe restore coverage and physical output and restart verification.",
+      "why": "Not yet proven on a card. The refusals seen on the 1.2.5 candidate 4e254c3b (23 Nov 2026) were not caused by this change: they were the older client-pattern save fault (a save straight after a query GET is refused), which my direct test triggered and which is in signed 1.2.4 too. It needs a re-check through Studio's real save path (POST /api/config) and the phone player before it is sent.",
       "added": "2026-11-17",
       "source": {
         "kind": "patch",
@@ -12,23 +12,13 @@
       }
     },
     {
-      "id": "drop-stale-rollback-record",
-      "what": "Stop the card repeating an old 'update rolled back' record after a different build has been installed.",
-      "why": "Studio already ignores the stale record (build 2476), so this is not worth a signed card update on its own; it passed its host test and compiles, but has not been bench-tested on a card.",
-      "added": "2026-11-20",
+      "id": "client-pattern-after-query-get",
+      "what": "Let a look save through the phone player go through when it comes straight after reading that look's settings.",
+      "why": "On every card since 1.2.4, a look save sent right after a GET /api/client-pattern?patternId=… is refused with \"invalid pattern envelope\": the GET's query argument is still counted when the save is checked. No owner path reaches it today: Studio saves looks through /api/config, and the phone player reads the card status before each save, which clears it. One line in handleClientPatternPost plus a host test; it rides the next card release.",
+      "added": "2026-11-23",
       "source": {
         "kind": "patch",
-        "patch": "firmware-queue/patches/drop-stale-rollback-record.patch"
-      }
-    },
-    {
-      "id": "candidate-blob",
-      "what": "Store the staged wiring candidate in a second project slot and confirm a wiring change by flipping which slot is live, so the card never needs room for another project copy.",
-      "why": "Every rewire on a card holding a full project answered candidate storage failed or candidate confirmation failed; on the bench card this build staged and confirmed 5 of 5 changes, including the blank-card Find my strips install.",
-      "added": "2026-11-22",
-      "source": {
-        "kind": "branch",
-        "branch": "claude/candidate-blob"
+        "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
       }
     }
   ]

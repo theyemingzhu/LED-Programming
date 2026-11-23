@@ -42,7 +42,8 @@ assert.doesNotMatch(storage, /prefs\.putString\(NVS_KNOWN_GOOD_CONFIG_KEY/,
 assert.doesNotMatch(storage, /prefs\.getString\(NVS_KNOWN_GOOD_CONFIG_KEY/,
   'the known-good project must be read through readKnownGood, which prefers the blob');
 assert.match(storage, /#include "LightweaverProjectStore\.h"/);
-assert.match(storage, /lightweaver::writeProject\(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY, json\)/);
+// Slot swap (2026-11-23): the live project is written through its slot keys.
+assert.match(storage, /lightweaver::writeProject\(prefs, slotBlobKey\(slot\), slotStringKey\(slot\), json\)/);
 
 // The reported limit is computed from the room the card has, in both places
 // that report it. A literal here is a promise nothing checks.
