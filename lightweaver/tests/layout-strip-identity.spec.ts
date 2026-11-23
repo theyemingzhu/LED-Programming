@@ -28,15 +28,21 @@ test('41 LEDs divide into four individually colored Parts with compact labels', 
   await expect(page.locator('.lw-strip-callout line')).toHaveCount(0);
   for (const zoomedOut of [false, true]) {
     if (zoomedOut) for (let i = 0; i < 8; i++) await page.getByRole('button', { name: /zoom out/i }).first().click();
-    const boxes = await page.locator('.lw-strip-callout rect').evaluateAll(nodes => nodes.map(node => {
+    // Every strip has a small numbered dot; none covers another. Only the selected strip carries a name chip.
+    const boxes = await page.locator('.lw-strip-dot circle').evaluateAll(nodes => nodes.map(node => {
       const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
     }));
     expect(boxes).toHaveLength(4);
     for (const [i, a] of boxes.entries()) {
-      expect(a.width).toBeLessThanOrEqual(152);
-      expect(a.height).toBeLessThanOrEqual(34);
+      expect(a.width).toBeLessThanOrEqual(20);
+      expect(a.height).toBeLessThanOrEqual(20);
       for (const b of boxes.slice(i + 1)) expect(a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1).toBe(true);
     }
+    const chips = await page.locator('.lw-strip-chip rect').evaluateAll(nodes => nodes.map(node => {
+      const r = node.getBoundingClientRect(); return { width: r.width, height: r.height };
+    }));
+    expect(chips.length).toBeLessThanOrEqual(1);
+    for (const chip of chips) { expect(chip.width).toBeLessThanOrEqual(152); expect(chip.height).toBeLessThanOrEqual(34); }
   }
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.map((s: any) => s.pixelCount))).toEqual([11, 10, 10, 10]);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.strips.map((s: any) => s.name)))
