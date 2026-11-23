@@ -49,7 +49,10 @@ import {
 
 // A planned restart is still running, or the link is re-reading the card
 // right after one: the card is not ready, and that is expected.
-function cardRestartingOrRereading(link) {
+function cardRestartingOrRereading(link, lifecycleState = '') {
+  // The same states Card Home already shows as "Card restarted — verifying" /
+  // "Checking card…": the card is being re-read, not broken.
+  if (['verifying', 'connecting', 'confirming'].includes(lifecycleState)) return true;
   if (!link) return false;
   if (Number(link.plannedRestartUntil || 0) > Date.now()) return true;
   return link.state === 'revalidating' || link.state === 'connecting' || link.state === 'reconnecting';
@@ -812,7 +815,7 @@ function CardHomePanels({
             // A card mid-restart (a save restarts it on purpose) or being
             // re-read right after one is not a card to recover. Interruption
             // test D3, todo/plans/practice-card-interruptions.md.
-            : !ready && !wiringTestActive && cardRestartingOrRereading(cardLink)
+            : !ready && !wiringTestActive && cardRestartingOrRereading(cardLink, lifecycleState)
             ? 'The card is restarting to apply the change. Studio is re-reading it; checks are ready once it answers.'
             : !ready && !wiringTestActive
             ? 'This card is answering but is not reporting a ready runtime. Recover lights is the check to run first — the card accepts it in this state.'
