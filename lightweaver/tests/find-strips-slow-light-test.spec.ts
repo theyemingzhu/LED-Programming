@@ -36,6 +36,10 @@ test('a slow card that is testing the saved wiring reaches the light test, and S
   await startWordsLog(page);
   await startFalseFailureWatch(page, WRONG);
   await page.getByTestId('discovery-save-to-card').click();
+  // Since the combined flow (#489) this card holds the temporary counting
+  // setup, so Save lands on Card Home's "Test and save", which stages the
+  // wiring candidate.
+  await page.getByTestId('setup-verify-action').click({ timeout: 30_000 }).catch(() => {});
   // The card restarts into the candidate for the light test and comes back
   // slow: every reply from then on takes 5 s (D9's stage). A card that is slow
   // through the whole save is a separate finding (the save's own reads give up
