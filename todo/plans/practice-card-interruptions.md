@@ -132,3 +132,34 @@ the findings above: D1, D1c, D2, D2b, D3, D5, D6+D7 (one test), D8.
   It sits on Studio's 45 s limit (`CARD_RESTART_WAIT_MS`,
   `src/lib/cardDeployment.js:312`, counted from the start of verification),
   so it goes either way by a second. Same family as D1.
+
+## Fixes (2026-11-23/24), each stacked on #481, for the shipper
+
+| Defect | PR | Result on the practice card |
+|---|---|---|
+| D1, D1c, D2, D2b | #482 | reload, reopen 30 s later, card back at 20 / 45 / 75 s, never: 6 of 6 pass |
+| D5 | #485 | the 5 s card pairs |
+| D7 | #488 | 5 s first-setup walk completes; card holds the discovered project |
+| D3, D4 | #492 | count-Set and restart-tap specs pass |
+
+Root causes found while fixing (not visible from the findings alone):
+- D2: loading a project re-derived the dial cycle with the legacy
+  pattern-only rule (`projectModel.js`), so any project with saved looks in
+  its playlist changed on every reload and could never match the card.
+- D2: Patterns wrote the picked look into the project only after read-back.
+  Committing it before sending broke the `patterns-v3` rejected-save contract,
+  so a pending-save note (`pendingCardSave.js`) is used instead.
+- D5: after the 1.5 s identity limit, every slow attempt was voided by the
+  background discovery poll ("a newer card discovery replaced this pairing").
+- D7: `requestCardReboot` caps at 1.2 s; an unanswered reboot after an
+  accepted setup was reported as "The card could not be set up".
+
+Pre-existing reds seen while checking (red or flaky on the base branch too):
+`patterns-v3:764`, `multiple-output-journey:14`, `card-workspace:2579`
+(flaky, 2 of 4 on the base branch).
+
+- **D9 (new, not fixed: lw-setup / CardPushControl, Find my strips session)**
+  On a card answering in 5 s, the light test in first setup says "The card did
+  not reconnect to this wiring transaction in time." and then "Studio could not
+  confirm the result of the last card operation. Read this card again before
+  sending anything else." The card ends up holding the project.
