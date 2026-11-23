@@ -36,6 +36,15 @@ assert.match(source, /FirmwareBootEvidenceDecision::RolledBack[\s\S]*restoredFir
   'the old slot publishes its restored firmware identity for a valid rollback record');
 assert.match(source, /total power loss|power loss clears/i,
   'RTC-only rollback diagnostics document that total power loss clears correlation without touching data storage');
+assert.match(source,
+  /firmwareRollbackRecordIsStale\(\s*g_bootHandoff\.rollbackReportedByTag, runningTag\)\) \{[\s\S]*?cancelLightweaverFirmwareBootHealthHandoff\(\);\s*return false;/,
+  'a rollback record first reported by a different build is dropped, not restamped with the running build');
+assert.match(source, /g_bootHandoff\.rollbackReportedByTag = runningTag;\s*sealHandoff\(\);/,
+  'the build that first reports a rollback tags the record');
+assert.match(source, /uint16_t version;\s*uint8_t outcome;\s*uint8_t rollbackReportedByTag;[^\n]*\n\s*char expectedBuildId\[41\];/,
+  'the tag reuses the spare byte: the record layout an older build arms must not change');
+assert.match(source, /LW_BOOT_HANDOFF_VERSION = 1;/,
+  'the handoff record version an older build writes must stay readable');
 assert.match(main, /beginLightweaverFirmwareBootHealth\(\)/,
   'pending OTA state is detected before application storage initialization');
 assert.match(main, /confirmLightweaverFirmwareBootHealth/,
