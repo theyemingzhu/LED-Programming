@@ -740,7 +740,9 @@ export function CardPushControl({
       const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
         host: wiringCandidate.attempt.host,
         transport: getCardLinkState().transport,
-        timeoutMs: 18000,
+        // The card restarts into the candidate (~14 s on lw-b0fe81f61b44) and
+        // may then take ~5 s per reply (D9). Same allowance as the read-back.
+        timeoutMs: 45000,
       });
       setWiringCandidate(current => current ? {
         ...current,

@@ -333,6 +333,12 @@ function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
+// A card back from its restart can take ~5 s to answer (practice card
+// Real-timing, D9 in todo/plans/practice-card-interruptions.md). Each poll
+// used to give up after 1.2 s, so such a card never counted as back and the
+// light test reported a failure on a card that was testing the wiring.
+export const WIRING_STATUS_POLL_TIMEOUT_MS = 6000;
+
 export async function waitForCardWiringReconnect(options = {}) {
   const activationId = requireActivationId(options.activationId);
   const timeoutMs = Math.max(1, Number(options.timeoutMs) || 15000);
@@ -341,13 +347,19 @@ export async function waitForCardWiringReconnect(options = {}) {
   const waitImpl = options.waitImpl || wait;
   const statusImpl = options.statusImpl || getCardWiringStatus;
   const deadline = nowImpl() + timeoutMs;
+  const pollTimeoutMs = Number(options.requestTimeoutMs) || WIRING_STATUS_POLL_TIMEOUT_MS;
   let lastError = null;
+  // The card's own answer decides; the deadline only decides when to stop
+  // asking. So when the deadline passes, ask once more with a full poll
+  // timeout: a slow card that is testing this wiring is reported as testing.
+  let finalRead = false;
 
-  while (nowImpl() < deadline) {
+  while (nowImpl() < deadline || !finalRead) {
+    if (nowImpl() >= deadline) finalRead = true;
     try {
       const status = await statusImpl({
         ...options,
-        timeoutMs: Math.min(Number(options.requestTimeoutMs) || 1200, Math.max(1, deadline - nowImpl())),
+        timeoutMs: finalRead ? pollTimeoutMs : Math.min(pollTimeoutMs, Math.max(1, deadline - nowImpl())),
       });
       if (status?.activationId === activationId) {
         if (status.state === 'testing') return status;
@@ -373,13 +385,13 @@ export async function waitForCardWiringReconnect(options = {}) {
           ['activation-rolled-back', 'activation-not-testing', 'activation-wrong-state'].includes(error.reason)) throw error;
       lastError = error;
     }
-    if (nowImpl() >= deadline) break;
+    if (finalRead) break;
     await waitImpl(Math.min(pollIntervalMs, Math.max(0, deadline - nowImpl())));
   }
 
   throw wiringError(
     'reconnect-timeout',
-    'The card did not reconnect to this wiring transaction in time.',
+    'The card has not come back from its restart yet, so Studio cannot tell whether it is testing this wiring. Keep it powered; nothing is permanent until you confirm the lights.',
     { cause: lastError },
   );
 }
