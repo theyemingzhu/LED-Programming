@@ -61,9 +61,11 @@ test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio nev
 });
 
 test('first setup after pairing, card answering in 5 s: every step finishes, the card holds the project, never silent for 3 s', async ({ page }) => {
-  // D6 (probe 4 s timeout, raw abort text) is fixed in beaconProbe.js and the
-  // Find my strips panel. D7 is benchInstall.js, outside that change.
-  knownDefect('D7', 'setup write blamed on the card page (D7)');
+  // D6 (probe timeout, raw abort text) is fixed in beaconProbe.js and the
+  // Find my strips panel; D7 (setup write blamed on the card page) is fixed in
+  // benchInstall.js. What remains on a 5 s card is the light test's 18 s
+  // activation limit (D9), fixed by #497, which removes this line.
+  knownDefect('D9', 'on a 5 s card the light test says "The card did not reconnect to this wiring transaction in time" (fixed by #497)');
   practice = realPracticeCard(cardState('factory-blank'));
   const { card } = practice;
   await card.install(page);
