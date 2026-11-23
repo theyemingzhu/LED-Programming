@@ -57,3 +57,23 @@
   .ld-dial, .ld-tune summary { min-height: 44px; }
   .ld .ld-seg .btn, .ld .ld-chips .btn, .ld .ld-pair .btn { min-height: 44px; }
 }
+
+/* The chosen shape's name, editable where it is shown: reads as a heading, not a form field. */
+.ld .ld-name {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 0 6px;
+  margin: 0 -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 14px;
+}
+.ld .ld-name:hover { border-color: var(--border-soft); }
+.ld .ld-name:focus { border-color: var(--accent-hi); background: var(--bg-canvas); }
+.ld-count { margin-left: 6px; color: var(--text-lo); font-size: 11px; }
+@media (pointer: coarse), (max-width: 600px) { .ld .ld-name { min-height: 44px; } }

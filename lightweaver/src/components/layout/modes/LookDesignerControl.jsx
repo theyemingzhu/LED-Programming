@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   JOURNEYS, MOTIONS, applyBend, buildPieceModel, getMotion, nudgeLook, normalizeLook, randomLook,
   readBend, renderLook, resolveJourney, seededRng, setArea, setPiece, startingLooks,
@@ -30,6 +30,30 @@ function Dial({ id, label, low, high, min, max, step = 1, value, onChange }) {
              onChange={event => onChange(Number(event.target.value))}/>
       <span>{high ?? ''}</span>
     </label>
+  );
+}
+
+export const AREA_NAME_MAX = 24;
+
+// The chosen area's name, editable where it is shown. Enter or leaving keeps
+// it, Escape puts the old one back, empty puts the default back.
+function AreaName({ name, fallback, onCommit }) {
+  const [draft, setDraft] = useState(name);
+  const skip = useRef(false);
+  return (
+    <input className="ld-name" data-testid="look-designer-name" type="text" value={draft} maxLength={AREA_NAME_MAX}
+           aria-label="Name of this shape" spellCheck={false}
+           onChange={event => setDraft(event.target.value)}
+           onKeyDown={event => {
+             if (event.key === 'Enter') event.currentTarget.blur();
+             if (event.key === 'Escape') { skip.current = true; setDraft(name); event.currentTarget.blur(); }
+           }}
+           onBlur={() => {
+             if (skip.current) { skip.current = false; return; }
+             const next = draft.trim().slice(0, AREA_NAME_MAX);
+             setDraft(next || fallback);
+             onCommit(next && next !== fallback ? next : null);
+           }}/>
   );
 }
 
@@ -155,6 +179,8 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const sel = state.selected && ids.includes(state.selected) ? state.selected : ids[0];
   const rec = look && sel ? look.areas[sel] : null;
   const motion = rec ? getMotion(rec.motion.type) : null;
+  const selDefault = model && sel ? model.names[ids.indexOf(sel)] : '';
+  const selName = (sel && state.names[sel]) || selDefault;
   const bend = look ? readBend(look) : null;
   const areaEdit = patch => edit(setArea(look, sel, patch));
 
@@ -225,9 +251,18 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
                 <div className="ld-chips" role="group" aria-label="Which shape">
                   {model.derived.areas.map((area, index) => (
                     <button key={area.id} type="button" className="btn" aria-pressed={area.id === sel} data-testid={`look-designer-chip-${index}`}
-                            onClick={() => setLookDesigner({ selected: area.id })}>{model.names[index]}</button>
+                            onClick={() => setLookDesigner({ selected: area.id })}>
+                      {state.names[area.id] || model.names[index]}
+                      <span className="ld-count" aria-label={`${area.copies.length} ${area.copies.length === 1 ? 'copy' : 'copies'}`}>{area.copies.length}</span>
+                    </button>
                   ))}
                 </div>
+                <AreaName key={`${sel}:${selName}`} name={selName} fallback={selDefault}
+                          onCommit={next => {
+                            const names = { ...state.names };
+                            if (next) names[sel] = next; else delete names[sel];
+                            setLookDesigner({ names });
+                          }}/>
                 <div className="ld-field">
                   <span className="la-symmetry-k" id="ld-plays">It plays</span>
                   <div className="ld-seg" role="group" aria-labelledby="ld-plays" data-testid="look-designer-motions">

@@ -193,6 +193,41 @@ test('Tune it yourself starts closed and lists every motion the registry has', a
   expect(await touch(page).getAttribute('data-motions')).toBe(motionsBefore);
 });
 
+test('an area can be renamed in place: Enter keeps, Escape reverts, empty restores, a pick keeps it', async ({ page }) => {
+  await seedPiece(page, LOTUS);
+  await turnOn(page);
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  const chip = page.getByTestId('look-designer-chip-2');
+  await chip.click();
+  const name = page.getByTestId('look-designer-name');
+  await expect(name).toHaveAttribute('maxlength', '24');
+  const before = await name.inputValue();
+  await expect(chip).toContainText(before);
+  await name.fill('Lotus edge');
+  await name.press('Enter');
+  await expect(chip).toContainText('Lotus edge');
+  // A pick and "Something else" leave the name alone.
+  await page.getByTestId('look-designer-tile-3').click();
+  await page.getByTestId('look-designer-fresh').click();
+  await expect(chip).toContainText('Lotus edge');
+  await expect(page.getByTestId('look-designer-name')).toHaveValue('Lotus edge');
+  // Escape puts the old name back; leaving the field keeps what was typed.
+  await name.fill('Nope');
+  await name.press('Escape');
+  await expect(name).toHaveValue('Lotus edge');
+  await name.fill('Kept on leaving');
+  await page.getByTestId('look-designer-chip-3').click();
+  await expect(chip).toContainText('Kept on leaving');
+  // Empty puts the default back.
+  await chip.click();
+  await page.getByTestId('look-designer-name').fill('');
+  await page.getByTestId('look-designer-name').press('Enter');
+  await expect(chip).toContainText(before);
+  await expect(chip).not.toContainText('Kept on leaving');
+  // Names are session state: nothing about them is written into the project.
+  expect(JSON.stringify(await saved(page))).not.toContain('Kept on leaving');
+});
+
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const ids = await seedPiece(page, LOTUS);

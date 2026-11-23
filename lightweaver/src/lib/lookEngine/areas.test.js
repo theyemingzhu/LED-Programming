@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveAreas } from './areas.js';
+import { areaDefaultName, deriveAreas, nameStem } from './areas.js';
 import { C, lotus } from './testFixtures.js';
 
 const shapeOf = result => result.areas.map(a => [a.copies.length, a.copies[0].length]);
@@ -115,4 +115,32 @@ test('every circle copy starts in the same place: the light nearest the centre, 
     nearest.add(map.leds[from + best].shape);
   });
   assert.deepEqual([...nearest], [0]);
+});
+
+test('names: the stem the strips share, with numbers and side words dropped', () => {
+  const named = list => list.map(name => ({ name }));
+  assert.equal(nameStem('Petal 3'), 'Petal');
+  assert.equal(nameStem('Petal3'), 'Petal');
+  assert.equal(nameStem('Left Petal 2'), 'Petal');
+  assert.equal(nameStem('Petal 3 edge'), 'Petal edge'); // number in the middle
+  assert.equal(nameStem('Centre ring'), 'Centre ring'); // no number
+  assert.equal(areaDefaultName(named(['Petal 1', 'Petal 2', 'petal 6']), 1), 'Petal');
+  assert.equal(areaDefaultName(named(['Circle 3', 'Circle 4']), 0), 'Circle');
+  assert.equal(areaDefaultName(named(['Petal 1 edge', 'Petal 2 edge']), 0), 'Petal edge');
+  assert.equal(areaDefaultName(named(['Petal 1', 'Circle 1']), 4), 'Area 5'); // mixed: plain
+  assert.equal(areaDefaultName(named(['Petal 1', '']), 0), 'Area 1');
+  assert.equal(areaDefaultName(named(['Left', 'Right']), 2), 'Area 3'); // nothing left after side words
+  assert.equal(areaDefaultName(named(['Petal 1']), 0), 'Petal 1'); // one strip keeps its own name
+  assert.equal(areaDefaultName(named(['Ring']), 0), 'Ring');
+});
+
+test('names: the coordinator\'s piece reads Petal, Circle, Centre ring; equal names are numbered', () => {
+  const { strips, O } = seededPiece();
+  const named = strips.map(strip => ({ ...strip, name: strip.id.startsWith('petal') ? `Petal ${+strip.id.slice(6) + 1}` : strip.id.startsWith('circle') ? `Circle ${+strip.id.slice(7) + 1}` : 'Centre ring' }));
+  const names = deriveAreas(named, { fold: 6, centre: O }).areas.map(a => a.name).sort();
+  assert.deepEqual(names, ['Centre ring', 'Circle', 'Petal']);
+  // Two areas that would share a stem: the later one is numbered.
+  const twins = named.map(strip => (strip.id.startsWith('circle') ? { ...strip, name: `Petal ${strip.id.slice(7)}` } : strip));
+  const result = deriveAreas(twins, { fold: 6, centre: O }).areas.map(a => a.name).sort();
+  assert.deepEqual(result, ['Centre ring', 'Petal', 'Petal 2']);
 });

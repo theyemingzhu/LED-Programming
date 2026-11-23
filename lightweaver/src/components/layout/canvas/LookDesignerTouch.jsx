@@ -58,6 +58,7 @@ export function LookDesignerTouch({ svgRef, scale, spaceRef, model, look, select
     return best;
   };
   const ids = model.derived.areas.map(area => area.id);
+  const nameOf = (index, names) => names?.[ids[index]] || model.names[index];
   const say = text => setLookDesigner({ say: text });
   const begin = event => {
     if (spaceRef?.current || event.button > 0) return;
@@ -93,15 +94,15 @@ export function LookDesignerTouch({ svgRef, scale, spaceRef, model, look, select
     if (drag.path.length === 0) return;
     if (drag.path.length === 1) {
       const id = ids[drag.path[0]];
-      if (current.tuneOpen) { setLookDesigner({ selected: id, say: `${model.names[drag.path[0]]}.` }); return; }
+      if (current.tuneOpen) { setLookDesigner({ selected: id, say: `${nameOf(drag.path[0], current.names)}.` }); return; }
       const next = stepMotion(current.look, id);
-      setLookDesigner({ look: next, selected: id, chosen: -1, say: `${model.names[drag.path[0]]}: ${getMotion(next.areas[id].motion.type).label.toLowerCase()}.` });
+      setLookDesigner({ look: next, selected: id, chosen: -1, say: `${nameOf(drag.path[0], current.names)}: ${getMotion(next.areas[id].motion.type).label.toLowerCase()}.` });
       return;
     }
     const order = drag.path.map(index => ids[index]);
     setLookDesigner({
       look: setOrder(current.look, order, ids), chosen: -1,
-      say: `${drag.path.map(index => model.names[index]).join(', then ')}.`,
+      say: `${drag.path.map(index => nameOf(index, current.names)).join(', then ')}.`,
     });
   };
   const selectedIndex = selected ? ids.indexOf(selected) : -1;

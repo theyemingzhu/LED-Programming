@@ -68,6 +68,41 @@ function readLoopFromCentre(strip, centre) {
   return { start, dir, pixels: Array.from({ length: n }, (_, k) => points[mod(start + dir * k, n)]) };
 }
 
+// NAMES. An area is named after what its strips share: "Petal 1" ... "Petal 6"
+// share "Petal". The stem drops numbers anywhere in the name and side words
+// (left, right, top, bottom, side); nothing is pluralised or invented. Strips
+// with no stem in common leave the plain "Area N". A single strip keeps its
+// own name. Two areas never share a name: the later one gets " 2", " 3"...
+const SIDE_WORDS = new Set(['left', 'right', 'top', 'bottom', 'side']);
+
+export function nameStem(name) {
+  return String(name ?? '')
+    .split(/[\s_\-]+/)
+    .map(word => word.replace(/\d+$/, ''))
+    .filter(word => word && !SIDE_WORDS.has(word.toLowerCase()))
+    .join(' ')
+    .trim();
+}
+
+export function areaDefaultName(strips, index) {
+  const plain = `Area ${index + 1}`;
+  const names = strips.map(strip => String(strip?.name ?? '').trim());
+  if (!names.length || names.some(name => !name)) return plain;
+  if (names.length === 1) return names[0];
+  const stems = names.map(nameStem);
+  const first = stems[0].toLowerCase();
+  return first && stems.every(stem => stem.toLowerCase() === first) ? stems[0] : plain;
+}
+
+function uniqueNames(names) {
+  const seen = new Map();
+  return names.map(name => {
+    const count = (seen.get(name.toLowerCase()) || 0) + 1;
+    seen.set(name.toLowerCase(), count);
+    return count === 1 ? name : `${name} ${count}`;
+  });
+}
+
 const areaId = copies => `area-${copies[0][0]}`;
 
 export function deriveAreas(strips = [], { fold = 0, centre = null, together = [] } = {}) {
@@ -195,9 +230,10 @@ export function deriveAreas(strips = [], { fold = 0, centre = null, together = [
       }
     }
   }
+  const names = uniqueNames(ordered.map(({ copies }, index) => areaDefaultName(copies.flat(), index)));
   const areas = ordered.map(({ copies }, index) => {
     const ids = copies.map(copy => copy.map(strip => strip.id));
-    return { id: areaId(ids), name: `Area ${index + 1}`, copies: ids };
+    return { id: areaId(ids), name: names[index], copies: ids };
   });
   return { areas, flips, loops, source };
 }

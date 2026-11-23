@@ -18,11 +18,7 @@ export function buildPieceModel(strips = [], { fold = 0, centre = null, together
   const list = (strips || []).filter(strip => strip && strip.id != null);
   const derived = deriveAreas(list, { fold, centre, together });
   const map = buildPieceMap(list, derived, centre);
-  const byId = new Map(list.map(strip => [strip.id, strip]));
-  const names = derived.areas.map(area => {
-    const only = area.copies.length === 1 && area.copies[0].length === 1 ? byId.get(area.copies[0][0]) : null;
-    return only?.name ? String(only.name) : area.name;
-  });
+  const names = derived.areas.map(area => area.name);
   const areaOfStrip = new Map();
   derived.areas.forEach((area, index) => area.copies.forEach(copy => copy.forEach(id => areaOfStrip.set(id, index))));
   return { derived, map, preview: previewPieceMap(map), names, areaOfStrip, strips: list };

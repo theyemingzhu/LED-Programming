@@ -5,12 +5,13 @@ import { useSyncExternalStore } from 'react';
 // mirrorEcho.js's placed look: in-session only, never part of the project, so
 // a reload starts without it.
 //
-//   { look, model, tiles, chosen, selected, tuneOpen, say }
+//   { look, model, tiles, chosen, selected, tuneOpen, say, names }
+//   names     the owner's own area names, { [areaId]: string }; a pick does not touch them
 //   look      the look being played, or null when the designer is off
 //   model     lib/lookEngine/model.js: areas and the piece map of the shown strips
 //   tiles     the six looks on offer; chosen is the one picked, or -1
 //   selected  the area the drawer edits (an area id)
-const OFF = Object.freeze({ look: null, model: null, tiles: [], chosen: -1, selected: null, tuneOpen: false, say: '' });
+const OFF = Object.freeze({ look: null, model: null, tiles: [], chosen: -1, selected: null, tuneOpen: false, say: '', names: {} });
 let state = OFF;
 const listeners = new Set();
 
