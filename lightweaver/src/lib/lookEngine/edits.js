@@ -52,3 +52,8 @@ export function setOrder(look, orderedAreaIds, allAreaIds = Object.keys(look.are
 export function setPiece(look, patch) {
   return normalizeLook({ ...look, piece: { ...look.piece, ...patch } });
 }
+
+/** Where an area's colour comes from: { kind: 'journey' } or { kind: 'pattern', id }. */
+export function setSource(look, areaId, source) {
+  return setArea(look, areaId, { source });
+}

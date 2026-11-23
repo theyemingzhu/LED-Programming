@@ -9,6 +9,13 @@ Flow: `deriveAreas(strips)` -> `buildPieceMap` -> `renderLook`. Edits are in
 `edits.js`, starting points in `variations.js`. Per LED the steps run in the
 fixed order written at the top of `modifiers.js`.
 
+## The split (decided with Adrian)
+The pattern is the light; the look only adds how that light moves across an
+area's copies and when the area begins. An area's `source` is one of Studio's
+patterns (`patternLight.js`) or a colour journey, and its motion is a brightness
+mask over it ("The whole pattern" is no mask). Areas will replace sections on
+the Patterns screen later.
+
 ## Add a motion
 1. In `motions.js`, add one object to `MOTIONS`: `{ id, label, params, level }`.
 2. In `motions.test.js` nothing needs listing (the contract test reads the

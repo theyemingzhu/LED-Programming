@@ -13,6 +13,7 @@ import { deriveAreas } from './areas.js';
 import { buildPieceMap, previewPieceMap } from './pieceMap.js';
 import { renderLook } from './render.js';
 import { resolveJourney } from './journeys.js';
+import { makePatternLights, patternStandIn } from './patternLight.js';
 
 export function buildPieceModel(strips = [], { fold = 0, centre = null, together = [] } = {}) {
   const list = (strips || []).filter(strip => strip && strip.id != null);
@@ -21,11 +22,16 @@ export function buildPieceModel(strips = [], { fold = 0, centre = null, together
   const names = derived.areas.map(area => area.name);
   const areaOfStrip = new Map();
   derived.areas.forEach((area, index) => area.copies.forEach(copy => copy.forEach(id => areaOfStrip.set(id, index))));
-  return { derived, map, preview: previewPieceMap(map), names, areaOfStrip, strips: list };
+  return { derived, map, preview: previewPieceMap(map), names, areaOfStrip, strips: list, lights: makePatternLights(list) };
+}
+
+/** The same render for the small pictures: patterns are stood in for by their swatch colours. */
+export function thumbnailBytes(look, model, t) {
+  return renderLook(look, model.preview, resolveJourney(look.journey), t, { standIn: patternStandIn });
 }
 
 export function frameByStrip(look, model, t) {
-  const bytes = renderLook(look, model.preview, resolveJourney(look.journey), t);
+  const bytes = renderLook(look, model.preview, resolveJourney(look.journey), t, { lights: model.lights });
   const byStrip = new Map();
   let led = 0;
   for (const strip of model.strips) {

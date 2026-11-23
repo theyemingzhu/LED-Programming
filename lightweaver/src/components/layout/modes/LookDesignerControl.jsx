@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   JOURNEYS, MOTIONS, applyBend, buildPieceModel, getMotion, nudgeLook, normalizeLook, randomLook,
-  readBend, renderLook, resolveJourney, seededRng, setArea, setPiece, startingLooks,
+  readBend, hasPattern, patternChoices, thumbnailBytes, seededRng, setArea, setPiece, startingLooks,
 } from '../../../lib/lookEngine/index.js';
 import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
@@ -16,6 +16,14 @@ const TILE_SIZE = 120;
 export const DIRECTION_CHOICES = [['forward', 'Forward'], ['backward', 'Backward'], ['bounce', 'Back and forth']];
 export const SPEED_CHOICES = [[0.5, 'Half'], [1, 'Same'], [2, 'Double']];
 export const COPIES_CHOICES = [['together', 'Together'], ['after', 'One after another'], ['other', 'Every other']];
+
+// Patterns the starting points and "More like this" draw from: well-known ones
+// that exist in this project, else the first few of the library.
+const FAVOURITES = ['aurora', 'lava', 'fire', 'plasma', 'ocean', 'rainbow', 'wave'];
+const offered = () => {
+  const liked = FAVOURITES.filter(hasPattern);
+  return liked.length >= 3 ? liked : patternChoices().slice(0, 6).map(choice => choice.id);
+};
 
 const newRng = () => seededRng((Math.random() * 2 ** 31) >>> 0);
 const reduced = () => {
@@ -94,7 +102,8 @@ function LookThumbs({ tiles, chosen, model, onPick }) {
       const tile = tiles[index];
       const ctx = canvas?.getContext?.('2d');
       if (!ctx || !tile) return;
-      const bytes = renderLook(tile.look, model.preview, resolveJourney(tile.look.journey), t);
+      // Thumbnails stand in for a pattern with its swatch colours; the canvas shows the real one.
+      const bytes = thumbnailBytes(tile.look, model, t);
       ctx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
       spots.forEach((spot, led) => {
         if (!spot) return;
@@ -170,7 +179,7 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const turnOn = () => {
     if (on) return;
     const first = buildPieceModel(shown, { fold, centre: findCentre() });
-    const offers = startingLooks(first.derived.areas);
+    const offers = startingLooks(first.derived.areas, { patterns: offered() });
     setPlacedLookPreview(null);
     setLookDesigner({ look: offers[0].look, model: first, tiles: offers, chosen: 0, selected: first.derived.areas[0]?.id ?? null, tuneOpen: false, say: '' });
   };
@@ -183,6 +192,7 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const selName = (sel && state.names[sel]) || selDefault;
   const bend = look ? readBend(look) : null;
   const areaEdit = patch => edit(setArea(look, sel, patch));
+  const choices = useMemo(() => (on ? patternChoices() : []), [on]);
 
   return (
     <section className="la-placed ld" data-testid="layout-look-designer" aria-label="Look designer">
@@ -211,12 +221,12 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
                       onClick={() => {
                         const rng = newRng();
                         const base = { id: 'this', label: 'This one', look };
-                        setLookDesigner({ tiles: [base, ...Array.from({ length: 5 }, (_, i) => ({ id: `near-${i}`, label: `Close cousin ${i + 1}`, look: nudgeLook(look, rng) }))], chosen: 0, say: 'Five close cousins of this one.' });
+                        setLookDesigner({ tiles: [base, ...Array.from({ length: 5 }, (_, i) => ({ id: `near-${i}`, label: `Close cousin ${i + 1}`, look: nudgeLook(look, rng, { patterns: offered() }) }))], chosen: 0, say: 'Five close cousins of this one.' });
                       }}>More like this</button>
               <button type="button" className="btn" data-testid="look-designer-fresh"
                       onClick={() => {
                         const rng = newRng();
-                        setLookDesigner({ tiles: Array.from({ length: 6 }, (_, i) => ({ id: `new-${i}`, label: `New look ${i + 1}`, look: randomLook(model.derived.areas, rng) })), chosen: -1, say: 'Six new ones. Yours is still playing.' });
+                        setLookDesigner({ tiles: Array.from({ length: 6 }, (_, i) => ({ id: `new-${i}`, label: `New look ${i + 1}`, look: randomLook(model.derived.areas, rng, { patterns: offered() }) })), chosen: -1, say: 'Six new ones. Yours is still playing.' });
                       }}>Something else</button>
             </div>
           </div>
@@ -264,7 +274,16 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
                             setLookDesigner({ names });
                           }}/>
                 <div className="ld-field">
-                  <span className="la-symmetry-k" id="ld-plays">It plays</span>
+                  <label className="la-symmetry-k" htmlFor="look-designer-pattern">Pattern</label>
+                  <select id="look-designer-pattern" data-testid="look-designer-pattern" className="ld-select"
+                          value={rec.source.kind === 'pattern' ? rec.source.id : ''}
+                          onChange={event => areaEdit({ source: event.target.value ? { kind: 'pattern', id: event.target.value } : { kind: 'journey' } })}>
+                    <option value="">The colours of the look</option>
+                    {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
+                  </select>
+                </div>
+                <div className="ld-field">
+                  <span className="la-symmetry-k" id="ld-plays">It shows as</span>
                   <div className="ld-seg" role="group" aria-labelledby="ld-plays" data-testid="look-designer-motions">
                     {MOTIONS.map(entry => (
                       <button key={entry.id} type="button" className="btn" aria-pressed={entry.id === rec.motion.type}

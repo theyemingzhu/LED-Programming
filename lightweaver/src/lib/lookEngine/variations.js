@@ -37,7 +37,7 @@ const ORDERS = Object.freeze({
 const ORDER_IDS = Object.keys(ORDERS);
 const MOTIONS_CYCLE = ['pulse', 'fill', 'chase', 'pulse', 'chase'];
 
-function buildLook(piece, order, extra = {}, motions = null) {
+function buildLook(piece, order, extra = {}, motions = null, patterns = [], offset = 0) {
   const areas = areasOf(piece);
   const spec = ORDERS[order];
   const begin = spec.begins(areas.length);
@@ -47,6 +47,7 @@ function buildLook(piece, order, extra = {}, motions = null) {
       motion: { type: motions?.[i] || MOTIONS_CYCLE[i % MOTIONS_CYCLE.length], params: {} },
       copies: i % 5 === 3 && copiesOf(area) > 1 ? 'other' : 'together',
       begins: begin(i),
+      ...(patterns.length ? { source: { kind: 'pattern', id: patterns[(i + offset) % patterns.length] } } : {}),
     };
   });
   return normalizeLook({
@@ -57,19 +58,19 @@ function buildLook(piece, order, extra = {}, motions = null) {
 }
 
 /** Six finished looks for this piece, named, the way the sketch's first six were. */
-export function startingLooks(piece) {
+export function startingLooks(piece, { patterns = [] } = {}) {
   return [
-    { id: 'bloom', label: 'Bloom', look: buildLook(piece, 'bloom') },
-    { id: 'tide', label: 'Tide', look: buildLook(piece, 'tide', { journey: 'tide' }) },
-    { id: 'call', label: 'Call and answer', look: buildLook(piece, 'call', { journey: 'flame' }) },
-    { id: 'one', label: 'One breath', look: buildLook(piece, 'one', { journey: 'candle', breath: 9 }) },
-    { id: 'turning', label: 'Turning', look: buildLook(piece, 'bloom', { journey: 'moss', piece: { petalByPetal: true } }) },
-    { id: 'pairs', label: 'Pairs', look: buildLook(piece, 'pairs', { journey: 'dawn' }, ['pulse', 'chase', 'fill', 'chase', 'pulse']) },
+    { id: 'bloom', label: 'Bloom', look: buildLook(piece, 'bloom', {}, null, patterns, 0) },
+    { id: 'tide', label: 'Tide', look: buildLook(piece, 'tide', { journey: 'tide' }, null, patterns, 1) },
+    { id: 'call', label: 'Call and answer', look: buildLook(piece, 'call', { journey: 'flame' }, null, patterns, 2) },
+    { id: 'one', label: 'One breath', look: buildLook(piece, 'one', { journey: 'candle', breath: 9 }, null, patterns, 3) },
+    { id: 'turning', label: 'Turning', look: buildLook(piece, 'bloom', { journey: 'moss', piece: { petalByPetal: true } }, null, patterns, 4) },
+    { id: 'pairs', label: 'Pairs', look: buildLook(piece, 'pairs', { journey: 'dawn' }, ['pulse', 'chase', 'fill', 'chase', 'pulse'], patterns, 5) },
   ];
 }
 
 /** A close cousin: two small changes to a copy of `look`. */
-export function nudgeLook(look, rng) {
+export function nudgeLook(look, rng, { patterns = [] } = {}) {
   const next = normalizeLook(JSON.parse(JSON.stringify(look)));
   const ids = Object.keys(next.areas);
   const motions = motionIds();
@@ -80,6 +81,7 @@ export function nudgeLook(look, rng) {
       () => { const others = motions.filter(m => m !== area.motion.type); area.motion = { type: others.length ? pick(rng, others) : area.motion.type, params: {} }; },
       () => { area.copies = pick(rng, COPIES_RELATIONS.filter(r => r !== area.copies)); },
       () => { const j = journeyIds(); next.journey = pick(rng, j.filter(x => x !== next.journey)); },
+      () => { if (patterns.length) area.source = { kind: 'pattern', id: pick(rng, patterns) }; else next.piece.petalByPetal = !next.piece.petalByPetal; },
       () => { next.piece.petalByPetal = !next.piece.petalByPetal; },
       () => { next.piece.takeTurns = !next.piece.takeTurns; },
       () => { next.breath = Math.max(3, Math.min(13, next.breath + (rng() < 0.5 ? -2 : 2))); },
@@ -89,7 +91,7 @@ export function nudgeLook(look, rng) {
 }
 
 /** A new look, built from scratch for this piece. */
-export function randomLook(piece, rng) {
+export function randomLook(piece, rng, { patterns = [] } = {}) {
   const areas = areasOf(piece);
   const motions = motionIds();
   const look = buildLook(piece, pick(rng, ORDER_IDS), {
@@ -101,6 +103,7 @@ export function randomLook(piece, rng) {
     const record = look.areas[area.id];
     record.motion = { type: pick(rng, motions), params: {} };
     record.copies = copiesOf(area) === 1 ? 'together' : pick(rng, COPIES_RELATIONS);
+    if (patterns.length) record.source = { kind: 'pattern', id: pick(rng, patterns) };
   });
   return normalizeLook(look);
 }

@@ -37,6 +37,12 @@ export const MOTIONS = Object.freeze([
     },
   }),
   Object.freeze({
+    id: 'whole',
+    label: 'The whole pattern',
+    params: Object.freeze([]),
+    level() { return 1; }, // no mask: the pattern shows as it does in Patterns
+  }),
+  Object.freeze({
     id: 'pulse',
     label: 'A pulse',
     params: Object.freeze([]),

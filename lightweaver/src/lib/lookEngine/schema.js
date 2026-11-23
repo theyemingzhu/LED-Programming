@@ -4,7 +4,8 @@
 //     piece: { takeTurns, petalByPetal, spread },
 //     areas: { [areaId]: { motion: { type, params }, copies: 'together'|'after'|'other',
 //                          begins (0..0.9 of a breath), direction, speed, smoothness,
-//                          fade, breathe } } }
+//                          fade, breathe,
+//                          source: { kind: 'journey', id? } | { kind: 'pattern', id } } } }
 //
 // Unknown keys are kept as they are, at every level. An unknown motion type
 // falls back to the default motion and says so in `warnings`; the type is kept
@@ -31,7 +32,22 @@ export const DEFAULT_AREA = Object.freeze({
   copies: 'together', begins: 0, direction: 'forward', speed: 1, smoothness: 0, fade: 0, breathe: 0,
 });
 
-export function normalizeArea(raw, warnings = [], where = 'area') {
+// Where an area's colour comes from: one of the look's colour journeys, or one
+// of Studio's patterns. `hasPattern(id)` (optional) says which pattern ids exist;
+// an unknown one falls back to a journey with a warning and is remembered in
+// `wantedPattern`, so a look opened and saved again does not lose it.
+export function normalizeSource(raw, warnings = [], where = 'area', hasPattern = null) {
+  const input = isObject(raw) ? raw : {};
+  if (input.kind === 'pattern' && typeof input.id === 'string' && input.id) {
+    if (!hasPattern || hasPattern(input.id)) return { ...input, kind: 'pattern', id: input.id };
+    warnings.push(`${where}: unknown pattern "${input.id}", using the look's colours instead.`);
+    return { kind: 'journey', wantedPattern: input.id };
+  }
+  const { id, ...rest } = input;
+  return { ...rest, kind: 'journey', ...(typeof id === 'string' && id ? { id } : {}) };
+}
+
+export function normalizeArea(raw, warnings = [], where = 'area', hasPattern = null) {
   const input = isObject(raw) ? raw : {};
   const rawMotion = isObject(input.motion) ? input.motion : {};
   const wanted = typeof rawMotion.type === 'string' && rawMotion.type ? rawMotion.type : DEFAULT_MOTION_ID;
@@ -40,6 +56,7 @@ export function normalizeArea(raw, warnings = [], where = 'area') {
   const motion = getMotion(known ? wanted : DEFAULT_MOTION_ID);
   return {
     ...input,
+    source: normalizeSource(input.source, warnings, where, hasPattern),
     motion: {
       ...rawMotion,
       type: motion.id,
@@ -57,14 +74,14 @@ export function normalizeArea(raw, warnings = [], where = 'area') {
 }
 
 /** `{ look, warnings }`. `areaIds` (optional) makes sure every area of the project has a record. */
-export function normalizeLookWithWarnings(raw, { areaIds = [] } = {}) {
+export function normalizeLookWithWarnings(raw, { areaIds = [], hasPattern = null } = {}) {
   const input = isObject(raw) ? raw : {};
   const warnings = [];
   const piece = isObject(input.piece) ? input.piece : {};
   const areasIn = isObject(input.areas) ? input.areas : {};
   const areas = {};
-  for (const [id, value] of Object.entries(areasIn)) areas[id] = normalizeArea(value, warnings, id);
-  for (const id of areaIds) if (!areas[id]) areas[id] = normalizeArea({}, warnings, id);
+  for (const [id, value] of Object.entries(areasIn)) areas[id] = normalizeArea(value, warnings, id, hasPattern);
+  for (const id of areaIds) if (!areas[id]) areas[id] = normalizeArea({}, warnings, id, hasPattern);
   const journey = Array.isArray(input.journey) || (typeof input.journey === 'string' && input.journey) ? input.journey : 'dawn';
   return {
     look: {

@@ -10,3 +10,4 @@ export * from './render.js';
 export * from './variations.js';
 export * from './edits.js';
 export * from './model.js';
+export * from './patternLight.js';

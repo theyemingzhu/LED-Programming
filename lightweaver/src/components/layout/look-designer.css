@@ -102,3 +102,19 @@
 .la .ld .ld-tiles button[aria-pressed="true"] { border-color: var(--text-hi); }
 .la .ld .ld-journeys button[aria-pressed="true"] { border-color: var(--text-hi); box-shadow: 0 0 0 1px var(--bg-canvas) inset; }
 .la .ld .ld-tiles button:not([aria-pressed="true"]) { border-color: transparent; }
+
+/* The pattern chooser: a plain list of the project's own patterns by name. */
+.la .ld .ld-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 13px;
+}
+.la .ld .ld-select:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+@media (pointer: coarse), (max-width: 600px) { .la .ld .ld-select { min-height: 44px; } }

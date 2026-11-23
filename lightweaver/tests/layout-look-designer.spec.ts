@@ -249,6 +249,25 @@ test('the chosen option looks different from the others', async ({ page }) => {
   expect(await look('look-designer-journey-dawn')).not.toBe(await look('look-designer-journey-tide'));
 });
 
+test('"Pattern" comes first in Tune it yourself, lists the project\'s patterns, and changes the light', async ({ page }) => {
+  const ids = await seedPiece(page, LOTUS);
+  await turnOn(page);
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  const pattern = page.getByTestId('look-designer-pattern');
+  await expect(pattern).toBeVisible();
+  expect(await pattern.locator('option').count()).toBeGreaterThan(20);
+  const above = await page.evaluate(() => {
+    const select = document.querySelector('[data-testid="look-designer-pattern"]')!;
+    const plays = [...document.querySelectorAll('.ld-tunebody .la-symmetry-k')].find(node => node.textContent === 'It shows as')!;
+    return Boolean(select.compareDocumentPosition(plays) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(above).toBe(true);
+  const before = await allColours(page, ids);
+  await changed(page, ids, before, () => pattern.selectOption({ label: 'Fire' }));
+  // "The whole pattern" is one of the choices, read from the registry.
+  await expect(page.getByTestId('look-designer-motion-whole')).toHaveText('The whole pattern');
+});
+
 test('at 390px wide nothing overflows, with the drawer open', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const ids = await seedPiece(page, LOTUS);

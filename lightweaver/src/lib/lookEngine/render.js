@@ -9,12 +9,13 @@
 //   clock  = speed(x) shifted by how the copies play (together / after / every other)
 //            or, when the piece takes turns, only inside the area's turn
 //   level  = motion -> smoothness -> fade -> breathe -> ground
-//   colour = the journey at (t * 0.012 + the area's order * 0.22), times level
+//   colour = the area's source times level: its journey at (t * 0.012 + the
+//            area's order * 0.22), or the real pattern's colour for that LED
 
 import { getMotion } from './motions.js';
 import { applyBreathe, applyDirection, applyFade, applyGround, applySmoothness, applySpeed, frac } from './modifiers.js';
 import { normalizeArea, normalizeLook } from './schema.js';
-import { journeyAt } from './journeys.js';
+import { journeyAt, resolveJourney } from './journeys.js';
 
 export const TURN_HOLD = 0.34;
 
@@ -26,7 +27,10 @@ export function beginRanks(begins) {
   return ranks;
 }
 
-export function renderLook(rawLook, pieceMap, journeyColours, t = 0) {
+// `options.lights(patternId, t)` gives a pattern's colour for every LED (see
+// patternLight.js); `options.standIn(patternId)` gives cheap colours instead
+// (thumbnails). With neither, or an unknown pattern, an area uses its journey.
+export function renderLook(rawLook, pieceMap, journeyColours, t = 0, options = {}) {
   const look = normalizeLook(rawLook);
   const leds = pieceMap?.leds || [];
   const out = new Uint8Array(leds.length * 3);
@@ -38,10 +42,15 @@ export function renderLook(rawLook, pieceMap, journeyColours, t = 0) {
   const round = look.piece.petalByPetal;
   const records = Array.from({ length: count }, (_, i) => {
     const rec = look.areas[ids[i]] || normalizeArea({});
-    return { rec, motion: getMotion(rec.motion.type), params: rec.motion.params, copies: Math.max(1, pieceMap.copyCounts[i]) };
+    const source = rec.source;
+    const patternId = source?.kind === 'pattern' ? source.id : null;
+    const lit = patternId && options.lights ? options.lights(patternId, t) : null;
+    const stand = patternId && !lit && options.standIn ? options.standIn(patternId) : null;
+    const own = stand || (source?.kind === 'journey' && source.id ? resolveJourney(source.id) : journeyColours);
+    return { rec, motion: getMotion(rec.motion.type), params: rec.motion.params, copies: Math.max(1, pieceMap.copyCounts[i]), lit, own };
   });
   const ranks = beginRanks(records.map(r => r.rec.begins));
-  const colours = records.map((_, i) => journeyAt(journeyColours, t * 0.012 + ranks[i] * 0.22));
+  const colours = records.map((r, i) => journeyAt(r.own, t * 0.012 + ranks[i] * 0.22));
   for (let index = 0; index < leds.length; index += 1) {
     const led = leds[index];
     const area = records[led.area];
@@ -62,6 +71,13 @@ export function renderLook(rawLook, pieceMap, journeyColours, t = 0) {
     let level = applySmoothness(position => motion.level(position, directed, params, where), led.shape, rec.smoothness);
     level *= envelope * applyFade(clock, rec.fade) * applyBreathe(x, rec.breathe);
     level = applyGround(level, look.ground);
+    if (area.lit) {
+      // The pattern is the light; the motion only masks it, so it never gets brighter than the pattern.
+      out[index * 3] = Math.round(area.lit[index * 3] * level);
+      out[index * 3 + 1] = Math.round(area.lit[index * 3 + 1] * level);
+      out[index * 3 + 2] = Math.round(area.lit[index * 3 + 2] * level);
+      continue;
+    }
     const rgb = colours[led.area];
     out[index * 3] = Math.round(rgb[0] * level);
     out[index * 3 + 1] = Math.round(rgb[1] * level);
