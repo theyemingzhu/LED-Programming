@@ -12,16 +12,6 @@
       }
     },
     {
-      "id": "reclaim-idle-nvs-before-project-save",
-      "what": "Reclaim the idle wiring marker before saving a same-wiring project to flash.",
-      "why": "The fix passed offline replay and the one-strip card bench test and is waiting for the next signed card update.",
-      "added": "2026-11-17",
-      "source": {
-        "kind": "patch",
-        "patch": "firmware-queue/patches/reclaim-idle-nvs-before-project-save.patch"
-      }
-    },
-    {
       "id": "drop-stale-rollback-record",
       "what": "Stop the card repeating an old 'update rolled back' record after a different build has been installed.",
       "why": "Studio already ignores the stale record (build 2476), so this is not worth a signed card update on its own; it passed its host test and compiles, but has not been bench-tested on a card.",
