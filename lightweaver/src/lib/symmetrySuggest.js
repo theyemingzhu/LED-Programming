@@ -231,6 +231,16 @@ function fourSides(strips, centre) {
   };
 }
 
+// A strip whose two ends nearly meet: a ring, not a line.
+function isClosedLoop(strip) {
+  const points = (strip?.pixels || []).filter(finite);
+  if (points.length < 6) return false;
+  let length = 0;
+  for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
+  const gap = Math.hypot(points[0].x - points.at(-1).x, points[0].y - points.at(-1).y);
+  return length > 0 && gap <= length * 0.2;
+}
+
 /**
  * Suggest how `strips` divide into `fold` sides. Two and four sides are
  * worked out here; 3, 5, 6 and 8 turn about the centre (symmetryTurns.js).
@@ -275,6 +285,28 @@ export function suggestSymmetry(strips, fold, artwork = null) {
       sides: labels.map((label, index) => ({ id: `side-${index + 1}`, label, stripIds: [] })),
       onOwn: [],
       matched: [],
+    };
+  }
+  // The shape did not give every side a strip (one reel divided into four and
+  // laid in a straight line has no four matching sides to find). An empty side
+  // is not a usable answer, so deal the strips out in list order instead: for a
+  // divided reel that is reel order, one section after another. Low confidence
+  // stays low; the owner can still move strips or flip a side.
+  if (best.sides.some(side => side.stripIds.length === 0) && usable.length >= fold) {
+    // A closed ring the shape put on its own (a centre ring) stays on its own
+    // when enough strips remain to fill the sides without it. An open strip
+    // that merely passes through the middle (the middle sections of a
+    // straight reel) is dealt like the rest.
+    const ownIds = new Set(best.onOwn.filter(id => isClosedLoop(usable.find(strip => strip.id === id))));
+    const others = usable.filter(strip => !ownIds.has(strip.id));
+    const deal = others.length >= fold ? others : usable;
+    const per = deal.length / fold;
+    const sides = best.sides.map(side => ({ ...side, stripIds: [] }));
+    deal.forEach((strip, index) => sides[Math.min(fold - 1, Math.floor(index / per))].stripIds.push(strip.id));
+    best = {
+      ...best, sides, matched: [], score: 0, dealt: true,
+      onOwn: deal === others ? [...ownIds] : [],
+      orientation: fold === 2 ? 'mirror' : 'same',
     };
   }
   // Strips with no LED positions yet still play: on their own.

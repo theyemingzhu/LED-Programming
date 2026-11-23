@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   JOURNEYS, MOTIONS, applyBend, buildPieceModel, getMotion, nudgeLook, normalizeLook, randomLook,
-  readBend, hasPattern, patternChoices, thumbnailBytes, thumbnailSpots, seededRng, setArea, setPiece, startingLooks,
+  readBend, hasPattern, lookUsesJourney, patternChoices, thumbnailBytes, thumbnailSpots, seededRng, setArea, setPiece, startingLooks,
 } from '../../../lib/lookEngine/index.js';
 import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
@@ -198,6 +198,8 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
   const selDefault = model && sel ? model.names[ids.indexOf(sel)] : '';
   const selName = (sel && state.names[sel]) || selDefault;
   const bend = look ? readBend(look) : null;
+  // The colour row colours only the shapes that take the look's colours; with every shape on a pattern it would do nothing.
+  const journeyUsed = look && model ? lookUsesJourney(look, ids) : true;
   const areaEdit = patch => edit(setArea(look, sel, patch));
 
   // THE PINNED STRIP. It shows only while the thing it stands in for is out of
@@ -292,11 +294,16 @@ export function LookDesignerControl({ strips, hidden = {}, symmetry = null, artw
             <div className="ld-journeys" role="group" aria-label="Colour journey">
               {JOURNEYS.map(journey => (
                 <button key={journey.id} type="button" aria-pressed={look.journey === journey.id} aria-label={journey.label} title={journey.label}
-                        data-testid={`look-designer-journey-${journey.id}`}
+                        data-testid={`look-designer-journey-${journey.id}`} disabled={!journeyUsed}
                         style={{ background: `linear-gradient(90deg, ${journey.colours.map(c => `rgb(${c})`).join(', ')})` }}
                         onClick={() => edit({ ...look, journey: journey.id })}/>
               ))}
             </div>
+            {!journeyUsed && (
+              <p className="la-symmetry-note" data-testid="look-designer-journey-note">
+                These colours apply to shapes set to "The look's colours". Every shape plays a pattern now.
+              </p>
+            )}
           </div>
 
           <p className="la-symmetry-note" role="status" data-testid="look-designer-say">

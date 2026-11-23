@@ -1956,9 +1956,36 @@ export function DrawModePanel({
                           const moveTo = sideId => {
                             if (sideId === currentSideId) return;
                             moveStripsToSide([s.id], sideId);
-                            window.requestAnimationFrame(() => document.querySelector(
-                              `[data-testid="side-choice-${s.id}-${sideId || 'own'}"]`)?.focus());
+                            window.requestAnimationFrame(() => (document.querySelector(
+                              `[data-testid="side-choice-${s.id}-select"]`) || document.querySelector(
+                              `[data-testid="side-choice-${s.id}-${sideId || 'own'}"]`))?.focus());
                           };
+                          const orderButtons = currentSideId && sideStripIds.length > 1 && <div className="la-side-order">
+                            <button type="button" className="btn" disabled={flowPosition <= 1}
+                                    aria-label={`Move ${partName} up in ${group.side.label}`}
+                                    onClick={() => stepStripInSide(s.id, currentSideId, -1)}>Move up</button>
+                            <button type="button" className="btn" disabled={flowPosition >= sideStripIds.length}
+                                    aria-label={`Move ${partName} down in ${group.side.label}`}
+                                    onClick={() => stepStripInSide(s.id, currentSideId, 1)}>Move down</button>
+                          </div>;
+                          // Three or more sides: one line, one select. With two sides the
+                          // three buttons stay exactly as they were.
+                          if (symmetry.sides.length > 2) {
+                            const selectId = `side-select-${s.id}`;
+                            return <div className="la-side-choice is-line" data-testid={`side-choice-${s.id}`}>
+                              <label className="la-side-choice-k" htmlFor={selectId}>Plays with</label>
+                              <select id={selectId} className="la-side-select" data-testid={`side-choice-${s.id}-select`}
+                                      aria-label={`${partName} plays with`} title={reason || undefined}
+                                      value={currentSideId || ''}
+                                      onChange={event => moveTo(event.target.value || null)}>
+                                {symmetry.sides.map(side => (
+                                  <option key={side.id} value={side.id} disabled={Boolean(reason) && currentSideId !== side.id}>{side.label}</option>
+                                ))}
+                                <option value="">On its own</option>
+                              </select>
+                              {orderButtons}
+                            </div>;
+                          }
                           return <div className="la-side-choice" role="group" aria-label={`Where ${partName} plays`}
                                       data-testid={`side-choice-${s.id}`}>
                             <span className="la-side-choice-k">{partName} plays</span>
@@ -1979,14 +2006,7 @@ export function DrawModePanel({
                                       data-testid={`side-choice-${s.id}-own`}
                                       onClick={() => moveTo(null)}>On its own</button>
                             </div>
-                            {currentSideId && sideStripIds.length > 1 && <div className="la-side-order">
-                              <button type="button" className="btn" disabled={flowPosition <= 1}
-                                      aria-label={`Move ${partName} up in ${group.side.label}`}
-                                      onClick={() => stepStripInSide(s.id, currentSideId, -1)}>Move up</button>
-                              <button type="button" className="btn" disabled={flowPosition >= sideStripIds.length}
-                                      aria-label={`Move ${partName} down in ${group.side.label}`}
-                                      onClick={() => stepStripInSide(s.id, currentSideId, 1)}>Move down</button>
-                            </div>}
+                            {orderButtons}
                           </div>;
                         })()}
                         {stripTargets.map(target => {

@@ -126,13 +126,20 @@ test('picking a thumbnail changes the LEDs; More like this and Something else of
   expect(second.length).toBe(first.length);
 });
 
-test('each Bend slider and each colour journey changes the LEDs', async ({ page }) => {
+test('each Bend slider changes the LEDs; the colour journey changes them once a shape takes the look\'s colours', async ({ page }) => {
   const ids = await seedPiece(page, LOTUS);
   await turnOn(page);
   let colours = await allColours(page, ids);
   for (const [id, value] of [['look-designer-pace', '95'], ['look-designer-spread', '0'], ['look-designer-glow', '100']]) {
     colours = await changed(page, ids, colours, () => page.getByTestId(id).fill(value));
   }
+  // Every shape starts on a real pattern, so the colour row has nothing to colour and says so.
+  await expect(page.getByTestId('look-designer-journey-tide')).toBeDisabled();
+  await expect(page.getByTestId('look-designer-journey-note')).toContainText("The look's colours");
+  // Put one shape on the look's colours: now the row is live and changes the picture.
+  await page.getByTestId('look-designer-tune').locator('summary').click();
+  colours = await changed(page, ids, colours, () => page.getByTestId('look-designer-pattern-none').click());
+  await expect(page.getByTestId('look-designer-journey-tide')).toBeEnabled();
   colours = await changed(page, ids, colours, () => page.getByTestId('look-designer-journey-tide').click());
   await expect(page.getByTestId('look-designer-journey-tide')).toHaveAttribute('aria-pressed', 'true');
   expect(colours.length).toBeGreaterThan(20);
@@ -237,16 +244,23 @@ test('the chosen option looks different from the others', async ({ page }) => {
     const style = getComputedStyle(node);
     return `${style.borderTopColor}|${style.backgroundColor}|${style.color}`;
   });
+  // The chosen option and an unchosen one must look different, read directly.
+  const differs = async (on: string, off: string) => {
+    expect(await look(on), `${on} should look different from ${off}`).not.toBe(await look(off));
+  };
   for (const [on, off] of [['look-designer-motion-pulse', 'look-designer-motion-chase'], ['look-designer-copies-together', 'look-designer-copies-after'],
     ['look-designer-direction-forward', 'look-designer-direction-bounce'], ['look-designer-speed-1', 'look-designer-speed-2'],
     ['look-designer-chip-0', 'look-designer-chip-1']]) {
     await expect(page.getByTestId(on), on).toHaveAttribute('aria-pressed', 'true');
-    expect(await look(on), `${on} vs ${off}`).not.toBe(await look(off));
+    await differs(on, off);
   }
+  // The picked variation tile is outlined. Any edit (the click below) un-picks it by design, so read it first.
+  await expect(page.getByTestId('look-designer-tile-0')).toHaveAttribute('aria-pressed', 'true');
+  await differs('look-designer-tile-0', 'look-designer-tile-1');
   await page.getByTestId('look-designer-takeTurns').click();
-  expect(await look('look-designer-takeTurns')).not.toBe(await look('look-designer-petalByPetal'));
-  expect(await look('look-designer-tile-0')).not.toBe(await look('look-designer-tile-1'));
-  expect(await look('look-designer-journey-dawn')).not.toBe(await look('look-designer-journey-tide'));
+  await differs('look-designer-takeTurns', 'look-designer-petalByPetal');
+  // The colour row is greyed while every shape plays a pattern; the chosen one still shows.
+  await differs('look-designer-journey-dawn', 'look-designer-journey-tide');
 });
 
 test('"Pattern" comes first in Tune it yourself as a picture grid, with mood chips and Show more; a tile sets the light', async ({ page }) => {
@@ -277,6 +291,12 @@ test('"Pattern" comes first in Tune it yourself as a picture grid, with mood chi
   await changed(page, ids, before, () => page.getByTestId('look-designer-pattern-fire').click());
   await expect(page.getByTestId('look-designer-pattern-name')).toHaveText('Fire');
   await expect(page.getByTestId('look-designer-pattern-fire')).toHaveAttribute('aria-pressed', 'true');
+  // The chosen pattern tile is outlined: it does not look like an unchosen one.
+  const tileLook = (id: string) => page.getByTestId(id).evaluate((node: Element) => {
+    const style = getComputedStyle(node);
+    return `${style.borderTopColor}|${style.backgroundColor}|${style.color}`;
+  });
+  expect(await tileLook('look-designer-pattern-fire')).not.toBe(await tileLook('look-designer-pattern-aurora'));
   // "The whole pattern" is one of the choices, read from the registry; four choices sit two by two.
   await expect(page.getByTestId('look-designer-motion-whole')).toHaveText('The whole pattern');
   const rows = await page.getByTestId('look-designer-motions').locator('button').evaluateAll((nodes: Element[]) => new Set(nodes.map(node => Math.round(node.getBoundingClientRect().top))).size);

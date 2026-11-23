@@ -37,3 +37,21 @@ test('setArea and setPiece keep the look normal', () => {
   assert.equal(setArea(base, 'a', { fade: 7 }).areas.a.fade, 1);
   assert.equal(setPiece(base, { petalByPetal: true }).piece.petalByPetal, true);
 });
+
+test('the colour journey only matters while some area takes the look\'s colours', async () => {
+  const { lookUsesJourney } = await import('./edits.js');
+  const { buildPieceModel, frameByStrip } = await import('./model.js');
+  const { startingLooks } = await import('./variations.js');
+  const { lotus } = await import('./testFixtures.js');
+  const model = buildPieceModel(lotus({ circles: false }), {});
+  const ids = model.derived.areas.map(a => a.id);
+  const onPatterns = startingLooks(model.derived.areas, { patterns: ['aurora', 'lava', 'fire'] })[0].look;
+  assert.equal(lookUsesJourney(onPatterns, ids), false);
+  const frame = look => JSON.stringify([...frameByStrip(look, model, 2.6).values()].map(v => v.leds));
+  // Every area on a pattern: changing the journey changes nothing, so the screen says so.
+  assert.equal(frame({ ...onPatterns, journey: 'tide' }), frame(onPatterns));
+  // One area back on the look's colours: the journey now changes the picture.
+  const one = setArea(onPatterns, ids[0], { source: { kind: 'journey' } });
+  assert.equal(lookUsesJourney(one, ids), true);
+  assert.notEqual(frame({ ...one, journey: 'tide' }), frame(one));
+});

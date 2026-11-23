@@ -168,3 +168,22 @@ test('on a phone the card and the seven choices stay inside the screen', async (
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
   }
 });
+
+test('six sides: one "Plays with" select moves a strip to another side, and "On its own" takes it out', async ({ page }) => {
+  const ids = await seedPiece(page, LOTUS);
+  await page.getByTestId('layout-symmetry-6').click();
+  await expect.poll(async () => (await savedSides(page)).length).toBe(6);
+  await page.getByTestId('symmetry-focus-done').click();
+  await page.locator('.la-strip-row', { hasText: 'Petal 1' }).first().click();
+  const select = page.getByTestId(`side-choice-${ids['Petal 1']}-select`);
+  await expect(select).toBeVisible();
+  // One line, one select: the button row is gone for three or more sides.
+  await expect(page.getByTestId(`side-choice-${ids['Petal 1']}-side-1`)).toHaveCount(0);
+  await expect(select).toHaveAccessibleName(/Petal 1 plays with/);
+  expect((await select.locator('option').allTextContents())).toEqual(['Side 1', 'Side 2', 'Side 3', 'Side 4', 'Side 5', 'Side 6', 'On its own']);
+  await select.selectOption({ label: 'Side 2' });
+  await expect.poll(async () => (await savedSides(page))[1]).toContain(ids['Petal 1']);
+  await expect(select).toBeFocused();
+  await select.selectOption({ label: 'On its own' });
+  await expect.poll(async () => (await savedSides(page)).flat()).not.toContain(ids['Petal 1']);
+});

@@ -219,3 +219,4 @@
 .la .ld .ld-stack .btn { height: auto; min-height: 34px; padding-block: 6px; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; text-align: center; justify-content: center; }
 /* What Keep has just said reads at normal strength. */
 .la .ld .ld-keep-say.is-said { color: var(--text-hi); font-size: 12.5px; overflow-wrap: anywhere; }
+.ld-journeys button:disabled { opacity: 0.4; cursor: default; }
