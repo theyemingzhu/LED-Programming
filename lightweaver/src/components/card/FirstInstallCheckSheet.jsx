@@ -26,7 +26,7 @@ export function FirstInstallCheckSheet({ cardHost = '' }) {
             <h2 id="first-install-check-title">Check the lights</h2>
           </div>
         </header>
-        <div className="card-setup-overlay-body">
+        <div className="card-setup-overlay-body first-install-check-body">
           <FirstInstallLightCheck
             host={cardHost || cardLink.host}
             transport={cardLink.transport}

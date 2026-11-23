@@ -166,3 +166,5 @@
   .strip-discovery-nudge .btn { font-size: 15px; }
   .strip-discovery-nudge-count { font-size: 15px; font-weight: 700; }
 }
+
+.first-install-check-body { padding: 4px 20px 20px; }

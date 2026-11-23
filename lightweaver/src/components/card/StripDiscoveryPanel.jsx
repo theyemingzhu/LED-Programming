@@ -586,6 +586,11 @@ export function StripDiscoveryPanel({
   const [findMode, setFindMode] = useState('watch');
   const [sweepPin, setSweepPin] = useState(null);
   const sweepRef = useRef({ pin: null, previous: null, changedAt: 0 });
+  // How many pins this watch has lit. Kept outside the effect: the effect
+  // re-runs whenever the card link re-reads the card, and restarting the count
+  // there meant two quiet rounds never added up to "Nothing lit?".
+  const sweepStepRef = useRef(0);
+  const watchAgain = () => { sweepStepRef.current = 0; setFindMode('watch'); };
   const sweepPins = useMemo(() => selectablePortRoles.map(entry => entry.pin), [selectablePortRoles]);
   const sweepPinList = sweepPins.join(',');
   const portsKnown = probePortEvidence?.key === probePortKey;
@@ -598,19 +603,18 @@ export function StripDiscoveryPanel({
     if (phaseIsPastIdle || findMode !== 'watch' || selectedPort !== null || !canSweep) return undefined;
     let cancelled = false;
     let timer = null;
-    let index = 0;
     const pins = sweepPinList.split(',').map(Number);
     const step = async () => {
       if (cancelled) return;
-      if (index >= pins.length * SWEEP_ROUNDS) {
+      if (sweepStepRef.current >= pins.length * SWEEP_ROUNDS) {
         sweepRef.current = { pin: null, previous: null, changedAt: 0 };
         setSweepPin(null);
         setFindMode('quiet');
         releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
         return;
       }
-      const pin = pins[index % pins.length];
-      index += 1;
+      const pin = pins[sweepStepRef.current % pins.length];
+      sweepStepRef.current += 1;
       const result = await pinBeaconPort(host, pin, { bridgeVersion: getCardBridgeState().version })
         .catch(error => (isTransientCardFailure(error) ? { transient: true } : { ok: false }));
       if (cancelled) return;
@@ -1704,7 +1708,7 @@ export function StripDiscoveryPanel({
               <CardPinPicker testId="discovery-pin-map" pickable={[]} labels={false} ground label="Card pins, with the ground pins marked" />
               <p className="strip-discovery-note" data-testid="discovery-quiet-hint">Check power and ground.</p>
               <div className="strip-discovery-actions">
-                <button type="button" className="btn primary" data-testid="discovery-watch-again" onClick={() => setFindMode('watch')}>Watch again</button>
+                <button type="button" className="btn primary" data-testid="discovery-watch-again" onClick={watchAgain}>Watch again</button>
                 <button type="button" className="btn btn-ghost" data-testid="discovery-pick-mode" onClick={() => setFindMode('pick')}>Pick the pin</button>
               </div>
             </>
@@ -1714,7 +1718,7 @@ export function StripDiscoveryPanel({
               <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
               {canSweep && (
                 <div className="strip-discovery-actions">
-                  <button type="button" className="btn btn-ghost" data-testid="discovery-watch-again" onClick={() => setFindMode('watch')}>Watch instead</button>
+                  <button type="button" className="btn btn-ghost" data-testid="discovery-watch-again" onClick={watchAgain}>Watch instead</button>
                 </div>
               )}
             </>

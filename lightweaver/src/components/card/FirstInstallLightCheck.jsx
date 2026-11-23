@@ -16,6 +16,27 @@ const COLOUR_ROWS = Object.freeze([
 ]);
 const HEALTH_POLL_MS = 500;
 
+// The question's picture: a short strip, with the lights to look at marked.
+function CheckStrip({ look = [], purpleLast = false, rows = 1, testId }) {
+  const count = 12;
+  return (
+    <svg className="strip-discovery-strip" data-testid={testId} viewBox={`0 0 ${count * 20} ${rows * 28}`} aria-hidden="true">
+      {Array.from({ length: rows }, (_, row) => {
+        const lit = purpleLast ? count - 2 - (row % 3) * 2 : 0;
+        return (
+          <g key={row} transform={`translate(0 ${row * 28})`}>
+            <rect className="strip-discovery-strip-tape" x="0" y="4" width={count * 20} height="16" rx="3" />
+            {Array.from({ length: count }, (__, index) => {
+              const cls = look.includes(index) ? 'is-look' : purpleLast && index === lit - 1 ? 'is-purple' : purpleLast && index < lit ? 'is-on' : 'is-off';
+              return <circle key={index} cx={index * 20 + 10} cy="12" r="5" className={cls} />;
+            })}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 export function FirstInstallLightCheck({ host, transport, bootId = '', onDone, onOpenLayout }) {
   const { compiledWiring, standaloneController, setStandaloneController } = useProject();
   const outputs = compiledWiring?.outputs || [];
@@ -84,6 +105,7 @@ export function FirstInstallLightCheck({ host, transport, bootId = '', onDone, o
       {step === 'colour' && (
         <>
           <h3>Tap what you see.</h3>
+          <CheckStrip look={[0, 1, 2]} testId="first-install-colour-strip" />
           <p className="strip-discovery-note" data-testid="first-install-check-hint">Lights 1, 2 and 3 of the first strip.</p>
           <div role="group" aria-label="The colours of lights 1, 2 and 3" className="strip-discovery-colour-rows">
             {COLOUR_ROWS.map(row => (
@@ -105,6 +127,7 @@ export function FirstInstallLightCheck({ host, transport, bootId = '', onDone, o
       {step === 'ends' && (
         <>
           <h3>Is purple the last light on every strip?</h3>
+          <CheckStrip purpleLast rows={Math.min(4, Math.max(1, outputs.length))} testId="first-install-ends-strip" />
           <div className="strip-discovery-actions">
             <button type="button" className="btn primary" data-testid="first-install-ends-yes" disabled={waiting} onClick={() => setStep('done')}>Yes</button>
             <button type="button" className="btn btn-ghost" data-testid="first-install-ends-no" disabled={waiting} onClick={() => setStep('fix')}>One isn&rsquo;t</button>
@@ -133,7 +156,7 @@ export function FirstInstallLightCheck({ host, transport, bootId = '', onDone, o
         </>
       )}
       {waiting && step !== 'done' && step !== 'fix' && (
-        <p className="strip-discovery-note" role="status" data-testid="first-install-check-wait" data-reason={lit.reason}>
+        <p className="strip-discovery-note" role="status" data-testid="first-install-check-wait" data-reason={lit.reason} data-sent={lit.sent}>
           {lit.failing ? 'Waiting for the card to take the lights. It may still be restarting.' : 'Waiting for the card to light up.'}
         </p>
       )}
