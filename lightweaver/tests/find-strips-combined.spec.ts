@@ -255,7 +255,7 @@ test.describe('Real-timing with the card settling after its restart', () => {
       // Skipped, not test.fail(): the settling is random (p=0.5 per reply), so
       // the fault shows in most runs but not all — 3 of 4 failed on 2026-11-23.
       // An expected-fail that sometimes passes would put red into the lane.
-      test.fixme(true, 'FS2: Save after Find my strips fails while the card settles after its restart (TODO.md)');
+      test.fixme(true, 'FS3: while the card restarts into its own light test, Card Home says "A Lightweaver card is not connected. Connect one to inspect it before installing or loading a project." and "Card stopped responding" about a save that works (the save itself passes 8/8 with D11 + #497 + FS1). The FS3 fix removes this line (todo/plans/practice-card-interruptions.md)');
       test.setTimeout(360_000);
       await guardRealCard(page);
       const { card } = createPracticeCard(cardState('factory-blank'), {
