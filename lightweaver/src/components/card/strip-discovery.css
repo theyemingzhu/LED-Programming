@@ -155,3 +155,14 @@
 .strip-discovery-why p { margin: 6px 0; font-size: 13px; line-height: 1.45; color: var(--text-mid, inherit); }
 .strip-discovery-audition-fold { margin: 10px 0; }
 .strip-discovery-audition-fold > summary { cursor: pointer; color: var(--text-mid, inherit); }
+
+/* Phone: Studio's one type scale (tests/phone-shell.spec.ts offScale). Titles
+   at most 17px, other text at most 15px; the counts keep their weight and
+   mono figures instead of size. */
+@media (max-width: 640px) {
+  .strip-discovery-step > h3 { font-size: 17px; }
+  .strip-discovery-bignum { font-size: 15px; font-weight: 700; padding: 10px 0; letter-spacing: 0.04em; }
+  .strip-discovery-bignum small { font-size: 13px; margin-top: 4px; }
+  .strip-discovery-nudge .btn { font-size: 15px; }
+  .strip-discovery-nudge-count { font-size: 15px; font-weight: 700; }
+}
