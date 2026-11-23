@@ -25,6 +25,7 @@
 #include "LightweaverWledWebSocket.h"
 #include "LightweaverProjectRepository.h"
 #include "LightweaverMedia.h"
+#include "LightweaverOwnerCapability.h"
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
@@ -2752,13 +2753,6 @@ String runtimeNetworkIdentity() {
   return identity;
 }
 
-bool runtimeOwnerPairingAuthorized() {
-  if (!runtimeConfig.knownGoodProject || factoryBeaconMode || safeDiscoveryMode)
-    return true;
-  if (lastControlEvent == CONTROL_NONE || lastControlEventAt == 0) return false;
-  return millis() - lastControlEventAt <= 30000;
-}
-
 uint32_t runtimeWiringProbationRemainingMs() {
   if (!wiringProbationActive) return 0;
   int32_t remaining = int32_t(wiringProbationDeadlineMs - millis());
@@ -3014,6 +3008,7 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;

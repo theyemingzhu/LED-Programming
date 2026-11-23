@@ -6,6 +6,11 @@ class WebServer;
 
 static constexpr uint32_t LW_OWNER_CAPABILITY_TTL_MS = 60000;
 static constexpr size_t LW_OWNER_CAPABILITY_MAX_BODY_BYTES = 1024;
+// Reported as /api/firmware-info and /api/status capabilities.ownerNoTouch.
+// Present (1) means this card issues the owner permission, and accepts a
+// firmware update, with no press on a card control. A card that does not
+// report it still answers 403 "touch a card control to pair".
+static constexpr uint8_t LW_OWNER_NO_TOUCH_VERSION = 1;
 
 struct LightweaverOwnerBinding {
   String cardId;
@@ -49,6 +54,21 @@ class LightweaverOwnerCapability {
   bool issued_ = false;
   uint32_t leaseEpoch_ = 0;
 };
+
+// Whether the card hands out an owner permission. No physical touch is part
+// of this: an installed artwork cannot be reached, so a control press never
+// authorises anything (Adrian, 2026-11-23). What still has to hold is the
+// exact identity of the request: an allowed page origin, this card, this
+// boot, and the project the caller believes the card is running.
+enum class LightweaverOwnerIssueDecision : uint8_t { Issue, OriginRefused, BindingChanged };
+
+inline LightweaverOwnerIssueDecision lightweaverOwnerIssueDecision(
+    bool originAllowed, bool cardMatches, bool bootMatches, bool projectHeadMatches) {
+  if (!originAllowed) return LightweaverOwnerIssueDecision::OriginRefused;
+  if (!cardMatches || !bootMatches || !projectHeadMatches)
+    return LightweaverOwnerIssueDecision::BindingChanged;
+  return LightweaverOwnerIssueDecision::Issue;
+}
 
 bool constantTimeTokenEqual(const String& left, const String& right);
 LightweaverOwnerCapability& lightweaverOwnerCapability();
