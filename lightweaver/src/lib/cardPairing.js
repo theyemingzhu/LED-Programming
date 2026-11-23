@@ -103,7 +103,7 @@ async function pairDiscoveredCardOnce(link = {}, {
         ok: false,
         reason: 'timeout',
         takeoverHost: '',
-        message: 'The card took too long to answer, so it is not paired yet. Keep it powered and on this Wi-Fi, then press Pair this card again.',
+        message: 'The card took too long to answer, so it is not connected yet. Keep it powered and on this Wi-Fi, then try again.',
       };
     }
     return {
