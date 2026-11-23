@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
+import { FirstSaveOrFind } from '../components/card/FirstSaveOrFind.jsx';
 import './lw-setup.css';
 import {
   CONNECTED_CARD_LINK_STATES,
@@ -1076,13 +1078,28 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
-            {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
-              ? 'Review the connected lights'
-              : ledCountEntry
-                ? 'Find the lights'
-                : 'Find and count the lights'}
-          </button>
+          {/* Way in 1 (Find my strips, combined flow): a blank card and an open
+              project whose wiring is known get the project in one save, then a
+              light check. Otherwise finding comes first, as before. */}
+          <FirstSaveOrFind
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
+                {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
+                  ? 'Review the connected lights'
+                  : ledCountEntry
+                    ? 'Find the lights'
+                    : 'Find and count the lights'}
+              </button>
+            )}
+          />
         </div>
       );
     }

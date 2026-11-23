@@ -9,7 +9,7 @@
 // restarts, one press). Kept here, the state outlives any rebuild, so one
 // press is one write whichever panel is on screen.
 //
-// phase: '' (no first install), 'running', 'done'.
+// phase: '' (no first install), 'running', 'checking', 'done', 'failed'.
 // status/message: what the blank-card Save to card button shows.
 const IDLE = Object.freeze({ phase: '', status: 'idle', message: '' });
 let state = IDLE;
@@ -32,4 +32,20 @@ export function resetFirstInstallState() {
 export function subscribeFirstInstallState(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+// After a first install succeeds the phase is 'checking': the light check
+// (FirstInstallLightCheck) runs before the panel hands on. Several install
+// panels can be on screen, and a rebuilt panel is a new instance, so exactly
+// one claims the check: the first to ask, until it lets go (unmount).
+let checkOwner = null;
+export function claimFirstInstallCheck(owner) {
+  if (checkOwner === null || checkOwner === owner) {
+    checkOwner = owner;
+    return true;
+  }
+  return false;
+}
+export function releaseFirstInstallCheck(owner) {
+  if (checkOwner === owner) checkOwner = null;
 }
