@@ -29,7 +29,10 @@ test('a slow card that is testing the saved wiring reaches the light test, and S
   await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
   await expect.poll(() => linkState(page), { timeout: 30_000 }).toMatch(/^connected-/);
   await page.getByTestId('setup-lights-action').click();
-  await findStrip(page, { pin: 18, count: 41, via: 'tap' });
+  // The sweep ("That's mine"), the way the combined flow's main path finds a
+  // strip. The tap path currently ends in read-back-mismatch on Real-timing
+  // (separate finding, 2026-11-23); it is not what this test is about.
+  await findStrip(page, { pin: 18, count: 41, via: 'sweep' });
   await expect(page.getByTestId('discovery-done')).toBeVisible({ timeout: 30_000 });
   const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || '');
 
