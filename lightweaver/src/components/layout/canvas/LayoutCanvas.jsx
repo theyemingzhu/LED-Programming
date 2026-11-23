@@ -68,16 +68,19 @@ function SymmetryOffer({ suggestion, strips, onMirror, onChoose, onKeep }) {
 
 // While the owner is choosing a number of sides: one card on the artwork that
 // says whether the amber copies line up, in words, with Done as its primary.
-function SymmetryFocusCard({ fold, fits, moved, onDone, onPulse, onRecentre }) {
+function SymmetryFocusCard({ fold, fits, dealt = false, moved, onDone, onPulse, onRecentre }) {
   return (
     <section className="la-symmetry-offer la-symmetry-focus" data-testid="symmetry-focus" aria-labelledby="symmetry-focus-title">
-      <h2 id="symmetry-focus-title" data-testid="symmetry-focus-verdict" data-fits={fits ? 'true' : 'false'}>
+      <h2 id="symmetry-focus-title" data-testid="symmetry-focus-verdict" data-fits={fits ? 'true' : 'false'} data-dealt={dealt ? 'true' : undefined}>
         <span className={`la-symmetry-focus-dot${fits ? ' is-fit' : ''}`} aria-hidden="true"/>
-        {fits ? `${fold} sides line up.` : `Doubled lines: this piece does not have ${fold} matching sides.`}
+        {fits ? `${fold} sides line up.` : dealt
+          ? `${fold} sides set, one after another along the strips.`
+          : `Doubled lines: this piece does not have ${fold} matching sides.`}
       </h2>
       <p>
-        The amber lines are side 1 copied onto the other sides.
-        {fits ? ' They sit on your strips.' : ' Try another number, or drag the centre mark if the piece is off-centre.'}
+        {dealt && !fits
+          ? 'The shape has no matching sides to find, so each side got its strips in order. Move a strip to another side in the list if you want it elsewhere.'
+          : `The amber lines are side 1 copied onto the other sides.${fits ? ' They sit on your strips.' : ' Try another number, or drag the centre mark if the piece is off-centre.'}`}
       </p>
       <div className="la-symmetry-offer-actions">
         <button type="button" className="btn" data-testid="symmetry-focus-done" onClick={onDone}>Done</button>
@@ -1221,7 +1224,7 @@ export function LayoutCanvas({
         )}
 
         {focusActive && focusCentre && !offer && (
-          <SymmetryFocusCard fold={focusFold} fits={focusFits} moved={Boolean(symmetryFocus.centre)}
+          <SymmetryFocusCard fold={focusFold} fits={focusFits} dealt={Boolean(focusSuggestion?.dealt)} moved={Boolean(symmetryFocus.centre)}
                              onDone={() => { stopPulse(); setPulseSide(null); setSymmetryFocus(null); }}
                              onPulse={runPulse}
                              onRecentre={() => { setSymmetryFocus({ centre: null }); placeSidesAbout(null); }}/>

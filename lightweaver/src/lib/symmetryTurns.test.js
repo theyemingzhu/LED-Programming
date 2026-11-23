@@ -162,3 +162,61 @@ test('the sides model accepts the new counts and still refuses others', () => {
   assert.equal(normalizeSymmetry({ fold: 7, sides: [] }), null);
   assert.equal(setSymmetryFold(null, 7, strips), null);
 });
+
+// One reel divided into sections: the strips follow one another along the reel.
+function reel(sizes, pointAt) {
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  let start = 0;
+  return sizes.map((count, k) => {
+    const pixels = Array.from({ length: count }, (_, i) => pointAt((start + i + 0.5) / total));
+    start += count;
+    return { id: `part-${k + 1}`, pixelCount: count, pixels };
+  });
+}
+const straight = t => ({ x: 100 + 400 * t, y: 300 });
+const circle = t => polar(200, t * 360 - 90);
+
+test('one reel in four sections on a straight line: every side gets its section, in reel order', () => {
+  const strips = reel([11, 10, 10, 10], straight);
+  const result = suggestSymmetry(strips, 4);
+  assert.deepEqual(result.sides.map(side => side.stripIds), [['part-1'], ['part-2'], ['part-3'], ['part-4']]);
+  assert.equal(result.dealt, true);
+  assert.equal(result.confidence, 'low');
+  assert.deepEqual(result.onOwn, []);
+  const symmetry = setSymmetryFold(null, 4, strips, result);
+  assert.equal(validateSymmetry(symmetry, strips).ok, true);
+});
+
+test('dealing keeps sections together when there are more sections than sides', () => {
+  const strips = reel([6, 6, 6, 6, 6, 6, 6, 6], straight);
+  assert.deepEqual(suggestSymmetry(strips, 4).sides.map(side => side.stripIds),
+    [['part-1', 'part-2'], ['part-3', 'part-4'], ['part-5', 'part-6'], ['part-7', 'part-8']]);
+  assert.deepEqual(suggestSymmetry(reel([10, 10, 10], straight), 3).sides.map(side => side.stripIds), [['part-1'], ['part-2'], ['part-3']]);
+});
+
+test('a reel bent into a circle is still placed by its shape, not dealt', () => {
+  const result = suggestSymmetry(reel([11, 10, 10, 10], circle), 4, { centre: C });
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.dealt, undefined);
+  assert.ok(result.sides.every(side => side.stripIds.length === 1));
+});
+
+test('too few strips to fill the sides are left as they are, never invented', () => {
+  const result = suggestSymmetry(reel([10, 10], straight), 4);
+  assert.equal(result.dealt, undefined);
+  assert.equal(result.sides.flatMap(side => side.stripIds).length + result.onOwn.length, 2);
+});
+
+test('a guess that already fills every side is not disturbed', () => {
+  const before = suggestSymmetry(lotus(6), 6, { centre: C });
+  assert.equal(before.dealt, undefined);
+  assert.deepEqual(before.onOwn, ['centre-ring']);
+});
+
+test('dealing leaves a centre ring on its own when the other strips can fill the sides', () => {
+  const strips = [...reel([10, 10, 10, 10], t => ({ x: 100 + 400 * t, y: 500 })), arc('centre-ring', 12, 0, 350, 24, { x: 300, y: 500 })];
+  const result = suggestSymmetry(strips, 4, { centre: { x: 300, y: 500 }, pinned: true });
+  assert.ok(result.sides.every(side => side.stripIds.length > 0));
+  assert.ok(!result.sides.flatMap(side => side.stripIds).includes('centre-ring'));
+  assert.ok(result.onOwn.includes('centre-ring'));
+});
