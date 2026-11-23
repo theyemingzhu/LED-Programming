@@ -36,11 +36,14 @@ test.afterEach(async ({ page }, info) => {
   console.log(`[interruptions] ${info.status === info.expectedStatus ? 'GREEN' : 'RED'} ${info.title}\n  Studio said: ${JSON.stringify(words.map(w => `${(w.t / 1000).toFixed(1)}s ${w.text}`))}`);
 });
 
-test('Find my strips Save while the card answers in 13 s: Studio waits, says so, then opens the light test', async ({ page }) => {
+for (const shape of ['settling', 'steady-13s'] as const) test(`Find my strips Save while the card is slow (${shape}): Studio waits, says so, then opens the light test`, async ({ page }) => {
   await guardRealCard(page);
+  // settling: the FS2 measurement exactly (the Real profile's own
+  // unsettledAfterRestart after the restart; fs2-save-after-restart.md).
+  // steady-13s: every reply 13 s for a minute from Save.
   const { card } = createPracticeCard(cardState('factory-blank'), {
     timing: 'real', seed: 11, restartAfterSaveMs: 14_200,
-    overrides: { spontaneousSilence: null, unsettledAfterRestart: null },
+    overrides: shape === 'settling' ? { spontaneousSilence: null } : { spontaneousSilence: null, unsettledAfterRestart: null },
   });
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
@@ -67,7 +70,7 @@ test('Find my strips Save while the card answers in 13 s: Studio waits, says so,
   await startWordsLog(page);
   await startFalseFailureWatch(page, ['read-back-mismatch', 'could not verify', 'did not answer', 'failed']);
   await startQuietWatch(page, 'The lights look correct|Confirm|could not verify|did not');
-  card.setReplyDelay(SLOW_REPLY_MS);
+  if (shape === 'steady-13s') card.setReplyDelay(SLOW_REPLY_MS);
   const slowUntil = Date.now() + SLOW_FOR_MS;
   const fast = setTimeout(() => card.setReplyDelay(0), SLOW_FOR_MS);
   try {
