@@ -55,6 +55,13 @@ const MIRRORED_REPAIR_OUTPUT_PIN = 16;
 const MIRRORED_REPAIR_DEFAULT_PIXELS = 44;
 const MIRRORED_REPAIR_LOOK_IDS = ['fire', 'ripple', 'warm-white', 'aurora', 'plasma', 'ocean', 'rainbow', 'scanner'];
 const MAX_CONTROL_RESPONSE_BYTES = 8192;
+// The card's look list is not a control acknowledgement: it carries every
+// look the card holds. A real card with six looks answers 9,066 bytes (bench
+// 1.2.6, 2026-11-23; the largest look 1.74 KB), so the 8 KiB control bound
+// refused it and "Open installed project" adopted no looks at all (L1). The
+// card stores at most 32 looks (LW_MAX_LOOKS); 32 × 4 KiB, over twice the
+// largest look seen, is 128 KiB.
+export const MAX_CARD_PATTERNS_RESPONSE_BYTES = 128 * 1024;
 const MAX_CARD_PATTERNS = 48;
 const MAX_CARD_PATTERN_ZONES = 16;
 const CARD_PATTERN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -200,10 +207,10 @@ function previewAckError(reason, message, cause) {
   return new CardPushError(reason, message, cause);
 }
 
-function oversizedControlResponseError() {
+function oversizedControlResponseError(maxBytes = MAX_CONTROL_RESPONSE_BYTES) {
   return new CardPushError(
     'response-too-large',
-    `The card returned more than ${MAX_CONTROL_RESPONSE_BYTES} bytes for a control command.`,
+    `The card returned more than ${maxBytes} bytes for a control command.`,
   );
 }
 
@@ -211,15 +218,15 @@ function utf8Length(value = '') {
   return new TextEncoder().encode(String(value)).byteLength;
 }
 
-async function readBoundedControlResponseText(response) {
+async function readBoundedControlResponseText(response, maxBytes = MAX_CONTROL_RESPONSE_BYTES) {
   const declaredLength = Number(response?.headers?.get?.('Content-Length'));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_CONTROL_RESPONSE_BYTES) {
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     try {
       await response?.body?.cancel?.();
     } catch {
       // The response is already rejected; cancellation is best-effort only.
     }
-    throw oversizedControlResponseError();
+    throw oversizedControlResponseError(maxBytes);
   }
 
   if (response?.body?.getReader) {
@@ -231,9 +238,9 @@ async function readBoundedControlResponseText(response) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value?.byteLength || 0;
-      if (bytes > MAX_CONTROL_RESPONSE_BYTES) {
+      if (bytes > maxBytes) {
         await reader.cancel().catch(() => {});
-        throw oversizedControlResponseError();
+        throw oversizedControlResponseError(maxBytes);
       }
       text += decoder.decode(value, { stream: true });
     }
@@ -242,7 +249,7 @@ async function readBoundedControlResponseText(response) {
 
   if (typeof response?.text === 'function') {
     const text = await response.text();
-    if (utf8Length(text) > MAX_CONTROL_RESPONSE_BYTES) throw oversizedControlResponseError();
+    if (utf8Length(text) > maxBytes) throw oversizedControlResponseError(maxBytes);
     return text;
   }
 
@@ -255,20 +262,20 @@ async function readBoundedControlResponseText(response) {
     } catch (error) {
       throw previewAckError('invalid-acknowledgement', 'The card returned an unreadable control acknowledgement.', error);
     }
-    if (utf8Length(text) > MAX_CONTROL_RESPONSE_BYTES) throw oversizedControlResponseError();
+    if (utf8Length(text) > maxBytes) throw oversizedControlResponseError(maxBytes);
     return text;
   }
   return '';
 }
 
-function requireBoundedControlObject(response) {
+function requireBoundedControlObject(response, maxBytes = MAX_CONTROL_RESPONSE_BYTES) {
   let encoded;
   try {
     encoded = JSON.stringify(response);
   } catch (error) {
     throw previewAckError('invalid-acknowledgement', 'The card returned an unreadable preview acknowledgement.', error);
   }
-  if (utf8Length(encoded) > MAX_CONTROL_RESPONSE_BYTES) throw oversizedControlResponseError();
+  if (utf8Length(encoded) > maxBytes) throw oversizedControlResponseError(maxBytes);
   return response;
 }
 
@@ -910,9 +917,10 @@ async function readCardPatterns(host, options = {}) {
     if (acquired?.connected) authority = acquired;
     else if (acquired?.reason === 'wrong-card') throw new CardPushError('wrong-card', 'A different Lightweaver card answered.');
   }
-  if (authority) return normalizeCardPatternsPayload(requireBoundedControlObject(await authority.request('/api/patterns')));
+  const maxBytes = MAX_CARD_PATTERNS_RESPONSE_BYTES;
+  if (authority) return normalizeCardPatternsPayload(requireBoundedControlObject(await authority.request('/api/patterns'), maxBytes));
   if (hasVerifiedBridgeForHost(host)) {
-    return normalizeCardPatternsPayload(requireBoundedControlObject(await sendCardBridgeRequest('patterns', {}, { host, timeoutMs })));
+    return normalizeCardPatternsPayload(requireBoundedControlObject(await sendCardBridgeRequest('patterns', {}, { host, timeoutMs }), maxBytes));
   }
   await guardDirectCardMutation(host, {
     fetchImpl: options.fetchImpl,
@@ -923,7 +931,7 @@ async function readCardPatterns(host, options = {}) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const response = await fetch(`${cardHostToUrl(host)}/api/patterns`, { signal: ctrl.signal });
-    const text = await readBoundedControlResponseText(response);
+    const text = await readBoundedControlResponseText(response, maxBytes);
     if (!response.ok) throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     try {
       return normalizeCardPatternsPayload(JSON.parse(text));

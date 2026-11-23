@@ -69,7 +69,7 @@ test('six looks on the card, the project opened short: Save to card stops, and K
   await save.click();
   const guard = page.getByTestId('look-loss-guard');
   await expect(guard, 'the save that would drop looks is stopped').toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/the card holds 6 looks, and this save would send/)).toBeVisible();
+  await expect(page.getByText(/the card holds 6 looks, and this save would send/).first()).toBeVisible();
   expect(configWrites(card).length - before, 'nothing was sent').toBe(0);
   expect(card.state.patterns.map(p => p.id).sort(), 'the card still holds its six looks').toEqual([...SIX].sort());
 

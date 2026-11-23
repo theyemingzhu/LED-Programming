@@ -65,6 +65,10 @@ import { cardPartialOrigin } from './projectCopyLabel.js';
 import { colorJourneyLayoutKey, normalizeStoredNativeColorJourney, patternLabRecipeFromNativeColorJourney } from './colorJourneyNative.js';
 import { applyLookToPatchBoard, deriveSectionTargets } from './sectionLookModel.js';
 import { compileWiring } from './wiringCompiler.js';
+import { CARD_READ_RETRY, withCardReadRetry } from './cardPushClient.js';
+
+// L1: the plain words for a card whose look list could not be read whole.
+export const LOOKS_UNREADABLE_MESSAGE = 'Studio could not read every look on this card, so nothing was opened and your open project is unchanged. Check the card has power and is on this Wi-Fi, then try again.';
 
 export const SAVE_FAILURE_MESSAGES = Object.freeze({
   'browser-recovery-failed': 'Studio could not create a browser recovery copy. Your current project is still open; free browser storage and retry.',
@@ -430,9 +434,12 @@ async function runReconstructStrategy(deps, params = {}) {
   let zones;
   let firmwareInfo;
   let skeleton;
+  let installedState;
   try {
-    const installedState = await Promise.allSettled([
-      io.readCardPatternsFromCard({ host: readHost }),
+    installedState = await Promise.allSettled([
+      // A slow card gets the same allowance and retries as every other read
+      // (CARD_READ_RETRY): the look list is the largest thing the card sends.
+      withCardReadRetry(() => io.readCardPatternsFromCard({ host: readHost, timeoutMs: CARD_READ_RETRY.timeoutMs }), io.patternReadRetry || {}),
       io.readCardZonesFromCard({ host: readHost }),
       // Optional: older callers and legacy cards adopt without it.
       io.readCardFirmwareInfoEnvelope
@@ -448,6 +455,13 @@ async function runReconstructStrategy(deps, params = {}) {
   }
   if (!skeleton.strips.length) {
     return { ok: false, reason: 'no-geometry', status };
+  }
+  // L1: never adopt a partial project. Without the look list the project is
+  // rebuilt from the status skeleton alone (one look), and the next save sends
+  // that one look and wipes the rest off the card. A card whose looks cannot
+  // be read whole (too large, too late, refused) opens nothing.
+  if (installedState?.[0]?.status !== 'fulfilled' || !Array.isArray(patterns?.patterns)) {
+    return { ok: false, reason: 'looks-unreadable', message: LOOKS_UNREADABLE_MESSAGE, error: installedState?.[0]?.reason || null, status };
   }
   const reconstructionCardId = String(status?.cardId || cardLink?.card?.id || '').trim();
   try {
