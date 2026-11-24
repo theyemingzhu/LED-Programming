@@ -35,7 +35,9 @@ const DESKTOP = { width: 1280, height: 860, isMobile: false, hasTouch: false };
 // moves to the card's Wi-Fi address after the save. Measured on this branch;
 // the link is not part of this change. Way in 2 keeps the full list.
 const WORDING = [...FALSE_FAILURE_WORDING, 'could not', 'failed'];
-const WORDING_WAY1 = WORDING.filter(phrase => phrase !== 'not connected');
+// Way in 1 once allowed "not connected": a blank card's first save waited 45 s
+// for a restart that never came (BlankCardFirstInstall.jsx). Fixed 2026-11-24.
+const WORDING_WAY1 = WORDING;
 
 async function linkConnected(page: Page) {
   return page.evaluate(async () => {
@@ -203,15 +205,12 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
         await confirm.click();
         await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 60_000 })
           .toEqual({ pixels: 41, provisional: false });
-        // Known defect FS1 (TODO.md): during the protected light test the card
-        // runs the candidate on probation and reports runtimePhase
-        // 'recovering' (LightweaverProvisioningPolicy.h provisioningPhaseForLoad);
-        // Card Home's lifecycle labels that "Needs attention" for about a second.
-        // Named here, not hidden: every other wording still fails the test.
-        const seen = await falseFailures(page);
-        const fs1 = seen.filter(text => /needs attention/i.test(text));
-        if (fs1.length) test.info().annotations.push({ type: 'known-defect', description: `FS1: ${fs1.length} "Needs attention" during the light test` });
-        expect(seen.filter(text => !/needs attention/i.test(text))).toEqual([]);
+        // FS1: during the protected light test the card runs the candidate on
+        // probation and reports runtimePhase 'recovering'; Card Home used to
+        // label that "Needs attention" for about a second. The lifecycle now
+        // reads the card's wiringProbation flag (cardLifecycle.js), so no
+        // failure wording at all is allowed here.
+        expect(await falseFailures(page)).toEqual([]);
       });
 
       if (timing === 'fast') {
