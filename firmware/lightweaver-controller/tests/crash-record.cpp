@@ -177,8 +177,10 @@ void reports() {
   int braces = 0, brackets = 0;
   for (char c : text) {
     assert(static_cast<unsigned char>(c) >= 0x20);
-    if (c == '{') braces++; if (c == '}') braces--;
-    if (c == '[') brackets++; if (c == ']') brackets--;
+    if (c == '{') braces++;
+    if (c == '}') braces--;
+    if (c == '[') brackets++;
+    if (c == ']') brackets--;
   }
   assert(braces == 0 && brackets == 0);
   // Too small a buffer returns nothing, never a cut-off report.
