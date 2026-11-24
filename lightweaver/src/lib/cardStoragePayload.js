@@ -72,7 +72,7 @@ function dropEqual(object, defaults) {
 }
 
 // The card reads a missing field as the default, so leaving it out changes
-// nothing it plays. Kept on purpose: led.type and led.maxMilliamps (bound into
+// nothing it plays. kept on purpose: led.type, led.colorOrder and led.maxMilliamps (bound into
 // the wiring digest and the "explicit current limit" status), and `mode` when
 // it is anything but the default (an sd-sequence config is a different file).
 function omitFirmwareDefaults(config) {
@@ -80,7 +80,11 @@ function omitFirmwareDefaults(config) {
   if (config.mode === defaults.mode) delete config.mode;
 
   if (isObject(config.led)) {
-    dropEqual(config.led, defaults.led);
+    // colorOrder stays: Studio binds it into the wiring digest, and a body
+    // without it no longer matches the digest it was prepared with (the
+    // install is refused with "wiring-identity-mismatch").
+    const { colorOrder, ...ledDefaults } = defaults.led;
+    dropEqual(config.led, ledDefaults);
     const calibration = config.led.calibration;
     if (isObject(calibration) && Object.keys(defaults.led.calibration)
       .every(channel => calibration[channel] === defaults.led.calibration[channel])

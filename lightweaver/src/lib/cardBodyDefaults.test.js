@@ -139,7 +139,7 @@ function fullConfig() {
 test('compaction leaves out exactly the fields equal to the card defaults', () => {
   const body = compactCardStorageConfig(fullConfig());
   assert.equal(body.mode, undefined);
-  assert.equal(body.led.colorOrder, undefined);
+  assert.equal(body.led.colorOrder, 'RGB', 'colorOrder is bound into the wiring digest, so it is always sent');
   assert.equal(body.led.outputGammaEnabled, undefined);
   assert.equal(body.led.outputGammaValue, undefined);
   assert.equal(body.led.calibration, undefined);
@@ -217,7 +217,8 @@ test('the real project with strip 2 changed to Ocean fits under 3968', () => {
   // with the previous compaction on the same inputs: 4293 bytes, over the cap.
   const BEFORE = 4293;
   assert.ok(BEFORE > CARD_CONFIG_STORAGE_LIMIT_BYTES);
-  assert.ok(bytes <= BEFORE - 800, `saved only ${BEFORE - bytes} bytes`);
+  // 780, not 800: colorOrder is always sent (it is in the wiring digest).
+  assert.ok(bytes <= BEFORE - 780, `saved only ${BEFORE - bytes} bytes`);
 });
 
 // ---- 4. round trip through the card read-back and adoption -----------------
