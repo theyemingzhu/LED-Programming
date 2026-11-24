@@ -2,6 +2,26 @@ import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 
 export const CARD_CONFIG_STORAGE_LIMIT_BYTES = CARD_HARDWARE_CONTRACT.configCapacityBytes;
 
+// What the card fills in for itself when a field is missing from the body.
+// Each value is pinned to the firmware source by cardBodyDefaults.test.js, so
+// a firmware change that moves one fails there instead of silently changing
+// what a shorter body means.
+export const CARD_FIRMWARE_DEFAULTS = Object.freeze({
+  mode: 'website-flash',
+  led: Object.freeze({
+    colorOrder: 'RGB',
+    outputGammaEnabled: false,
+    outputGammaValue: 2.2,
+    calibration: Object.freeze({ red: 1, green: 1, blue: 1 }),
+  }),
+  controls: Object.freeze({
+    encoder: Object.freeze({
+      a: 4, b: 5, press: 0, alternatePress: 6, rotateDirection: 'clockwise-brighter', brightnessStep: 18,
+    }),
+    previous: 7, next: 8, blackout: 9, brightness: -1, statusLed: 2,
+  }),
+});
+
 export class CardConfigCapacityError extends Error {
   constructor(bytes, maxBytes) {
     super(
@@ -35,11 +55,64 @@ export function compactCardStorageConfig(runtimePackageOrConfig = {}) {
     delete config.controls.encoder.patternCycleIds;
   }
 
+  omitFirmwareDefaults(config);
+
   if (Array.isArray(config.kaleidoscopeMappings)) {
     config.kaleidoscopeMappings = config.kaleidoscopeMappings.map(compactKaleidoscopeMapping);
   }
 
   return config;
+}
+
+function dropEqual(object, defaults) {
+  if (!isObject(object)) return;
+  for (const [field, value] of Object.entries(defaults)) {
+    if (!isObject(value) && object[field] === value) delete object[field];
+  }
+}
+
+// The card reads a missing field as the default, so leaving it out changes
+// nothing it plays. kept on purpose: led.type, led.colorOrder and led.maxMilliamps (bound into
+// the wiring digest and the "explicit current limit" status), and `mode` when
+// it is anything but the default (an sd-sequence config is a different file).
+function omitFirmwareDefaults(config) {
+  const defaults = CARD_FIRMWARE_DEFAULTS;
+  if (config.mode === defaults.mode) delete config.mode;
+
+  if (isObject(config.led)) {
+    // colorOrder stays: Studio binds it into the wiring digest, and a body
+    // without it no longer matches the digest it was prepared with (the
+    // install is refused with "wiring-identity-mismatch").
+    const { colorOrder, ...ledDefaults } = defaults.led;
+    dropEqual(config.led, ledDefaults);
+    const calibration = config.led.calibration;
+    if (isObject(calibration) && Object.keys(defaults.led.calibration)
+      .every(channel => calibration[channel] === defaults.led.calibration[channel])
+      && Object.keys(calibration).length === Object.keys(defaults.led.calibration).length) {
+      delete config.led.calibration;
+    }
+  }
+
+  if (isObject(config.controls)) {
+    dropEqual(config.controls, defaults.controls);
+    if (isObject(config.controls.encoder)) {
+      dropEqual(config.controls.encoder, defaults.controls.encoder);
+      if (Object.keys(config.controls.encoder).length === 0) delete config.controls.encoder;
+    }
+    if (Object.keys(config.controls).length === 0) delete config.controls;
+  }
+
+  // A look section label the card would show anyway: the label of the live
+  // section with the same id. The card only echoes look section labels back
+  // (nothing plays from them), and adoption never reads them.
+  const liveLabels = new Map((Array.isArray(config.zones) ? config.zones : [])
+    .filter(zone => isObject(zone) && typeof zone.id === 'string')
+    .map(zone => [zone.id, zone.label]));
+  for (const look of Array.isArray(config.looks) ? config.looks : []) {
+    for (const zone of Array.isArray(look?.zones) ? look.zones : []) {
+      if (isObject(zone) && liveLabels.has(zone.id) && zone.label === liveLabels.get(zone.id)) delete zone.label;
+    }
+  }
 }
 
 function compactKaleidoscopeMapping(mapping) {

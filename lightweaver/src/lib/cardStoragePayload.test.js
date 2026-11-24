@@ -151,17 +151,17 @@ test('removes the encoder cycle metadata that firmware does not deserialize', ()
   const compact = compactCardStorageConfig({
     controls: {
       encoder: {
-        a: 4,
+        a: 10,
         patternCycleIds: ['aurora', 'fire'],
         futureEncoderOption: 'preserved',
       },
-      next: 8,
+      next: 12,
     },
   });
 
   assert.deepEqual(compact.controls, {
-    encoder: { a: 4, futureEncoderOption: 'preserved' },
-    next: 8,
+    encoder: { a: 10, futureEncoderOption: 'preserved' },
+    next: 12,
   });
 });
 
@@ -306,7 +306,7 @@ test('preserves an object-valued config key when the input is a raw config', () 
 
   const compact = compactCardStorageConfig(rawConfig);
 
-  assert.equal(compact.mode, 'website-flash');
+  assert.equal(compact.mode, undefined); // the card's own default
   assert.equal(compact.futureRootField, 'keep this');
   assert.deepEqual(compact.config, { futureNestedField: true });
   assert.deepEqual(compact.looks, [{ id: 'aurora' }]);

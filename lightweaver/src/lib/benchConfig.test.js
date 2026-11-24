@@ -21,7 +21,7 @@ import {
 } from './benchConfig.js';
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import { makeCardRuntimePackage } from './cardRuntimeContract.js';
-import { CARD_CONFIG_STORAGE_LIMIT_BYTES, prepareCardStoragePayload } from './cardStoragePayload.js';
+import { CARD_CONFIG_STORAGE_LIMIT_BYTES, CARD_FIRMWARE_DEFAULTS, prepareCardStoragePayload } from './cardStoragePayload.js';
 import { PORT_ROLE_CONTROL, PORT_ROLE_STRIP, PORT_ROLE_UNUSED } from './portRoles.js';
 
 const PINS = CARD_HARDWARE_CONTRACT.outputPins;
@@ -195,16 +195,19 @@ test('a port on a default control GPIO is skipped, not silently repinned', () =>
   assert.deepEqual(layout.map(entry => entry.pin), [SAFE_PINS[0]]);
   assert.deepEqual(skipped, [{ pin: reserved, reason: BENCH_SKIP_RESERVED_CONTROL_PIN }]);
   // The controls the config ships with must still own that GPIO.
+  // A pin the body leaves out is the card's own default pin.
+  const pinOf = (value, fallback) => value ?? fallback;
+  const shipped = CARD_FIRMWARE_DEFAULTS.controls;
   const controlPins = [
-    config.controls.encoder.a,
-    config.controls.encoder.b,
-    config.controls.encoder.press,
-    config.controls.encoder.alternatePress,
-    config.controls.previous,
-    config.controls.next,
-    config.controls.blackout,
-    config.controls.brightness,
-    config.controls.statusLed,
+    pinOf(config.controls?.encoder?.a, shipped.encoder.a),
+    pinOf(config.controls?.encoder?.b, shipped.encoder.b),
+    pinOf(config.controls?.encoder?.press, shipped.encoder.press),
+    pinOf(config.controls?.encoder?.alternatePress, shipped.encoder.alternatePress),
+    pinOf(config.controls?.previous, shipped.previous),
+    pinOf(config.controls?.next, shipped.next),
+    pinOf(config.controls?.blackout, shipped.blackout),
+    pinOf(config.controls?.brightness, shipped.brightness),
+    pinOf(config.controls?.statusLed, shipped.statusLed),
   ];
   assert.ok(controlPins.includes(reserved));
 });
@@ -232,12 +235,12 @@ test('legacy zone upgrade retains observed chipset, color order, controls and di
   });
   assert.deepEqual(layout.map(entry => [entry.pin, entry.count]), [[SAFE_PINS[0], 31], [SAFE_PINS[1], 19]]);
   assert.equal(config.led.type, 'WS2815');
-  assert.equal(config.led.colorOrder, 'RGB');
+  assert.equal(config.led.colorOrder ?? CARD_FIRMWARE_DEFAULTS.led.colorOrder, 'RGB');
   assert.equal(config.led.maxMilliamps, 1200);
   assert.equal(config.led.brightnessLimit, 0.35);
   assert.equal(config.controls.encoder.rotateDirection, controls.encoder.rotateDirection);
   assert.equal(config.controls.encoder.brightnessStep, 12);
-  assert.equal(config.controls.statusLed, 2);
+  assert.equal(config.controls.statusLed ?? CARD_FIRMWARE_DEFAULTS.controls.statusLed, 2);
   assert.throws(() => buildBenchConfig(stripRoles({ [SAFE_PINS[0]]: 31 }),
     { maxMilliamps: 2001 }), /current limit/i);
 });
@@ -322,7 +325,7 @@ test('the bench look is a single dim warm white', () => {
   // compactCardStorageConfig drops the encoder cycle and the pattern bank once
   // looks are present — the card derives both from the single look, and the
   // bytes are needed for the 3968-byte budget.
-  assert.equal(config.controls.encoder.patternCycleIds, undefined);
+  assert.equal(config.controls?.encoder?.patternCycleIds, undefined);
   assert.equal(config.patterns, undefined);
 });
 
