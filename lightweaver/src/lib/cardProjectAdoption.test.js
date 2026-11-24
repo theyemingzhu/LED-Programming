@@ -563,6 +563,39 @@ test('card reconstruction preserves saved section appearances and pattern ids th
   }
 });
 
+test('a look id already grown by old Studio builds stops growing through open-and-save round trips', () => {
+  // Adrian's real card (lw-b0fe81f61b44, 2026-11-23 and 2026-11-24 snapshots)
+  // holds this id: created around 2026-05-31 and re-wrapped by builds before
+  // the 2026-09-28 prefix fix. The current open/save path must keep it exactly.
+  const grownId = 'combo-combo-combo-1780274480570-1';
+  const output = { id: 'one-output', pin: 18, pixels: 41, segments: [{ id: 'run-all', count: 41, direction: 'forward' }] };
+  const skeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: [output] }));
+  const zonesFor = patternId => [{ id: 'strip-1', patternId, brightness: 0.5, ranges: [{ start: 0, count: 41 }] }];
+  const patterns = {
+    currentId: grownId,
+    patterns: [
+      { id: grownId, label: 'Old look', zones: zonesFor('ocean') },
+      { id: 'combo-sparkle', label: 'Sparkle', zones: zonesFor('sparkle') },
+    ],
+  };
+  const exportProject = adopted => buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: adopted.strips,
+    patchBoard: adopted.patchBoard, wiring: adopted.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  });
+  let adopted = reconstructInstalledCardState({ skeleton, patterns, zones: { startupPatternId: grownId, zones: patterns.patterns[0].zones } });
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    const exported = exportProject(adopted);
+    assert.deepEqual(exported.config.looks.map(look => look.id), [grownId, 'combo-sparkle'], `cycle ${cycle}`);
+    assert.equal(exported.config.startupPatternId, grownId, `cycle ${cycle}`);
+    adopted = reconstructInstalledCardState({
+      skeleton: projectSkeletonFromCardStatus(statusEnvelope({ outputs: exported.config.led.outputs })),
+      patterns: { currentId: exported.config.startupPatternId, patterns: exported.config.looks },
+      zones: { startupPatternId: exported.config.startupPatternId, zones: exported.config.zones },
+    });
+  }
+});
+
 test('card reconstruction hydrates current section playback from live zones without changing saved looks', () => {
   const counts = [11, 5, 10, 10, 5];
   const output = {
