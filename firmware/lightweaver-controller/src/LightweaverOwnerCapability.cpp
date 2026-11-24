@@ -41,7 +41,7 @@ bool LightweaverOwnerCapability::issue(const LightweaverOwnerBinding& binding,
     revoke();
     return false;
   }
-  // Every deliberate, physically authorized issuance supersedes earlier media
+  // Every issuance supersedes earlier media
   // leases, including a retry with the same owner binding after a lost abort.
   leaseEpoch_++;
   if (leaseEpoch_ == 0) leaseEpoch_ = 1;
@@ -183,22 +183,17 @@ void handleOwnerIssue() {
   binding.operationGeneration = doc["operationGeneration"] | 0U;
   binding.expectedProjectHead = expectedHead;
 
-  if (!ownerOriginAllowed(origin, host)) {
+  const LightweaverOwnerIssueDecision decision = lightweaverOwnerIssueDecision(
+      ownerOriginAllowed(origin, host), binding.cardId == runtimeCardId(),
+      binding.bootId == runtimeBootId(),
+      expectedHead == lightweaverProjectRepository().currentHead());
+  if (decision == LightweaverOwnerIssueDecision::OriginRefused) {
     lightweaverOwnerCapability().revoke();
     g_ownerServer->send(403, "application/json",
                         "{\"ok\":false,\"error\":\"origin is not allowed\"}");
     return;
   }
-  if (!runtimeOwnerPairingAuthorized()) {
-    // Same-origin reachability is deliberately insufficient. A configured
-    // card requires a recent physical control action; an uncommissioned card
-    // uses its existing commissioning authority.
-    g_ownerServer->send(403, "application/json",
-                        "{\"ok\":false,\"error\":\"touch a card control to pair\"}");
-    return;
-  }
-  if (binding.cardId != runtimeCardId() || binding.bootId != runtimeBootId() ||
-      expectedHead != lightweaverProjectRepository().currentHead()) {
+  if (decision == LightweaverOwnerIssueDecision::BindingChanged) {
     lightweaverOwnerCapability().revoke();
     g_ownerServer->send(409, "application/json",
                         "{\"ok\":false,\"error\":\"card, boot, or project head changed\"}");
