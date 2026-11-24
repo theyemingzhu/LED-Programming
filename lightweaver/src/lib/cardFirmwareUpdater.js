@@ -1,3 +1,4 @@
+import { cardReportsNoTouch } from './cardNeedsTouch.js';
 export const FIRMWARE_UPDATE_CHUNK_BYTES = 32 * 1024;
 export const FIRMWARE_UPDATE_SESSION_KEY = 'lw_firmware_update_session_v1';
 
@@ -43,6 +44,7 @@ function validRelease(release) {
 }
 
 function binding(authority, release, physicalConfirmation, softwareGrant) {
+  const noTouch = cardReportsNoTouch(authority?.readiness) || cardReportsNoTouch(authority);
   const grantPayload = typeof softwareGrant?.grantPayload === 'string' ? softwareGrant.grantPayload : '';
   const grantSignature = text(softwareGrant?.grantSignature, 128);
   const softwareAuthorized = Boolean(grantPayload && grantSignature);
@@ -63,14 +65,15 @@ function binding(authority, release, physicalConfirmation, softwareGrant) {
     || !result.bootId || !result.ownerSessionId
     || !Number.isSafeInteger(result.operationGeneration) || result.operationGeneration <= 0
     || result.expectedProjectHead === null
-    || (!softwareAuthorized && (!result.capability || !result.physicalConfirmationNonce))) {
+    // A card that reports ownerNoTouch needs the owner capability only: no confirmation nonce.
+    || (!softwareAuthorized && (!result.capability || (!noTouch && !result.physicalConfirmationNonce)))) {
     throw new Error('A current exact-card update authorization is required.');
   }
   if (!softwareAuthorized
     && text(authority.ownerCapabilityExpectedHead, 64).toLowerCase() !== result.expectedProjectHead) {
     throw new Error('Owner authority is bound to a different project head.');
   }
-  return Object.freeze({ ...result, authorization: softwareAuthorized ? 'software-grant' : 'physical-owner' });
+  return Object.freeze({ ...result, authorization: softwareAuthorized ? 'software-grant' : noTouch ? 'owner' : 'physical-owner' });
 }
 
 function mutationHeaders(value, additions = {}) {

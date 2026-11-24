@@ -412,3 +412,17 @@ test('an already-aborted delivery performs no source or runtime operation', asyn
   assert.equal(result.reason, 'cancelled');
   assert.equal(calls, 0);
 });
+
+test('delivery runs the same steps for an old card and for a card that reports ownerNoTouch', async () => {
+  const run = async capabilities => {
+    const evidence = cardEvidence({ capabilities, status: { ...cardEvidence().status, capabilities } });
+    const plan = prepare(projectFixture(), { cardEvidence: evidence });
+    const events = [];
+    const result = await runExpressionSceneDelivery(plan, happyOperations(plan, events));
+    return { ok: result.ok, state: result.state, events };
+  };
+  const old = await run({});
+  const noTouch = await run({ ownerNoTouch: 1 });
+  assert.equal(old.ok, true);
+  assert.deepEqual(noTouch, old);
+});

@@ -1,3 +1,4 @@
+import { OLD_CARD_TOUCH_SENTENCE, cardNeedsTouch } from './lib/cardNeedsTouch.js';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './v3/v3-styles.css';
@@ -32,7 +33,7 @@ function CardProjectGate({ authority }) {
       setOpened(await authorizeCardLocalProject({ authority }));
     } catch (cause) {
       setError(cause?.status === 403
-        ? 'The card did not confirm the physical gesture. Touch a card control, then try again.'
+        ? (cardNeedsTouch(authority) ? OLD_CARD_TOUCH_SENTENCE : 'The card did not grant editing permission. Reload this page and try again.')
         : (cause?.message || 'The editable project could not be opened from this card.'));
     } finally {
       setBusy(false);
@@ -43,7 +44,9 @@ function CardProjectGate({ authority }) {
       <section className="screen-recovery-card">
         <span className="screen-recovery-kicker">Lightweaver card Studio</span>
         <h1>Open the editable project on this card</h1>
-        <p>Touch a physical control on the card, then continue. This creates a short editing permission bound to this exact card, boot, network, and project head.</p>
+        <p>{cardNeedsTouch(authority)
+          ? 'Touch a physical control on the card, then continue. This creates a short editing permission bound to this exact card, boot, network, and project head.'
+          : 'Continue to get a short editing permission for this exact card.'}</p>
         <button type="button" className="btn primary" onClick={openProject} disabled={busy}>
           {busy ? 'Opening card project…' : 'Open card project'}
         </button>
