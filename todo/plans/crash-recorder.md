@@ -57,7 +57,7 @@ In this pull request, because Studio code is not firmware-sensitive: `lightweave
 
 1. **Wire it in** (needs a bench card): the breadcrumb refresh in the main loop, phase markers around config save and render, the boot-time promotion and NVS write, the `lastCrash` field in `/api/status` (main.cpp, next to `resetReason`), and `capabilities.crashRecorder = 1` so Studio can tell a card with no crashes from a card without the recorder.
 2. **Bench check** (needs the real card): the core-dump question above; one deliberate `abort()` and one deliberate stall to see a panic record and a watchdog record arrive on `/api/status` and survive a power cycle.
-3. **Studio line**: show `describeCardCrash` in the Card Home health fold, only when a crash is recorded, and include the record in the support code. Not a status banner: a crash is a diagnosis for support, not a thing the owner must act on.
+3. ~~**Studio line**~~ Done 2026-11-24: Card Home's Health row shows `describeCardCrash` only when a crash is recorded, with a Copy crash details button (`formatCardCrashDetails`). Not a status banner: a crash is a diagnosis for support, not a thing the owner must act on. The capability flag the card sends is `capabilities.crashRecorder` (not `crashLog`).
 4. **Decision for Adrian**: whether a task watchdog stall should panic (backtrace, restart) or reset quietly as today.
 
 ## Not doing

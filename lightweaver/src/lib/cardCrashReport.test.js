@@ -52,3 +52,24 @@ test('the plain-language line names the cause, the activity and the count', () =
   assert.match(first, /restarted unexpectedly/);
   assert.match(first, /1 time\./);
 });
+
+test('the Health line speaks only when there is something to say', async () => {
+  const { cardCrashLine } = await import('./cardCrashReport.js');
+  assert.equal(cardCrashLine(parseCardCrashReport({})), '');
+  assert.equal(cardCrashLine(parseCardCrashReport({ lastCrash: 'x' })), 'The card reports a crash record Studio cannot read.');
+  assert.match(cardCrashLine(parseCardCrashReport({ lastCrash: recorded })), /stopped responding \(task watchdog\) while saving a project, after 7\.57 hours/);
+});
+
+test('copied crash details name the build and every trace address', async () => {
+  const { formatCardCrashDetails } = await import('./cardCrashReport.js');
+  assert.equal(formatCardCrashDetails(parseCardCrashReport({})), '');
+  const text = formatCardCrashDetails(parseCardCrashReport({ lastCrash: recorded }), {
+    cardId: 'lw-b0fe81f61b44', firmwareVersion: '1.2.7', buildNumber: 2895,
+  });
+  assert.match(text, /Firmware: 1\.2\.7 \(build 2895\)/);
+  assert.match(text, /Card: lw-b0fe81f61b44/);
+  assert.match(text, /Backtrace: 0x420a1b2c 0x4037f001/);
+  const bare = formatCardCrashDetails(parseCardCrashReport({ lastCrash: { ...recorded, pc: '0x00000000', backtrace: [] } }));
+  assert.match(bare, /Backtrace: none recorded/);
+  assert.match(bare, /build unknown/);
+});
