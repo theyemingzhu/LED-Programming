@@ -212,3 +212,9 @@ Re-measured on `origin/main` 7565de7b (nine cuts merged as #458; the mobile batc
 No measured count missed its target. One driver needed a fix on main: "Save a look" pressed "Install on card", which main now calls "Save to card" (glossary); the press count is unchanged.
 
 Page: https://claude.ai/artifact/MLSTjcKs785q9zFF82hZcJ (real after-screenshots from build 2623).
+
+## Re-measured on main 2846, 2026-11-24
+
+`tests/ux` on `origin/main` dc18eea1, practice card, `--workers=1`: 31/33 passed. The two reds are the `_scale` and `phone-shell` probes, not journeys. Phone and desktop gave the same counts.
+
+First setup 8 (was 10 on build 2623; later Find my strips work removed two more), change count 2, fresh browser 2, card update 2, rename 3, USB Wi-Fi 6, remembered card 0, Wi-Fi drop 0, pick a look 2, save a look 2, edit and delete a look 6, playlist 6. **All twelve: 39 phone, 39 desktop** (started at 52 / 51). PR #450 is closed as superseded by #458.

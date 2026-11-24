@@ -48,7 +48,7 @@ index 00000000..d3fa8273
 +      a.hueOffset == b.hueOffset;
 +}
 diff --git a/firmware/lightweaver-controller/src/LightweaverRuntimeApi.h b/firmware/lightweaver-controller/src/LightweaverRuntimeApi.h
-index 0072d748..e025d7a6 100644
+index 5d412e3c..bbf12ef4 100644
 --- a/firmware/lightweaver-controller/src/LightweaverRuntimeApi.h
 +++ b/firmware/lightweaver-controller/src/LightweaverRuntimeApi.h
 @@ -3,6 +3,7 @@
@@ -59,9 +59,9 @@ index 0072d748..e025d7a6 100644
  #include "LightweaverOutputColorConfig.h"
  
  struct RuntimeConfig;
-@@ -170,23 +171,14 @@ String runtimeNetworkIdentity();
- // on a physical card control. Same-origin HTTP reachability is never enough.
- bool runtimeOwnerPairingAuthorized();
+@@ -168,23 +169,14 @@ bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
+                            size_t pixelCount, bool physicalOrder);
+ String runtimeNetworkIdentity();
  
 -// Live per-zone tweak persistence (power-cycle resume). The data model and
 -// its NVS-backed load/save/clear live in LightweaverStorage.h/.cpp; these are
@@ -91,7 +91,7 @@ index 0072d748..e025d7a6 100644
  
  // Timed playlist (dwell + cross-fade auto-advance through installed looks /
  // compiled patterns / presets — same resolution POST /api/control's
-@@ -205,7 +197,7 @@ bool runtimePlaylistPrevious();
+@@ -203,7 +195,7 @@ bool runtimePlaylistPrevious();
  // advance. A no-op when nothing is playing.
  void playlistPauseForManualChange();
  String runtimePlaylistStatusJson();
@@ -101,10 +101,10 @@ index 0072d748..e025d7a6 100644
  
  uint8_t runtimeOutputRequestedBrightnessByte();
 diff --git a/firmware/lightweaver-controller/src/LightweaverStorage.cpp b/firmware/lightweaver-controller/src/LightweaverStorage.cpp
-index 069fea1c..6e750276 100644
+index fe21c5ec..373e89b2 100644
 --- a/firmware/lightweaver-controller/src/LightweaverStorage.cpp
 +++ b/firmware/lightweaver-controller/src/LightweaverStorage.cpp
-@@ -2344,6 +2344,9 @@ bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String
+@@ -2347,6 +2347,9 @@ bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String
  
  namespace {
  constexpr const char* CLIENT_PATTERN_KEY = "clientPatterns";
@@ -114,7 +114,7 @@ index 069fea1c..6e750276 100644
  uint32_t clientPatternGeneration = 0;
  ClientPatternOverride clientPatternOverrides[LW_MAX_LOOKS];
  ClientPatternOverride activeClientPatternOverrides;
-@@ -2458,6 +2461,132 @@ size_t runtimeConfigStorageLimitBytes() {
+@@ -2461,6 +2464,132 @@ size_t runtimeConfigStorageLimitBytes() {
    return lightweaver::projectRoomBytes(nvsFreeEntries(), NVS_STRING_LIMIT);
  }
  
@@ -247,7 +247,7 @@ index 069fea1c..6e750276 100644
  bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message) {
    // Reject an over-limit project up front, before any deserialize or heap
    // allocation, with an actionable error.
-@@ -2580,7 +2709,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
+@@ -2583,7 +2712,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
    // but clearing it here means a stale record never lingers on flash.
    clearPersistedLiveLookRecord();
    Preferences clientPrefs;
@@ -256,7 +256,7 @@ index 069fea1c..6e750276 100644
    clientPlaylistGeneration = 0;
    clientPatternGeneration = 0;
    activeClientPatternOverrides = ClientPatternOverride();
-@@ -3213,7 +3342,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
+@@ -3216,7 +3345,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
    // True only when a persisted live-tweak record (owner brightness/hue/scene
    // changes made from this page, previously lost at power-cycle) matched this
    // boot's project and was applied on top of the installed look's defaults.
@@ -265,14 +265,14 @@ index 069fea1c..6e750276 100644
    // True while the card is running Find-my-strips scaffolding rather than a
    // project the owner chose — Studio reads this to say "unfinished setup"
    // instead of presenting the bench project as commissioned.
-@@ -3225,6 +3354,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
+@@ -3228,6 +3357,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
    doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
    doc["capabilities"]["clientPlaylist"]["version"] = 1;
    doc["capabilities"]["clientPattern"]["version"] = 1;
 +  doc["capabilities"]["lookTuning"]["version"] = 1;
    doc["capabilities"]["kaleidoscopeReflectionPoints"] =
        LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
-   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
+   doc["capabilities"]["crashRecorder"] = 1;
 diff --git a/firmware/lightweaver-controller/src/LightweaverStorage.h b/firmware/lightweaver-controller/src/LightweaverStorage.h
 index 46aa0afe..3d767482 100644
 --- a/firmware/lightweaver-controller/src/LightweaverStorage.h
@@ -353,10 +353,10 @@ index 46aa0afe..3d767482 100644
  bool loadPersistedLiveLookRecord(LiveLookRecord& outRecord);
  void clearPersistedLiveLookRecord();
 diff --git a/firmware/lightweaver-controller/src/LightweaverWeb.cpp b/firmware/lightweaver-controller/src/LightweaverWeb.cpp
-index a52ba9fe..9827851a 100644
+index cf3efd49..43fb629c 100644
 --- a/firmware/lightweaver-controller/src/LightweaverWeb.cpp
 +++ b/firmware/lightweaver-controller/src/LightweaverWeb.cpp
-@@ -511,7 +511,7 @@ String studioBridgeScript() {
+@@ -513,7 +513,7 @@ String studioBridgeScript() {
                    "if(ev.origin==='https://light.mandalacodes.com'){"
                      "if(ev.source!==window.opener||ev.origin!==lwReadyOrigin)throw lwBridgeError('forbidden','client opener mismatch');"
                      "if(!['status','ping','patterns','zones','control','client-playlist','client-pattern','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
@@ -365,7 +365,7 @@ index a52ba9fe..9827851a 100644
                    "}"
                    "if(m.type==='client-pattern'){const p=m.payload||{};if(p.method==='GET'&&typeof p.patternId==='string')response=await get('/api/client-pattern?patternId='+encodeURIComponent(p.patternId));else if(p.method==='POST')response=await post('/api/client-pattern',p.body||{});else throw lwBridgeError('invalid-payload','pattern method and id required')}"
                    "else if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
-@@ -2207,6 +2207,50 @@ static void handlePlaylistControl(JsonDocument& doc) {
+@@ -2211,6 +2211,50 @@ static void handlePlaylistControl(JsonDocument& doc) {
    return;
  }
  
@@ -416,7 +416,7 @@ index a52ba9fe..9827851a 100644
  void handleControlPost() {
    sendCors();
    if (!provisioningControlAdmitted(runtimePlaybackReady())) {
-@@ -2246,10 +2290,19 @@ void handleControlPost() {
+@@ -2250,10 +2294,19 @@ void handleControlPost() {
        const String key = field.key().c_str();
        if (key != "on" && key != "blackout" && key != "syncZones" && key != "brightness" && key != "patternId" && key != "playlist" &&
            key != "zone" && key != "speed" && key != "hueShift" && key != "hue" &&
@@ -437,7 +437,7 @@ index a52ba9fe..9827851a 100644
    if (hasControlField(doc, "armNative")) {
      if (!nativeArmEnvelopeValid(doc.as<JsonVariantConst>())) {
        server.send(400, "application/json", "{\"ok\":false,\"error\":\"armNative requires only a zone id and a boolean armNative\"}");
-@@ -2915,6 +2968,9 @@ void sendClientPattern(const String& patternId) {
+@@ -2919,6 +2972,9 @@ void sendClientPattern(const String& patternId) {
    doc["revision"] = clientPatternRevision(*runtimeConfigPtr, patternId);
    doc["lookBrightness"] = runtimeConfigPtr->looks[index].brightness;
    writeClientPatternOverrides(*runtimeConfigPtr, patternId, doc["overrides"].to<JsonObject>());
@@ -447,7 +447,7 @@ index a52ba9fe..9827851a 100644
    String body; serializeJson(doc, body); server.send(200, "application/json", body);
  }
  void handleClientPatternGet() {
-@@ -2939,6 +2995,34 @@ void handleClientPatternPost() {
+@@ -2943,6 +2999,34 @@ void handleClientPatternPost() {
      server.send(423, "application/json", "{\"ok\":false,\"error\":\"card not ready\"}"); return;
    }
    const String patternId = doc["patternId"].as<String>();
@@ -482,7 +482,7 @@ index a52ba9fe..9827851a 100644
    if (doc["expectedCardId"].as<String>() != runtimeCardId() ||
        doc["expectedRevision"].as<String>() != clientPatternRevision(*runtimeConfigPtr, patternId) ||
        runtimeCurrentPatternId() != patternId) {
-@@ -2949,7 +3033,6 @@ void handleClientPatternPost() {
+@@ -2953,7 +3037,6 @@ void handleClientPatternPost() {
      JsonDocument error; error["ok"] = false; error["error"] = message;
      String body; serializeJson(error, body); server.send(422, "application/json", body); return;
    }
@@ -491,10 +491,10 @@ index a52ba9fe..9827851a 100644
    sendClientPattern(patternId);
  }
 diff --git a/firmware/lightweaver-controller/src/main.cpp b/firmware/lightweaver-controller/src/main.cpp
-index 1c01c61a..9878dc6e 100644
+index e632ce4e..64b68806 100644
 --- a/firmware/lightweaver-controller/src/main.cpp
 +++ b/firmware/lightweaver-controller/src/main.cpp
-@@ -226,29 +226,19 @@ uint32_t cardStateRevision = 0;
+@@ -230,29 +230,19 @@ uint32_t cardStateRevision = 0;
  ErrorCode errorCode = ERROR_NONE;
  
  // ---- Live-look resume record (power-cycle survival for /api/control tweaks) ----
@@ -534,7 +534,7 @@ index 1c01c61a..9878dc6e 100644
  // fadeTo() (below) is the codebase's only whole-output fade primitive
  // (fadeScale, a brightness multiplier applied at render time) — it cannot
  // blend the PIXEL CONTENT of two different patterns, only fade the currently
-@@ -357,7 +347,6 @@ bool openSequence(const LookConfig& look, PreparedSequence* prepared = nullptr);
+@@ -380,7 +370,6 @@ bool openSequence(const LookConfig& look, PreparedSequence* prepared = nullptr);
  bool isLoadedLookRenderable(const LookConfig& look, bool zoneTargeted);
  bool renderCurrentLook(bool force = false);
  bool renderSequenceFrame(bool force = false);
@@ -542,7 +542,7 @@ index 1c01c61a..9878dc6e 100644
  void playlistPauseForManualChange();
  bool playlistAdvanceToIndex(uint8_t targetIndex);
  void applySequenceFrameBufferToLeds();
-@@ -433,6 +422,7 @@ void setup() {
+@@ -459,6 +448,7 @@ void setup() {
    if (loadResult.ok && !loadResult.bootedCandidate) {
      loadClientPlaylist(runtimeConfig);
      loadClientPatterns(runtimeConfig);
@@ -550,7 +550,7 @@ index 1c01c61a..9878dc6e 100644
    }
    runtimeSafeMode = loadResult.safeMode;
    if (Serial) {
-@@ -514,10 +504,6 @@ void setup() {
+@@ -540,10 +530,6 @@ void setup() {
        if (loadResult.bootedCandidate) rollbackCandidateBeforeRestart("candidate startup frame failed");
        return;
      }
@@ -561,9 +561,9 @@ index 1c01c61a..9878dc6e 100644
      if (runtimeConfig.provisionalProject && !loadResult.bootedCandidate) {
        // A provisional (Find-my-strips bench) setup must not silently relight
        // the whole strip on an unattended boot. fadeScale stays 0: the internal
-@@ -604,16 +590,7 @@ void setup() {
- void loop() {
-   uint32_t now = millis();
+@@ -642,16 +628,7 @@ void loop() {
+     lastLoopPassAtUs = nowUs ? nowUs : 1;
+   }
    esp_task_wdt_reset();  // pet the watchdog every iteration, before any early return
 -  // Unconditional every tick, regardless of mode below: a fade started this
 -  // tick (fadeTo()) always blocks loop() until it finishes, so by the time
@@ -579,7 +579,7 @@ index 1c01c61a..9878dc6e 100644
    runtimeServicePlaylist();
    bool recoveryHoldActive = int32_t(recoveryHoldUntilMs - now) > 0;
    handleLightweaverWeb();
-@@ -1401,7 +1378,6 @@ void selectLook(int index) {
+@@ -1439,7 +1416,6 @@ void selectLook(int index) {
    if (runtimeConfig.provisionalProject)
      provisionalNativeArmedZones = nativeArmAllZones(runtimeConfig.zoneCount);
    fadeTo(1.0f, looks[currentLookIndex].fadeInMs);
@@ -587,7 +587,7 @@ index 1c01c61a..9878dc6e 100644
  }
  
  bool selectLookInstant(int index) {
-@@ -1423,7 +1399,6 @@ bool applyPreparedLookInstant(uint8_t nextIndex, PreparedSequence* prepared) {
+@@ -1461,7 +1437,6 @@ bool applyPreparedLookInstant(uint8_t nextIndex, PreparedSequence* prepared) {
    fadeScale = 1.0f;
    if (!startLook(currentLookIndex, prepared)) return false;
    showLeds();
@@ -595,7 +595,7 @@ index 1c01c61a..9878dc6e 100644
    return true;
  }
  
-@@ -1443,6 +1418,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
+@@ -1481,6 +1456,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
        return false;
      }
      applyLookToRuntimeZones(look);
@@ -603,7 +603,7 @@ index 1c01c61a..9878dc6e 100644
      applySequenceFrameBufferToLeds();
      activePatternId = look.id;
      return true;
-@@ -1451,6 +1427,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
+@@ -1489,6 +1465,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
    const String patternId = look.preset.length() > 0 ? look.preset : look.id;
    lightweaver::restartNativeRecipe(patternId.c_str(), millis());
    applyLookToRuntimeZones(look);
@@ -611,7 +611,7 @@ index 1c01c61a..9878dc6e 100644
    bool rendered = renderCurrentLook(true);
    if (rendered) activePatternId = look.id;
    return rendered;
-@@ -1795,7 +1772,7 @@ static uint32_t advanceZoneAnimationClock(uint8_t zoneIndex, uint32_t now, float
+@@ -1837,7 +1814,7 @@ static uint32_t advanceZoneAnimationClock(uint8_t zoneIndex, uint32_t now, float
    return clock.virtualMs;
  }
  
@@ -620,7 +620,7 @@ index 1c01c61a..9878dc6e 100644
    if (zone.rangeCount == 0) return false;
    if (!nativeArmZoneVisible(runtimeConfig.provisionalProject,
                              provisionalNativeArmedZones, zoneIndex)) {
-@@ -1811,8 +1788,8 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
+@@ -1853,8 +1830,8 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
    const LookConfig* look = isSupportedCompiledPattern(zone.patternId) ? nullptr : findLookById(zone.patternId);
  
    PatternModifiers mods;
@@ -631,7 +631,7 @@ index 1c01c61a..9878dc6e 100644
    mods.customHue = zone.customHue;
    mods.customSaturation = zone.customSaturation;
    mods.customBreathe = zone.customBreathe;
-@@ -1822,7 +1799,7 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
+@@ -1864,7 +1841,7 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
    mods.customDrift = zone.customDrift;
    mods.driftHueMin = zone.driftHueMin;
    mods.driftHueMax = zone.driftHueMax;
@@ -640,7 +640,7 @@ index 1c01c61a..9878dc6e 100644
    mods.hasPatternClock = true;
  
    // Continuous zone (a symmetry side): the ranges are ONE pattern run in range
-@@ -1901,6 +1878,14 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
+@@ -1943,6 +1920,14 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
    return any;
  }
  
@@ -655,7 +655,7 @@ index 1c01c61a..9878dc6e 100644
  bool renderCurrentLook(bool force) {
    // Legacy sequence path: only when zone 0 holds the entire strip and the
    // selected look is a frame sequence. Sequences predate zones; they take
-@@ -1920,10 +1905,12 @@ bool renderCurrentLook(bool force) {
+@@ -1962,10 +1947,12 @@ bool renderCurrentLook(bool force) {
    // mirroring zone copies its (already drawn) source. resolveActiveZoneMirrors
    // guarantees a source never mirrors, so one pass of each is always enough,
    // whatever order the zones were declared in.
@@ -669,7 +669,7 @@ index 1c01c61a..9878dc6e 100644
    }
    for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
      if (activeZoneMirrorSource[i] == LW_ZONE_NO_MIRROR) continue;
-@@ -2182,7 +2169,8 @@ bool isValidLedColorOrder(const String& order) {
+@@ -2239,7 +2226,8 @@ bool isValidLedColorOrder(const String& order) {
  uint8_t computeBrightnessByte() {
    OutputBrightnessInputs input{};
    input.brightnessLimit = brightnessLimit;
@@ -679,7 +679,7 @@ index 1c01c61a..9878dc6e 100644
    input.fadeScale = fadeScale;
    input.knob = int32_t(recoveryBrightnessBypassUntilMs - millis()) > 0 ? 1.0f : readBrightnessKnob();
    input.manualBrightness = manualBrightness;
-@@ -2322,9 +2310,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
+@@ -2379,9 +2367,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
          break;
        }
      }
@@ -689,7 +689,7 @@ index 1c01c61a..9878dc6e 100644
      return touched;
    }
    // No target: when sync is on, broadcast. When sync is off, only zone 0.
-@@ -2337,7 +2322,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
+@@ -2394,7 +2379,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
      fn(runtimeConfig.zones[0]);
      touched = 1;
    }
@@ -697,7 +697,7 @@ index 1c01c61a..9878dc6e 100644
    return touched;
  }
  
-@@ -2528,6 +2512,7 @@ bool runtimeSelectPatternById(const String& id) {
+@@ -2585,6 +2569,7 @@ bool runtimeSelectPatternById(const String& id) {
    }
    if (isSupportedCompiledPattern(id)) {
      uint8_t applied = applyToZones("", [&](ZoneConfig& z) { z.patternId = id; });
@@ -705,7 +705,7 @@ index 1c01c61a..9878dc6e 100644
      activePatternId = applied == runtimeConfig.zoneCount ? id : String("");
      return applied > 0;
    }
-@@ -2614,6 +2599,7 @@ bool runtimeCommitPreparedPatternSelection() {
+@@ -2671,6 +2656,7 @@ bool runtimeCommitPreparedPatternSelection() {
          z.patternId = preparedPatternSelection.patternId;
        });
        applied = affected > 0;
@@ -713,7 +713,7 @@ index 1c01c61a..9878dc6e 100644
        activePatternId = affected == runtimeConfig.zoneCount
            ? preparedPatternSelection.patternId : String("");
        }
-@@ -2624,6 +2610,7 @@ bool runtimeCommitPreparedPatternSelection() {
+@@ -2681,6 +2667,7 @@ bool runtimeCommitPreparedPatternSelection() {
            [&](ZoneConfig& z) {
              z.patternId = preparedPatternSelection.patternId;
            }) > 0;
@@ -721,7 +721,7 @@ index 1c01c61a..9878dc6e 100644
        activePatternId = String("");
        if (applied && runtimeConfig.zoneCount == 1) {
          activePatternId = runtimeConfig.zones[0].patternId;
-@@ -2820,10 +2807,8 @@ bool runtimeBeaconPortsAvailable(uint8_t* gpios, uint8_t capacity, uint8_t& coun
+@@ -2879,10 +2866,8 @@ bool runtimeBeaconPortsAvailable(uint8_t* gpios, uint8_t capacity, uint8_t& coun
  }
  
  void runtimeApplySavedConfig() {
@@ -734,7 +734,7 @@ index 1c01c61a..9878dc6e 100644
    // handleConfigPost and loop run on the same Arduino task, so the complete
    // mirror + lookup replacement finishes before another frame can render.
    applyRuntimeConfig(runtimeConfig);
-@@ -3326,7 +3311,7 @@ bool runtimeCanSetLedColorOrder(const String& order) {
+@@ -3391,7 +3376,7 @@ bool runtimeCanSetLedColorOrder(const String& order) {
  }
  String runtimeGetLedColorOrder() { return ledColorOrder; }
  
@@ -743,7 +743,7 @@ index 1c01c61a..9878dc6e 100644
  bool runtimeGetSyncZones() { return runtimeConfig.syncZones; }
  
  void runtimeSetDriftRange(uint8_t lo, uint8_t hi) {
-@@ -3342,178 +3327,40 @@ uint8_t runtimeGetDriftHueMin() { return driftHueMin; }
+@@ -3407,178 +3392,40 @@ uint8_t runtimeGetDriftHueMin() { return driftHueMin; }
  uint8_t runtimeGetDriftHueMax() { return driftHueMax; }
  
  // ---- Live-look resume record: capture, persist, restore ----
@@ -954,7 +954,7 @@ index 1c01c61a..9878dc6e 100644
  
  // ---- Playlist sequencing: resolve, cross-fade, tick, control verbs ----
  // See PlaylistConfig in LightweaverTypes.h for the persisted project-JSON
-@@ -3545,11 +3392,11 @@ bool playlistSelectPatternById(const String& id) {
+@@ -3610,11 +3457,11 @@ bool playlistSelectPatternById(const String& id) {
      blackedOut = false;
      if (!startLook(currentLookIndex, &prepared)) return false;
      showLeds();
@@ -967,7 +967,7 @@ index 1c01c61a..9878dc6e 100644
      activePatternId = applied == runtimeConfig.zoneCount ? id : String("");
      return applied > 0;
    }
-@@ -3577,7 +3424,6 @@ bool playlistAdvanceToIndex(uint8_t targetIndex) {
+@@ -3642,7 +3489,6 @@ bool playlistAdvanceToIndex(uint8_t targetIndex) {
    if (!applied) return false;
    playlistEntryIndex = targetIndex;
    playlistEntryStartedAtMs = millis();
@@ -975,7 +975,7 @@ index 1c01c61a..9878dc6e 100644
    return true;
  }
  
-@@ -3610,7 +3456,6 @@ bool runtimePlaylistPlay() {
+@@ -3675,7 +3521,6 @@ bool runtimePlaylistPlay() {
      playlistEntryStartedAtMs = millis() - (static_cast<uint32_t>(
          runtimeConfig.playlist.entries[0].dwellSeconds) * 1000UL);
    }
@@ -983,7 +983,7 @@ index 1c01c61a..9878dc6e 100644
    return true;
  }
  
-@@ -3620,7 +3465,6 @@ bool runtimePlaylistPause() {
+@@ -3685,7 +3530,6 @@ bool runtimePlaylistPause() {
    if (!runtimePlaylistConfigured()) return false;
    if (playlistPlaying) {
      playlistPlaying = false;
@@ -991,7 +991,7 @@ index 1c01c61a..9878dc6e 100644
    }
    return true;
  }
-@@ -3632,7 +3476,6 @@ bool runtimePlaylistPause() {
+@@ -3697,7 +3541,6 @@ bool runtimePlaylistPause() {
  void playlistPauseForManualChange() {
    if (playlistPlaying) {
      playlistPlaying = false;
@@ -999,7 +999,7 @@ index 1c01c61a..9878dc6e 100644
    }
  }
  
-@@ -3960,6 +3803,7 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
+@@ -4042,6 +3885,7 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
      zone.driftHueMax = 255;
      zone.blackout = false;
    }
@@ -1007,7 +1007,7 @@ index 1c01c61a..9878dc6e 100644
    activePatternId = id;
  
    PatternModifiers mods;
-@@ -4037,6 +3881,8 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
+@@ -4119,6 +3963,8 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
  String runtimeZonesJson() {
    JsonDocument doc;
    doc["syncZones"] = runtimeConfig.syncZones;
@@ -1190,15 +1190,15 @@ index a774c68f..f9763d82 100644
  // Capability flag on both identity payloads.
  const firmwareInfo = main.match(/String runtimeFirmwareInfo\(\)\s*\{[\s\S]*?\n\}/)?.[0] || '';
 diff --git a/lightweaver/package.json b/lightweaver/package.json
-index 38e687ad..bd5a94ad 100644
+index 0250b40d..f2d32b52 100644
 --- a/lightweaver/package.json
 +++ b/lightweaver/package.json
-@@ -48,7 +48,7 @@
+@@ -49,7 +49,7 @@
      "test:installer-core": "node --test ../packages/installer-core/test/*.test.js",
      "test:mapper": "npm --prefix ../led-art-mapper/app test && npm --prefix ../led-art-mapper/app run build",
      "test:core:source": "npm run test:installer-core && node --test src/lib/firmwareRelease.test.js && node --test tests/playwright-configs-guarded.test.mjs && node scripts/run-core-source-tests.mjs",
--    "test:core": "node --test src/lib/cardIdentity.test.js && node --test src/lib/cardWifiHandoff.test.js && node --test src/lib/cardWiringSafety.test.js && node --test scripts/unpack-standalone-package.test.mjs && node ../firmware/lightweaver-controller/tests/card-identity-capabilities.mjs && node --test tests/test-port-isolation.mjs && node tests/project-frame-audit.mjs && node tests/flash-connect.mjs && node tests/pages-headers.mjs && node tests/pages-staging.mjs && node tests/firmware-image-validation.mjs && node tests/studio-action-status.mjs && node tests/ai-pattern-server.mjs && node tests/wled-control-contract.mjs && node tests/rotary-pattern-cycle.mjs && node tests/usb-rotary-input.mjs && node tests/preview-animation.mjs && node tests/control-scale.mjs && node tests/usb-led-frame.mjs && node tests/usb-led-color-order.mjs && node tests/usb-led-status-polling.mjs && node tests/usb-led-controller.mjs && node tests/usb-led-config.mjs && node tests/card-runtime-contract.mjs && node tests/hardware-capability-contract.mjs && node tests/layout-migration.mjs && node tests/card-pattern-bank.mjs && node tests/card-live-preview.mjs && node tests/card-section-sync.mjs && node tests/playlist-live-preview.mjs && node tests/card-bridge-handoff.mjs && node tests/card-installer-package.mjs && node tests/card-connection-mode.mjs && node tests/card-link-state.mjs && node tests/show-audio-features.mjs && node tests/show-spatial-template.mjs && node tests/mandala-engine.mjs && node tests/mandala-engine-transients.mjs && node tests/card-frame-stream.mjs && node ../firmware/lightweaver-controller/tests/provisioning-status-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-api.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-regressions.mjs && node ../firmware/lightweaver-controller/tests/wiring-stage-active-transaction.mjs && node ../firmware/lightweaver-controller/tests/hash-config-install.mjs && node ../firmware/lightweaver-controller/tests/runtime-hardening-contract.mjs && node ../firmware/lightweaver-controller/tests/wled-command-readiness.mjs && node ../firmware/lightweaver-controller/tests/wled-realtime-policy.mjs && node ../firmware/lightweaver-controller/tests/control-transaction-policy.mjs && node ../firmware/lightweaver-controller/tests/look-mode-policy.mjs && node ../firmware/lightweaver-controller/tests/wled-compat-smoke.mjs --contract && node ../firmware/lightweaver-controller/tests/output-color-pipeline.mjs && node ../firmware/lightweaver-controller/tests/ws2815-output-driver.mjs && node ../firmware/lightweaver-controller/tests/output-policy.mjs && node ../firmware/lightweaver-controller/tests/rotary-direction.mjs && node ../firmware/lightweaver-controller/tests/storage-stack-safety.mjs && node ../firmware/lightweaver-controller/tests/storage-config-clamps.mjs && node ../firmware/lightweaver-controller/tests/runtime-output-allocation-clamp.mjs && node ../firmware/lightweaver-controller/tests/config-requires-reboot-response.mjs && node ../firmware/lightweaver-controller/tests/restart-fallback-policy.mjs && node ../firmware/lightweaver-controller/tests/project-identity-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-promotion-power-loss.mjs && node ../firmware/lightweaver-controller/tests/bounded-runtime-request.mjs && node ../firmware/lightweaver-controller/tests/pattern-color-modifiers.mjs && node ../firmware/lightweaver-controller/tests/control-sync-order.mjs && node ../firmware/lightweaver-controller/tests/runtime-color-order.mjs && node ../firmware/lightweaver-controller/tests/playlist-combo-looks.mjs && node ../firmware/lightweaver-controller/tests/private-network-cors.mjs && node ../firmware/lightweaver-controller/tests/sequence-media-contract.mjs && node ../firmware/lightweaver-controller/tests/runtime-sequence-physical.mjs && node ../firmware/lightweaver-controller/tests/web-pattern-thumbnails.mjs && node ../firmware/lightweaver-controller/tests/recover-lights-endpoint.mjs && node ../firmware/lightweaver-controller/tests/bridge-config-reboot-ordering.mjs && node ../firmware/lightweaver-controller/tests/bridge-frame-protocol.mjs && node ../firmware/lightweaver-controller/tests/visitor-control-rollback.mjs && node ../firmware/lightweaver-controller/tests/connectivity-policy.mjs && node ../firmware/lightweaver-controller/tests/wifi-handoff-contract.mjs && node ../firmware/lightweaver-controller/tests/wifi-join-diagnostics.mjs && node ../firmware/lightweaver-controller/tests/wifi-scan-discovery.mjs && node ../firmware/lightweaver-controller/tests/wifi-channel-policy.mjs && node ../firmware/lightweaver-controller/tests/blank-card-commissioning-surface.mjs && node ../firmware/lightweaver-controller/tests/blank-card-first-config.mjs && node ../firmware/lightweaver-controller/tests/wifi-project-preservation.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-safety.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-sweep.mjs && node ../firmware/lightweaver-controller/tests/kaleidoscope-runtime.mjs && node ../firmware/lightweaver-controller/tests/provisional-bench-project.mjs && node ../firmware/lightweaver-controller/tests/clear-project-endpoint.mjs && node ../firmware/lightweaver-controller/tests/output-readiness-diagnostics.mjs && node --test ../scripts/ci-release-owed.test.mjs && node --test ../scripts/bench-check.test.mjs && node ../firmware/lightweaver-controller/tests/update-blank-readiness.mjs && node ../firmware/lightweaver-controller/tests/saved-network-reuse.mjs && node ../firmware/lightweaver-controller/tests/card-page-request-deadline.mjs && node ../firmware/lightweaver-controller/tests/color-journey-samples.mjs && node ../firmware/lightweaver-controller/tests/client-playlist-contract.mjs && node ../firmware/lightweaver-controller/tests/project-store-nvs-room.mjs && node ../firmware/lightweaver-controller/tests/factory-bin-freshness.mjs",
-+    "test:core": "node --test src/lib/cardIdentity.test.js && node --test src/lib/cardWifiHandoff.test.js && node --test src/lib/cardWiringSafety.test.js && node --test scripts/unpack-standalone-package.test.mjs && node ../firmware/lightweaver-controller/tests/card-identity-capabilities.mjs && node --test tests/test-port-isolation.mjs && node tests/project-frame-audit.mjs && node tests/flash-connect.mjs && node tests/pages-headers.mjs && node tests/pages-staging.mjs && node tests/firmware-image-validation.mjs && node tests/studio-action-status.mjs && node tests/ai-pattern-server.mjs && node tests/wled-control-contract.mjs && node tests/rotary-pattern-cycle.mjs && node tests/usb-rotary-input.mjs && node tests/preview-animation.mjs && node tests/control-scale.mjs && node tests/usb-led-frame.mjs && node tests/usb-led-color-order.mjs && node tests/usb-led-status-polling.mjs && node tests/usb-led-controller.mjs && node tests/usb-led-config.mjs && node tests/card-runtime-contract.mjs && node tests/hardware-capability-contract.mjs && node tests/layout-migration.mjs && node tests/card-pattern-bank.mjs && node tests/card-live-preview.mjs && node tests/card-section-sync.mjs && node tests/playlist-live-preview.mjs && node tests/card-bridge-handoff.mjs && node tests/card-installer-package.mjs && node tests/card-connection-mode.mjs && node tests/card-link-state.mjs && node tests/show-audio-features.mjs && node tests/show-spatial-template.mjs && node tests/mandala-engine.mjs && node tests/mandala-engine-transients.mjs && node tests/card-frame-stream.mjs && node ../firmware/lightweaver-controller/tests/provisioning-status-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-api.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-regressions.mjs && node ../firmware/lightweaver-controller/tests/wiring-stage-active-transaction.mjs && node ../firmware/lightweaver-controller/tests/hash-config-install.mjs && node ../firmware/lightweaver-controller/tests/runtime-hardening-contract.mjs && node ../firmware/lightweaver-controller/tests/wled-command-readiness.mjs && node ../firmware/lightweaver-controller/tests/wled-realtime-policy.mjs && node ../firmware/lightweaver-controller/tests/control-transaction-policy.mjs && node ../firmware/lightweaver-controller/tests/look-mode-policy.mjs && node ../firmware/lightweaver-controller/tests/wled-compat-smoke.mjs --contract && node ../firmware/lightweaver-controller/tests/output-color-pipeline.mjs && node ../firmware/lightweaver-controller/tests/ws2815-output-driver.mjs && node ../firmware/lightweaver-controller/tests/output-policy.mjs && node ../firmware/lightweaver-controller/tests/rotary-direction.mjs && node ../firmware/lightweaver-controller/tests/storage-stack-safety.mjs && node ../firmware/lightweaver-controller/tests/storage-config-clamps.mjs && node ../firmware/lightweaver-controller/tests/runtime-output-allocation-clamp.mjs && node ../firmware/lightweaver-controller/tests/config-requires-reboot-response.mjs && node ../firmware/lightweaver-controller/tests/restart-fallback-policy.mjs && node ../firmware/lightweaver-controller/tests/project-identity-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-promotion-power-loss.mjs && node ../firmware/lightweaver-controller/tests/bounded-runtime-request.mjs && node ../firmware/lightweaver-controller/tests/pattern-color-modifiers.mjs && node ../firmware/lightweaver-controller/tests/control-sync-order.mjs && node ../firmware/lightweaver-controller/tests/look-tuning.mjs && node ../firmware/lightweaver-controller/tests/runtime-color-order.mjs && node ../firmware/lightweaver-controller/tests/playlist-combo-looks.mjs && node ../firmware/lightweaver-controller/tests/private-network-cors.mjs && node ../firmware/lightweaver-controller/tests/sequence-media-contract.mjs && node ../firmware/lightweaver-controller/tests/runtime-sequence-physical.mjs && node ../firmware/lightweaver-controller/tests/web-pattern-thumbnails.mjs && node ../firmware/lightweaver-controller/tests/recover-lights-endpoint.mjs && node ../firmware/lightweaver-controller/tests/bridge-config-reboot-ordering.mjs && node ../firmware/lightweaver-controller/tests/bridge-frame-protocol.mjs && node ../firmware/lightweaver-controller/tests/visitor-control-rollback.mjs && node ../firmware/lightweaver-controller/tests/connectivity-policy.mjs && node ../firmware/lightweaver-controller/tests/wifi-handoff-contract.mjs && node ../firmware/lightweaver-controller/tests/wifi-join-diagnostics.mjs && node ../firmware/lightweaver-controller/tests/wifi-scan-discovery.mjs && node ../firmware/lightweaver-controller/tests/wifi-channel-policy.mjs && node ../firmware/lightweaver-controller/tests/blank-card-commissioning-surface.mjs && node ../firmware/lightweaver-controller/tests/blank-card-first-config.mjs && node ../firmware/lightweaver-controller/tests/wifi-project-preservation.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-safety.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-sweep.mjs && node ../firmware/lightweaver-controller/tests/kaleidoscope-runtime.mjs && node ../firmware/lightweaver-controller/tests/provisional-bench-project.mjs && node ../firmware/lightweaver-controller/tests/clear-project-endpoint.mjs && node ../firmware/lightweaver-controller/tests/output-readiness-diagnostics.mjs && node --test ../scripts/ci-release-owed.test.mjs && node --test ../scripts/bench-check.test.mjs && node ../firmware/lightweaver-controller/tests/update-blank-readiness.mjs && node ../firmware/lightweaver-controller/tests/saved-network-reuse.mjs && node ../firmware/lightweaver-controller/tests/card-page-request-deadline.mjs && node ../firmware/lightweaver-controller/tests/color-journey-samples.mjs && node ../firmware/lightweaver-controller/tests/client-playlist-contract.mjs && node ../firmware/lightweaver-controller/tests/project-store-nvs-room.mjs && node ../firmware/lightweaver-controller/tests/factory-bin-freshness.mjs",
+-    "test:core": "node --test src/lib/cardIdentity.test.js && node --test src/lib/cardWifiHandoff.test.js && node --test src/lib/cardWiringSafety.test.js && node --test scripts/unpack-standalone-package.test.mjs && node ../firmware/lightweaver-controller/tests/card-identity-capabilities.mjs && node --test tests/test-port-isolation.mjs && node tests/project-frame-audit.mjs && node tests/flash-connect.mjs && node tests/pages-headers.mjs && node tests/pages-staging.mjs && node tests/firmware-image-validation.mjs && node tests/studio-action-status.mjs && node tests/ai-pattern-server.mjs && node tests/wled-control-contract.mjs && node tests/rotary-pattern-cycle.mjs && node tests/usb-rotary-input.mjs && node tests/preview-animation.mjs && node tests/control-scale.mjs && node tests/usb-led-frame.mjs && node tests/usb-led-color-order.mjs && node tests/usb-led-status-polling.mjs && node tests/usb-led-controller.mjs && node tests/usb-led-config.mjs && node tests/card-runtime-contract.mjs && node tests/hardware-capability-contract.mjs && node tests/layout-migration.mjs && node tests/card-pattern-bank.mjs && node tests/card-live-preview.mjs && node tests/card-section-sync.mjs && node tests/playlist-live-preview.mjs && node tests/card-bridge-handoff.mjs && node tests/card-installer-package.mjs && node tests/card-connection-mode.mjs && node tests/card-link-state.mjs && node tests/show-audio-features.mjs && node tests/show-spatial-template.mjs && node tests/mandala-engine.mjs && node tests/mandala-engine-transients.mjs && node tests/card-frame-stream.mjs && node ../firmware/lightweaver-controller/tests/provisioning-status-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-api.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-regressions.mjs && node ../firmware/lightweaver-controller/tests/wiring-stage-active-transaction.mjs && node ../firmware/lightweaver-controller/tests/hash-config-install.mjs && node ../firmware/lightweaver-controller/tests/runtime-hardening-contract.mjs && node ../firmware/lightweaver-controller/tests/wled-command-readiness.mjs && node ../firmware/lightweaver-controller/tests/wled-realtime-policy.mjs && node ../firmware/lightweaver-controller/tests/control-transaction-policy.mjs && node ../firmware/lightweaver-controller/tests/look-mode-policy.mjs && node ../firmware/lightweaver-controller/tests/wled-compat-smoke.mjs --contract && node ../firmware/lightweaver-controller/tests/output-color-pipeline.mjs && node ../firmware/lightweaver-controller/tests/ws2815-output-driver.mjs && node ../firmware/lightweaver-controller/tests/output-policy.mjs && node ../firmware/lightweaver-controller/tests/rotary-direction.mjs && node ../firmware/lightweaver-controller/tests/storage-stack-safety.mjs && node ../firmware/lightweaver-controller/tests/storage-config-clamps.mjs && node ../firmware/lightweaver-controller/tests/runtime-output-allocation-clamp.mjs && node ../firmware/lightweaver-controller/tests/config-requires-reboot-response.mjs && node ../firmware/lightweaver-controller/tests/restart-fallback-policy.mjs && node ../firmware/lightweaver-controller/tests/project-identity-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-promotion-power-loss.mjs && node ../firmware/lightweaver-controller/tests/bounded-runtime-request.mjs && node ../firmware/lightweaver-controller/tests/pattern-color-modifiers.mjs && node ../firmware/lightweaver-controller/tests/control-sync-order.mjs && node ../firmware/lightweaver-controller/tests/runtime-color-order.mjs && node ../firmware/lightweaver-controller/tests/playlist-combo-looks.mjs && node ../firmware/lightweaver-controller/tests/private-network-cors.mjs && node ../firmware/lightweaver-controller/tests/sequence-media-contract.mjs && node ../firmware/lightweaver-controller/tests/media-store-policy.mjs && node ../firmware/lightweaver-controller/tests/sequence-clock.mjs && node ../firmware/lightweaver-controller/tests/windowless-owner-capability.mjs && node ../firmware/lightweaver-controller/tests/crash-record.mjs && node ../firmware/lightweaver-controller/tests/runtime-sequence-physical.mjs && node ../firmware/lightweaver-controller/tests/web-pattern-thumbnails.mjs && node ../firmware/lightweaver-controller/tests/recover-lights-endpoint.mjs && node ../firmware/lightweaver-controller/tests/bridge-config-reboot-ordering.mjs && node ../firmware/lightweaver-controller/tests/bridge-frame-protocol.mjs && node ../firmware/lightweaver-controller/tests/visitor-control-rollback.mjs && node ../firmware/lightweaver-controller/tests/connectivity-policy.mjs && node ../firmware/lightweaver-controller/tests/wifi-handoff-contract.mjs && node ../firmware/lightweaver-controller/tests/wifi-join-diagnostics.mjs && node ../firmware/lightweaver-controller/tests/wifi-scan-discovery.mjs && node ../firmware/lightweaver-controller/tests/wifi-channel-policy.mjs && node ../firmware/lightweaver-controller/tests/blank-card-commissioning-surface.mjs && node ../firmware/lightweaver-controller/tests/blank-card-first-config.mjs && node ../firmware/lightweaver-controller/tests/wifi-project-preservation.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-safety.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-sweep.mjs && node ../firmware/lightweaver-controller/tests/kaleidoscope-runtime.mjs && node ../firmware/lightweaver-controller/tests/provisional-bench-project.mjs && node ../firmware/lightweaver-controller/tests/clear-project-endpoint.mjs && node ../firmware/lightweaver-controller/tests/output-readiness-diagnostics.mjs && node --test ../scripts/ci-release-owed.test.mjs && node --test ../scripts/bench-check.test.mjs && node ../firmware/lightweaver-controller/tests/update-blank-readiness.mjs && node ../firmware/lightweaver-controller/tests/saved-network-reuse.mjs && node ../firmware/lightweaver-controller/tests/card-page-request-deadline.mjs && node ../firmware/lightweaver-controller/tests/color-journey-samples.mjs && node ../firmware/lightweaver-controller/tests/client-playlist-contract.mjs && node ../firmware/lightweaver-controller/tests/project-store-nvs-room.mjs && node ../firmware/lightweaver-controller/tests/factory-bin-freshness.mjs",
++    "test:core": "node --test src/lib/cardIdentity.test.js && node --test src/lib/cardWifiHandoff.test.js && node --test src/lib/cardWiringSafety.test.js && node --test scripts/unpack-standalone-package.test.mjs && node ../firmware/lightweaver-controller/tests/card-identity-capabilities.mjs && node --test tests/test-port-isolation.mjs && node tests/project-frame-audit.mjs && node tests/flash-connect.mjs && node tests/pages-headers.mjs && node tests/pages-staging.mjs && node tests/firmware-image-validation.mjs && node tests/studio-action-status.mjs && node tests/ai-pattern-server.mjs && node tests/wled-control-contract.mjs && node tests/rotary-pattern-cycle.mjs && node tests/usb-rotary-input.mjs && node tests/preview-animation.mjs && node tests/control-scale.mjs && node tests/usb-led-frame.mjs && node tests/usb-led-color-order.mjs && node tests/usb-led-status-polling.mjs && node tests/usb-led-controller.mjs && node tests/usb-led-config.mjs && node tests/card-runtime-contract.mjs && node tests/hardware-capability-contract.mjs && node tests/layout-migration.mjs && node tests/card-pattern-bank.mjs && node tests/card-live-preview.mjs && node tests/card-section-sync.mjs && node tests/playlist-live-preview.mjs && node tests/card-bridge-handoff.mjs && node tests/card-installer-package.mjs && node tests/card-connection-mode.mjs && node tests/card-link-state.mjs && node tests/show-audio-features.mjs && node tests/show-spatial-template.mjs && node tests/mandala-engine.mjs && node tests/mandala-engine-transients.mjs && node tests/card-frame-stream.mjs && node ../firmware/lightweaver-controller/tests/provisioning-status-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-api.mjs && node ../firmware/lightweaver-controller/tests/wiring-safety-regressions.mjs && node ../firmware/lightweaver-controller/tests/wiring-stage-active-transaction.mjs && node ../firmware/lightweaver-controller/tests/hash-config-install.mjs && node ../firmware/lightweaver-controller/tests/runtime-hardening-contract.mjs && node ../firmware/lightweaver-controller/tests/wled-command-readiness.mjs && node ../firmware/lightweaver-controller/tests/wled-realtime-policy.mjs && node ../firmware/lightweaver-controller/tests/control-transaction-policy.mjs && node ../firmware/lightweaver-controller/tests/look-mode-policy.mjs && node ../firmware/lightweaver-controller/tests/wled-compat-smoke.mjs --contract && node ../firmware/lightweaver-controller/tests/output-color-pipeline.mjs && node ../firmware/lightweaver-controller/tests/ws2815-output-driver.mjs && node ../firmware/lightweaver-controller/tests/output-policy.mjs && node ../firmware/lightweaver-controller/tests/rotary-direction.mjs && node ../firmware/lightweaver-controller/tests/storage-stack-safety.mjs && node ../firmware/lightweaver-controller/tests/storage-config-clamps.mjs && node ../firmware/lightweaver-controller/tests/runtime-output-allocation-clamp.mjs && node ../firmware/lightweaver-controller/tests/config-requires-reboot-response.mjs && node ../firmware/lightweaver-controller/tests/restart-fallback-policy.mjs && node ../firmware/lightweaver-controller/tests/project-identity-contract.mjs && node ../firmware/lightweaver-controller/tests/wiring-promotion-power-loss.mjs && node ../firmware/lightweaver-controller/tests/bounded-runtime-request.mjs && node ../firmware/lightweaver-controller/tests/pattern-color-modifiers.mjs && node ../firmware/lightweaver-controller/tests/control-sync-order.mjs && node ../firmware/lightweaver-controller/tests/look-tuning.mjs && node ../firmware/lightweaver-controller/tests/runtime-color-order.mjs && node ../firmware/lightweaver-controller/tests/playlist-combo-looks.mjs && node ../firmware/lightweaver-controller/tests/private-network-cors.mjs && node ../firmware/lightweaver-controller/tests/sequence-media-contract.mjs && node ../firmware/lightweaver-controller/tests/media-store-policy.mjs && node ../firmware/lightweaver-controller/tests/sequence-clock.mjs && node ../firmware/lightweaver-controller/tests/windowless-owner-capability.mjs && node ../firmware/lightweaver-controller/tests/crash-record.mjs && node ../firmware/lightweaver-controller/tests/runtime-sequence-physical.mjs && node ../firmware/lightweaver-controller/tests/web-pattern-thumbnails.mjs && node ../firmware/lightweaver-controller/tests/recover-lights-endpoint.mjs && node ../firmware/lightweaver-controller/tests/bridge-config-reboot-ordering.mjs && node ../firmware/lightweaver-controller/tests/bridge-frame-protocol.mjs && node ../firmware/lightweaver-controller/tests/visitor-control-rollback.mjs && node ../firmware/lightweaver-controller/tests/connectivity-policy.mjs && node ../firmware/lightweaver-controller/tests/wifi-handoff-contract.mjs && node ../firmware/lightweaver-controller/tests/wifi-join-diagnostics.mjs && node ../firmware/lightweaver-controller/tests/wifi-scan-discovery.mjs && node ../firmware/lightweaver-controller/tests/wifi-channel-policy.mjs && node ../firmware/lightweaver-controller/tests/blank-card-commissioning-surface.mjs && node ../firmware/lightweaver-controller/tests/blank-card-first-config.mjs && node ../firmware/lightweaver-controller/tests/wifi-project-preservation.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-safety.mjs && node ../firmware/lightweaver-controller/tests/factory-beacon-sweep.mjs && node ../firmware/lightweaver-controller/tests/kaleidoscope-runtime.mjs && node ../firmware/lightweaver-controller/tests/provisional-bench-project.mjs && node ../firmware/lightweaver-controller/tests/clear-project-endpoint.mjs && node ../firmware/lightweaver-controller/tests/output-readiness-diagnostics.mjs && node --test ../scripts/ci-release-owed.test.mjs && node --test ../scripts/bench-check.test.mjs && node ../firmware/lightweaver-controller/tests/update-blank-readiness.mjs && node ../firmware/lightweaver-controller/tests/saved-network-reuse.mjs && node ../firmware/lightweaver-controller/tests/card-page-request-deadline.mjs && node ../firmware/lightweaver-controller/tests/color-journey-samples.mjs && node ../firmware/lightweaver-controller/tests/client-playlist-contract.mjs && node ../firmware/lightweaver-controller/tests/project-store-nvs-room.mjs && node ../firmware/lightweaver-controller/tests/factory-bin-freshness.mjs",
      "firmware:check-bin": "node ../firmware/lightweaver-controller/tests/factory-bin-freshness.mjs",
      "firmware:bump": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs bump",
      "firmware:version:check": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs check",

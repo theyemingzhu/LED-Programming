@@ -1,5 +1,7 @@
 # Archive
 
+- [x] Build the 9 simpler-journeys cuts proposed in PR #450 (52 → 41 phone presses) _(band: agent-runnable)_ _(effort: deep)_ → Plan: [simpler-journeys.md](plans/simpler-journeys.md)
+  Shipped 2026-11-22 as #458 (live from Studio build 2623); re-measured on main 2026-11-24; #450 closed as superseded.
 - [x] Fix and merge the Find my strips stack (#502 D11 + #497 D9 + #503 FS1 + FS3 v2) _(band: agent-runnable)_ _(effort: medium)_
   Done 2026-11-24 in one integration PR. Cause of the steady-13s red: the 15 s allowance covered only the staging write; every read before and inside the save was still capped at 6 s, so the save stopped at 20 s ("did not return independent firmware and project evidence"). While the card holds the temporary setup every save read now waits 15 s (`CARD_SLOW_READ_MS`). Both interruption-slow-stage profiles green.
 
@@ -12,3 +14,8 @@
 
 - [x] Card Home leftovers: the Project row opens the Projects panel directly (today it routes to Preferences); the ready banner's firmware sentence duplicates the Card release row; Checks & recovery as a quiet fold row; `card-state-matrix.md` gains the `not-ready` and `real-card-as-found` rows _(band: agent-runnable)_ _(effort: moderate)_
   Shipped 2026-09-11 (PR #278).
+
+- [x] Shipping queue of 2026-11-24 morning: smoke split, card update 1.2.6 (#508, closing #490/#491/#505; #506 closed), Back to Layout (#510), lost-looks fix L1 (#512), Studio no-touch prompts (#509), docs PRs #513 and #460.
+  All merged by 2026-11-24 (checked by the ship coordinator against GitHub).
+
+- [x] Real-card check of `relative-look-tuning-default-boot`: PASS on every step, run 2026-11-24 with Adrian's "Yes, run it" (Save to card 200, read-back keeps sections, phone brightness keeps sections, boots into the saved default after a USB hard reset). Card left on signed 1.2.6. Setup-phone spec fix merged as #519.

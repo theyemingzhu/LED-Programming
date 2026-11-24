@@ -6,6 +6,14 @@
       "what": "Preserve section differences when adjusting a complete look and restore its saved default on startup.",
       "why": "Not yet proven on a card. The refusals seen on the 1.2.5 candidate 4e254c3b (23 Nov 2026) were not caused by this change: they were the older client-pattern save fault (a save straight after a query GET is refused), which my direct test triggered and which is in signed 1.2.4 too. It needs a re-check through Studio's real save path (POST /api/config) and the phone player before it is sent.",
       "added": "2026-11-17",
+      "stillNeeds": [
+        "Build the patched firmware and flash it to the real card over USB (bash scripts/firmware-dev.sh); confirm /api/firmware-info reports buildId dev.",
+        "Save a project that has per-section looks from Studio's real save path (the Save to card button, which sends POST /api/config); confirm the card accepts it with no 'invalid pattern envelope' or other refusal.",
+        "Read the looks back (/api/status and Studio's read-back) and confirm the sections differ the way they were saved.",
+        "On the phone player, nudge a complete look's brightness or speed and confirm the section differences are kept, not flattened.",
+        "Power-cycle the card and confirm it boots into the saved default look, not the first look.",
+        "Only after all five pass, drain with npm run firmware:release. The patch no longer applies cleanly with git apply (main moved); the release applies it with --3way, so run npm run firmware:waiting first and expect it to report if it truly conflicts."
+      ],
       "source": {
         "kind": "patch",
         "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
@@ -19,6 +27,16 @@
       "source": {
         "kind": "patch",
         "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
+      }
+    },
+    {
+      "id": "crash-recorder",
+      "what": "The card now keeps a record of a crash (what it was doing, where it failed) and reports its last three.",
+      "why": "It changes nothing an owner sees; it is evidence for the next crash and can ride the next card update.",
+      "added": "2026-11-24",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/crash-recorder"
       }
     }
   ]
