@@ -67,10 +67,12 @@ test('a clean two-side symmetry validates', () => {
   assert.deepEqual(validateSymmetry(null, strips, wiring), { ok: true, errors: [] });
 });
 
-test('symmetry-fold: only 2 and 4 are refused otherwise', () => {
+test('symmetry-fold: a count Studio does not offer is refused', () => {
   const { strips, wiring } = project(['a', 'b', 'c']);
   const three = { fold: 3, orientation: 'same', sides: [side('side-1', ['a']), side('side-2', ['b']), side('side-3', ['c'])] };
-  assert.ok(codes(validateSymmetry(three, strips, wiring)).includes('symmetry-fold'));
+  assert.ok(!codes(validateSymmetry(three, strips, wiring)).includes('symmetry-fold'));
+  const seven = { ...three, fold: 7 };
+  assert.ok(codes(validateSymmetry(seven, strips, wiring)).includes('symmetry-fold'));
 });
 
 test('symmetry-side-count: fold 4 with two sides is refused', () => {
@@ -480,7 +482,8 @@ test('moveStripToSide moves, reorders and frees a strip; reorderSide sets flow o
 
 test('normalizeSymmetry cleans shape, keeps empty sides, and prunes strips that are gone', () => {
   assert.equal(normalizeSymmetry(null), null);
-  assert.equal(normalizeSymmetry({ fold: 3, sides: [] }), null);
+  assert.equal(normalizeSymmetry({ fold: 7, sides: [] }), null);
+  assert.equal(normalizeSymmetry({ fold: 3, sides: [] }).sides.length, 3);
   const cleaned = normalizeSymmetry({ fold: 2, sides: [{ stripIds: ['a', 'a', ' b '] }, { stripIds: ['b', 'c'] }] });
   assert.deepEqual(cleaned, {
     fold: 2,

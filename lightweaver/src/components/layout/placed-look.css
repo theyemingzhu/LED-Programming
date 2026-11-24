@@ -1,0 +1,89 @@
+/* Placed look: the control under Symmetry in the Layout strip list, and the
+   frame it puts on the artwork. Its own file on purpose: it borrows the
+   Symmetry control's classes (divide-strip.css) and only adds to them. */
+
+/* The section sits on the strip list's grid like Symmetry above it, but is
+   not a second .la-symmetry: there is one Symmetry control on the screen. */
+.la-placed {
+  display: grid;
+  gap: 6px;
+  margin: 14px 10px 10px;
+  scroll-margin-block: 60px 16px;
+}
+.la-placed-body { display: grid; gap: 10px; margin-top: 4px; }
+.la-placed-field { display: grid; gap: 6px; min-width: 0; }
+.la-placed .la-symmetry-seg.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Dials: a name and a slider on one line, the same on every placed look. */
+.la-placed-dial {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  color: var(--text-mid);
+  font-size: 12px;
+}
+.la-placed-dial input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent-hi);
+}
+.la-placed-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--text-mid);
+  font-size: 12px;
+  cursor: pointer;
+}
+.la-placed-check input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent-hi); }
+
+/* A quiet text action, and the record row. Neither is filled: Save to card
+   stays the one filled action on Layout. */
+.la .la-placed-quiet {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  color: var(--text-mid);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.la .la-placed-quiet:hover { color: var(--text-hi); background: none; }
+.la-placed-record {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+.la .la-placed-record .btn { justify-content: center; min-height: 32px; }
+.la-placed-record-note[data-state="done"] { color: var(--text-mid); }
+.la-placed-record-note[data-state="done"]::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+}
+.la-placed-record-note[data-state="over"],
+.la-placed-record-note[data-state="blocked"] { color: var(--warn); }
+
+.lw-placed-look:focus-visible { outline: none; }
+.lw-placed-look:focus-visible .lw-placed-look-body { stroke: var(--text-hi); stroke-opacity: 1; }
+.lw-placed-look-body:active { cursor: grabbing; }
+
+@media (pointer: coarse), (max-width: 600px) {
+  .la-placed-dial,
+  .la-placed-check,
+  .la .la-placed-quiet,
+  .la .la-placed-record .btn { min-height: 44px; }
+}

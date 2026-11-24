@@ -1,3 +1,4 @@
+import { OLD_CARD_TOUCH_SENTENCE } from '../lib/cardNeedsTouch.js';
 import { deriveCardAccess } from '../lib/cardAccess.js';
 import { cardStatusAsConfig, verifyCardPostSaveState } from '../lib/cardDeployment.js';
 import { createCardProjectRepository } from '../lib/cardProjectRepository.js';
@@ -77,7 +78,8 @@ export function createSceneDeliveryOperations({
 }
 
 export function sceneDeliveryFailureMessage(reason, state = '') {
-  if (reason === 'pairing-required') return 'Touch a physical control on the card, then try again.';
+  // A card only answers pairing-required when it still wants a touch: the old-card sentence.
+  if (reason === 'pairing-required') return OLD_CARD_TOUCH_SENTENCE;
   if (reason === 'head-conflict') return 'The editable project on the card changed. Reopen that copy before replacing it.';
   if (reason === 'quota-exceeded') return 'The card does not have enough space for this editable project.';
   if (reason === 'project-mismatch') return 'This card belongs to a different project. Open the matching project or finish setup first.';

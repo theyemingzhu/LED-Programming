@@ -611,8 +611,11 @@ test('staged light test restores the last Studio-confirmed look after a lost act
   await openCardInstall(page);
   await card.authorize();
   await page.getByTestId('layout-send-to-card').click();
-  await page.getByRole('button', { name: 'Start light test' }).click();
+  // The owner's own Save starts the light test (simpler-journeys C2); the
+  // activation response is still the one that is lost, so Studio must read
+  // the card's state to reach the verdict below.
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  expect(card.wiringOperations).toEqual(expect.arrayContaining(['activate', 'status']));
   await page.getByRole('button', { name: 'No, restore working setup' }).click();
 
   await expect(page.locator('.la-card-push-banner')).toContainText('Restored the last working setup');
@@ -800,8 +803,19 @@ test('initial Layout route excludes lazy Studio screen modules', async ({ page }
 
 test('Studio stylesheet declares coarse targets and reduced motion', async ({ page }) => {
   const css = await page.evaluate(() => fetch('/src/v3/v3-styles.css').then(response => response.text()));
-  expect(css).toContain('@media (pointer: coarse)');
-  expect(css).toContain('min-height: 44px');
+  // Touch targets read the --lw-tap token, which must fall back to 44px.
+  // Only the phone sheet (≤640px) lowers it, to 36px. Removing the coarse
+  // rule, its minimum, or the 44px fallback all fail here.
+  const coarse = css.match(/@media \(pointer: coarse\) \{\s*([^\n]*)/);
+  expect(coarse, 'coarse-pointer block').not.toBeNull();
+  expect(coarse![1]).toMatch(/\bbutton\b/);
+  expect(coarse![1]).toContain('min-height: var(--lw-tap, 44px)');
+  expect(coarse![1]).toContain('min-width: var(--lw-tap, 44px)');
+  const phone = await page.evaluate(() => fetch('/src/styles/lw-phone.css').then(response => response.text()));
+  const lowered = [...phone.matchAll(/--lw-tap:\s*(\d+)px/g)].map(m => Number(m[1]));
+  expect(lowered.length).toBeGreaterThan(0);
+  for (const px of lowered) expect(px).toBeGreaterThanOrEqual(36);
+  expect(css).not.toMatch(/--lw-tap:\s*\d+px/);
   expect(css).toContain('@media (prefers-reduced-motion: reduce)');
 });
 

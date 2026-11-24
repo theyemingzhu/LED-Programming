@@ -285,11 +285,14 @@ test('Layout asks before staging a different project and preserves the card know
 
   await page.getByTestId('replace-card-project').click();
   await expect(page).toHaveURL(/&replace=project/);
-  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible({ timeout: 10000 });
   expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(1);
   expect(card.savedConfig?.piece?.id).toBe('previous-card-project');
   expect(card.candidateConfig?.piece?.id).toBe(project.id);
-  expect(card.operations).not.toContain('activate');
+  // The light test starts on its own after the owner's Save (simpler-journeys
+  // C2); the known-good project stays saved until the owner confirms.
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
+  expect(card.operations).not.toContain('confirm');
 });
 
 test('Open Patterns starts the guarded install and can replace an unrelated unfinished test', async ({ page }) => {
@@ -311,11 +314,10 @@ test('Open Patterns starts the guarded install and can replace an unrelated unfi
   expect(card.operations).not.toContain('candidate');
 
   await recover.click();
-  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   expect(card.operations).toContain('rollback');
   expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(1);
   expect(card.candidateConfig?.piece?.id).not.toBe('old-test');
-  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   await page.getByRole('button', { name: 'The lights look correct' }).click();
   await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 10000 });
@@ -342,13 +344,12 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   });
 
   await page.getByTestId('layout-send-to-card').click();
-  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   await page.evaluate(() => {
     window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns';
   });
 
   await expect(page).not.toHaveURL(/#screen=pattern$/);
-  await page.getByRole('button', { name: 'Start light test' }).click();
   const verifyPhase = page.getByTestId('setup-phase-verify');
   await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible({ timeout: 10000 });
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
@@ -381,7 +382,6 @@ test('an expired Open Patterns light test retries with a fresh candidate and ano
     },
   });
 
-  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
 
   await expect(page.getByRole('region', { name: 'Wiring safety check' })).toHaveCount(0, { timeout: 5000 });
@@ -389,9 +389,8 @@ test('an expired Open Patterns light test retries with a fresh candidate and ano
   const retry = page.getByRole('button', { name: 'Retry' });
   await expect(retry).toBeEnabled();
   await retry.click();
-  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(2);
-  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(2);
 });
@@ -525,7 +524,7 @@ test('Card Install sends all three saved section arrangements and reads them bac
   } });
 
   await page.getByTestId('layout-send-to-card').click();
-  await expect(page.getByTestId('wiring-test-start')).toBeVisible();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
   const posted = card.candidateConfig;
   expect(posted.led.outputs.map((output: any) => [output.pin, output.pixels])).toEqual([[18, 41]]);
   expect(posted.led.outputs[0].segments.map((segment: any) => segment.count)).toEqual([14, 14, 13]);
@@ -536,7 +535,6 @@ test('Card Install sends all three saved section arrangements and reads them bac
   expect(posted.zones.map((zone: any) => [zone.patternId, zone.brightness ?? 1])).toEqual([
     ['fire', 0.3], ['ocean', 1], ['plasma', 1],
   ]);
-  await page.getByTestId('wiring-test-start').click();
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
   await page.getByTestId('wiring-test-confirm').click();
   await expect(page.locator('.la-card-push-banner')).toContainText('Wiring confirmed.');
@@ -571,7 +569,6 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
     expect.objectContaining({ pin: 17, pixels: 26 }),
   ]);
 
-  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByText('Last look — do the lights still look right?')).toBeVisible();
   await expect(page.getByRole('button', { name: /The lights look correct/ })).toBeVisible();
   expect(card.operations).toContain('status');
@@ -631,8 +628,7 @@ test('HTTPS direct card installs and confirms wiring without an unverified bridg
     (await import('/src/lib/cardLink.js')).getCardLinkState().transport,
   )).toBe('direct');
   await page.getByTestId('layout-send-to-card').click();
-  await expect(page.getByTestId('wiring-test-start')).toBeVisible();
-  await page.getByTestId('wiring-test-start').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
   await page.getByTestId('wiring-test-confirm').click();
   await expect(page.locator('.la-card-push-banner')).toContainText('Wiring confirmed.');
@@ -689,7 +685,6 @@ test('candidate runtime readback cannot replace an open project with no port rol
     return readProjectLifecycleRecord();
   });
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
-  await page.getByRole('button', { name: 'Start light test', exact: true }).click();
   const confirm = page.getByRole('button', { name: 'The lights look correct', exact: true });
   await expect(confirm).toBeVisible({ timeout: 10000 });
   // Activation's completion triggers Setup's background read. Its response
@@ -721,7 +716,6 @@ test('reload during probation resumes the exact candidate read-only and notices 
     transformProject(project: any) { project.portRoles = []; },
   });
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
-  await page.getByRole('button', { name: 'Start light test', exact: true }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct', exact: true })).toBeVisible({ timeout: 10000 });
   expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);

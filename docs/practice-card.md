@@ -128,7 +128,11 @@ card's behaviour changes (a firmware release, a new Wi-Fi setup), run the
 contract check: it replays one fixed read-only request script against both the
 physical card and the Real-timing practice card and prints where shapes or
 timings drift beyond tolerance (timing: more than 40 ms AND 50% apart on the
-median). It runs on demand, never in CI:
+median). It also checks exact values for the card's fixed hardware facts in
+firmware-info: `ledType`, `outputColor`, and the encoder and button pins in
+`controls`. It compares against the practice state the physical card holds,
+`bench-discovery` by default (`--state <id>` picks another). It runs on
+demand, never in CI:
 
 ```
 cd lightweaver && npm run practice:contract            # card at 192.168.18.70

@@ -1,0 +1,65 @@
+/* Symmetry by eye: more numbers of sides in the strip list's Symmetry
+   control, and the card that reads the amber copies on the artwork.
+   Its own file on purpose: the control's base rules live in divide-strip.css
+   and the card's in canvas/symmetry-offer.css; this only adds to them. */
+
+/* Seven choices: None takes the width of two, so both rows fill. */
+.la-symmetry-seg.is-many { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.la-symmetry-seg.is-many .btn:first-child { grid-column: span 2; }
+.la .la-symmetry-seg.is-many .btn { position: relative; }
+
+/* Studio's guess: a small mark under that number, and in the line below. */
+.la .la-symmetry-seg .btn.is-guess::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.la-symmetry-guess-mark {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+}
+
+/* The card while choosing: the verdict leads, with its state as a dot. */
+.la .la-symmetry-focus h2 { display: flex; align-items: baseline; gap: 8px; }
+.la-symmetry-focus-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  transform: translateY(-1px);
+}
+.la-symmetry-focus-dot.is-fit { background: var(--ok); }
+/* No filled button here: Save to card stays the one filled action on Layout. */
+.lw-symmetry-centre:focus-visible { outline: none; }
+.lw-symmetry-centre:focus-visible circle:nth-child(2) { stroke: var(--text-hi); }
+
+/* Three or more sides: "Plays with" and one select on a single line, with
+   Move up / Move down beside it when they fit at 320px, else on the line below. */
+.la-side-choice.is-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.la-side-choice.is-line .la-side-choice-k { flex: none; }
+.la .la-side-select {
+  flex: 1 1 120px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 12px;
+}
+.la .la-side-select:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+@media (pointer: coarse), (max-width: 600px) { .la .la-side-select { min-height: 44px; } }

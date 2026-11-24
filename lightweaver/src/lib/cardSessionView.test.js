@@ -31,3 +31,19 @@ test('a renamed or edited starter is owner work, not an untouched starter', asyn
   assert.equal(edited.draft.relationship, 'differs');
   assert.notEqual(edited.differenceCopy, '');
 });
+
+// L1 (bench card, 2026-11-23): Card Home said "Your draft matches the
+// installed project" about a draft opened with one of the card's six looks.
+test('never says the draft matches while the card\'s look list could not be read whole', async () => {
+  const { noteCardLooksUnreadable, noteCardLooksReadWhole, resetCardLookReadState } = await import('./cardLookReadState.js');
+  const project = { id: 'art', revision: 1, fingerprint: 'aaa' };
+  const before = deriveCardSessionView({ link, project });
+  assert.equal(before.draft.relationship, 'matches', 'fixture: the draft matches by fingerprint');
+  noteCardLooksUnreadable('lw-one');
+  const after = deriveCardSessionView({ link, project });
+  assert.notEqual(after.draft.relationship, 'matches');
+  assert.doesNotMatch(after.differenceCopy, /matches the installed project/);
+  noteCardLooksReadWhole('lw-one');
+  assert.equal(deriveCardSessionView({ link, project }).draft.relationship, 'matches', 'a whole read restores it');
+  resetCardLookReadState();
+});

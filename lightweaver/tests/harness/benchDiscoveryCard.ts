@@ -65,14 +65,34 @@ export const BENCH_DISCOVERY_FIRMWARE_UPDATE = {
   restoredBuildNumber: 2464,
 };
 
+/**
+ * firmware-info.json `controls`: the card's encoder and button pins, at rest
+ * (nothing pressed, no events since boot). ledType WS2812B and outputColor GRB
+ * with no gamma are the simulator's always-sent defaults and match the card.
+ */
+export const BENCH_DISCOVERY_CONTROLS = {
+  encoder: {
+    a: 4, b: 5, press: 0, configuredAlternatePress: 6, effectiveAlternatePress: 6,
+    rotateDirection: 'clockwise-brighter', brightnessStep: 18,
+    aLow: true, bLow: false, pressPressed: false, alternatePressPressed: false,
+  },
+  previous: 7, next: 8, blackout: 9, statusLed: 2,
+  previousPressed: false, nextPressed: false, blackoutPressed: false,
+  brightnessAnalog: -1, manualBrightness: 1,
+  lastEvent: 'none', lastEventAtMs: 0,
+  eventCounts: { next: 0, previous: 0, blackout: 0, brighter: 0, dimmer: 0 },
+};
+
 /** zones.json: one zone, bench-full, warm-white at 0.25. */
 function applyBenchDetails(card: CardSimulator) {
   const state = card.state as CardSimulator['state'] & {
     zoneIds?: string[];
     firmwareUpdateOverride?: Record<string, unknown>;
+    firmwareControls?: unknown;
   };
   state.zoneIds = ['bench-full'];
   state.firmwareUpdateOverride = { ...BENCH_DISCOVERY_FIRMWARE_UPDATE };
+  state.firmwareControls = structuredClone(BENCH_DISCOVERY_CONTROLS);
   card.state.zoneControls.clear();
   card.state.zoneControls.set('bench-full', {
     brightness: 0.25, speed: 1, hueShift: 0, customHue: 32, customSaturation: 230,

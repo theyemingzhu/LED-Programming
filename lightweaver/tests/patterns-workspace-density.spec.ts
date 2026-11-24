@@ -3,6 +3,7 @@ import { createDefaultProject } from '../src/lib/projectModel.js';
 import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
 import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
 import { makeDefaultWiring } from '../src/lib/wiringModel.js';
+import { MIN_TAP } from './harness/tapSize';
 
 const PATTERNS = ['fire', 'ocean', 'plasma', 'aurora'];
 
@@ -255,8 +256,8 @@ test('a phone can drag the section grip without changing the selected pattern', 
   const from = await grip.boundingBox();
   const to = await target.boundingBox();
   if (!from || !to) throw new Error('Touch reorder controls are unavailable.');
-  expect(from.width).toBeGreaterThanOrEqual(44);
-  expect(from.height).toBeGreaterThanOrEqual(44);
+  expect(from.width).toBeGreaterThanOrEqual(MIN_TAP);
+  expect(from.height).toBeGreaterThanOrEqual(MIN_TAP);
   const client = await phone.context().newCDPSession(phone);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x + from.width / 2, y: from.y + from.height / 2 }] });
   await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + from.width / 2, y: to.y + to.height / 2 }] });

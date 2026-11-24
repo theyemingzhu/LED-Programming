@@ -194,8 +194,19 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
       method: 'GET', cache: 'no-store', credentials: 'omit',
     });
     const status = response?.ok ? await response.json().catch(() => null) : null;
-    if (!observed?.id || status?.cardId !== observed.id
-      || status?.capabilities?.physicalFrameOrder?.version !== 1) {
+    // The firmware reports this capability on /api/firmware-info only
+    // (LightweaverWeb.cpp handleFirmwareInfo; /api/status never carries it:
+    // LightweaverStorage.cpp runtimeStatusJson). Ask there when status is
+    // silent, for the same card.
+    let physical = status?.capabilities?.physicalFrameOrder?.version === 1;
+    if (!physical && observed?.id && status?.cardId === observed.id) {
+      const infoResponse = await doFetch(`${cardHostToUrl(resolvedHost)}/api/firmware-info`, {
+        method: 'GET', cache: 'no-store', credentials: 'omit',
+      }).catch(() => null);
+      const info = infoResponse?.ok ? await infoResponse.json().catch(() => null) : null;
+      physical = info?.cardId === observed.id && info?.capabilities?.physicalFrameOrder?.version === 1;
+    }
+    if (!observed?.id || status?.cardId !== observed.id || !physical) {
       const error = new Error('This card firmware cannot preview exact physical LED order. Update the card before streaming.');
       error.reason = 'physical-frame-unsupported';
       throw error;
@@ -404,8 +415,24 @@ export function createHttpFrameTransport(host = '', {
       status = response?.ok ? await response.json().catch(() => null) : null;
     }
     assertAuthority();
-    if (status?.cardId !== initial.cardId || status?.bootId !== initial.bootId
-      || status?.capabilities?.physicalFrameOrder?.version !== 1) {
+    // Same as the WebSocket path: /api/status never carries this capability,
+    // /api/firmware-info does. It must answer for the same card and boot.
+    let physical = status?.capabilities?.physicalFrameOrder?.version === 1;
+    if (!physical && status?.cardId === initial.cardId && status?.bootId === initial.bootId) {
+      let info;
+      if (typeof authority.request === 'function') info = await authority.request('/api/firmware-info').catch(() => null);
+      else {
+        const infoResponse = await fetchImpl(`${baseUrl}/api/firmware-info`, {
+          method: 'GET', cache: 'no-store', credentials: 'omit',
+          ...(authority.transport === 'direct-lna' ? { targetAddressSpace: 'local' } : {}),
+        }).catch(() => null);
+        info = infoResponse?.ok ? await infoResponse.json().catch(() => null) : null;
+      }
+      assertAuthority();
+      physical = info?.cardId === initial.cardId && (!info?.bootId || info.bootId === initial.bootId)
+        && info?.capabilities?.physicalFrameOrder?.version === 1;
+    }
+    if (status?.cardId !== initial.cardId || status?.bootId !== initial.bootId || !physical) {
       const error = new Error('This card firmware cannot preview exact physical LED order. Update the card before streaming.');
       error.reason = 'physical-frame-unsupported';
       throw error;

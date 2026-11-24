@@ -460,7 +460,7 @@ bool exactLiveUpdateBinding(const FirmwareUpdateBinding& update) {
 
 bool authorizePhysicalUpdate(JsonVariantConst source,
                              const FirmwareUpdateBinding& update,
-                             bool requirePhysical, String& error) {
+                             bool /*requirePhysical*/, String& error) {
   LightweaverOwnerBinding owner;
   owner.cardId = update.cardId;
   owner.bootId = update.bootId;
@@ -477,11 +477,10 @@ bool authorizePhysicalUpdate(JsonVariantConst source,
     error = "owner capability or exact-card binding rejected";
     return false;
   }
-  if (requirePhysical && (!runtimeOwnerPairingAuthorized() ||
-      !String(source["physicalConfirmationNonce"] | "").length())) {
-    error = "fresh physical confirmation required";
-    return false;
-  }
+  // No physical touch and no confirmation nonce: an installed artwork cannot
+  // be reached. What protects the card is unchanged and unconditional: the
+  // signed ticket is verified in preflight before anything is written, and
+  // commit refuses an image whose SHA-256 is not the one the ticket names.
   return true;
 }
 

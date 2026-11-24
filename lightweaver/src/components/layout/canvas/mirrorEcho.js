@@ -26,6 +26,10 @@ function createStore(initial) {
 
 const echo = createStore(null);
 const reveal = createStore(0);
+// 3. Focus: the owner just chose a number of sides, so the canvas shows the
+//    amber copies and the centre mark until they say Done. `centre` is null
+//    until they drag the mark. Never saved: it is a way of looking.
+const focus = createStore(null);
 
 export function setMirrorEchoFocus(stripId) {
   echo.set(stripId || null);
@@ -35,10 +39,32 @@ export function useMirrorEchoFocus() {
   return useSyncExternalStore(echo.subscribe, echo.get, () => null);
 }
 
+export function setSymmetryFocus(value) {
+  focus.set(value ? { centre: value.centre || null } : null);
+}
+
+export function useSymmetryFocus() {
+  return useSyncExternalStore(focus.subscribe, focus.get, () => null);
+}
+
 export function requestSymmetryReveal() {
   reveal.set(reveal.get() + 1);
 }
 
 export function useSymmetryRevealRequest() {
   return useSyncExternalStore(reveal.subscribe, reveal.get, () => 0);
+}
+
+// 4. Placed look: the look the owner is trying on the artwork (lib/placedLook.js),
+//    or null. The inspector's controls and the frame on the canvas both write
+//    it. In-session only: it is not part of the project until saved looks can
+//    hold one, so a reload starts without it.
+const placedLook = createStore(null);
+
+export function setPlacedLookPreview(look) {
+  placedLook.set(look || null);
+}
+
+export function usePlacedLookPreview() {
+  return useSyncExternalStore(placedLook.subscribe, placedLook.get, () => null);
 }

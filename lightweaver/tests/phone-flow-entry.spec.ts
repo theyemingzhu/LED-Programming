@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 
 test.use({ hasTouch: true });
 for (const width of [375, 390, 768, 1280]) test(`Lab scene entry and area controls remain reachable at ${width}px`, async ({ page }, testInfo) => {
@@ -13,8 +14,8 @@ for (const width of [375, 390, 768, 1280]) test(`Lab scene entry and area contro
   await expect(entry).toBeVisible({ timeout: 2000 });
   const toolbar = page.getByTestId('pattern-lab-toolbar');
   const bounds = await entry.boundingBox();
-  expect(bounds!.height).toBeGreaterThanOrEqual(44);
-  expect(bounds!.width).toBeGreaterThanOrEqual(44);
+  expect(bounds!.height).toBeGreaterThanOrEqual(MIN_TAP);
+  expect(bounds!.width).toBeGreaterThanOrEqual(MIN_TAP);
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
   expect(await toolbar.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -24,8 +25,8 @@ for (const width of [375, 390, 768, 1280]) test(`Lab scene entry and area contro
   if (width <= 1000) {
     for (const button of await toolbar.getByRole('button').all()) {
       const target = (await button.boundingBox())!;
-      expect(target.height).toBeGreaterThanOrEqual(44);
-      expect(target.width).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(MIN_TAP);
+      expect(target.width).toBeGreaterThanOrEqual(MIN_TAP);
     }
   }
   const designName = page.getByTestId('pattern-lab-draft-name');

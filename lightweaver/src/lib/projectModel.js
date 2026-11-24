@@ -27,6 +27,7 @@ import { makeDefaultWiring, migrateWiring } from './wiringModel.js';
 import { isClosedPathData } from './pathClosure.js';
 import {
   deriveLegacyPatternCycleIds,
+  derivePlaylistLookIds,
   isDefaultPatternCycle,
   isImplicitDefaultPatternPlaylist,
   normalizeCardPlaylist,
@@ -148,7 +149,13 @@ export function defaultStandaloneController(overrides = {}) {
       ...controls,
       encoder: {
         ...controls.encoder,
-        patternCycleIds: deriveLegacyPatternCycleIds(playlist),
+        // The same rule every writer uses (Patterns, Playlist, section looks):
+        // each enabled entry's own id, saved looks included. Loading with the
+        // pattern-only legacy rule dropped saved looks from the dial cycle on
+        // every reload, so a project changed just by being opened and could
+        // never match the card holding it (interruption tests D1/D2,
+        // todo/plans/practice-card-interruptions.md).
+        patternCycleIds: derivePlaylistLookIds(playlist),
       },
     },
     led: {

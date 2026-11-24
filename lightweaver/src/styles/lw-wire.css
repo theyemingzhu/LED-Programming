@@ -81,7 +81,7 @@
 }
 
 .lww-cta {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 10px 16px;
 }
 
@@ -101,7 +101,7 @@
 .lww-custom-mapping > summary,
 .lww-card-hardware > summary {
   display: flex;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   align-items: center;
   color: var(--text-mid);
   font-size: 11px;

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { MIN_TAP } from './harness/tapSize';
 
 // Every primary Studio destination must retain the shared shell controls.
 // 'Card' is the single card destination — the old 'Setup' and 'Hardware' rail
@@ -498,12 +499,11 @@ test('background direct discovery stays unpaired until an explicit one-tap pair'
   await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found . pair/);
 
+  // The owner's one tap on "Found — pair" is the explicit pair
+  // (simpler-journeys C5): no dialog, no "Use this card instead".
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('Pair this Lightweaver card');
-  await expect(dialog.getByRole('button', { name: 'Use this card instead' })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-passive-card');
+  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
 });
 
@@ -838,11 +838,11 @@ test('mobile connection sheet fits without horizontal overflow', async ({ page }
     dialog.getByText('Connection details', { exact: true }),
   ];
   for (const target of interactiveTargets) {
-    expect((await target.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await target.boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
   }
   await dialog.getByText('Connection details', { exact: true }).click();
-  expect((await dialog.getByLabel('Card hostname').boundingBox())?.height).toBeGreaterThanOrEqual(44);
-  expect((await dialog.getByRole('button', { name: 'Save', exact: true }).boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  expect((await dialog.getByLabel('Card hostname').boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
+  expect((await dialog.getByRole('button', { name: 'Save', exact: true }).boundingBox())?.height).toBeGreaterThanOrEqual(MIN_TAP);
 });
 
 test('layout opens with the primitive-first starter', async ({ page }) => {

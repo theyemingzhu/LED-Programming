@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
+import { FirstSaveOrFind } from '../components/card/FirstSaveOrFind.jsx';
 import './lw-setup.css';
 import {
   CONNECTED_CARD_LINK_STATES,
@@ -31,9 +33,10 @@ import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
+import { requestLedTotal } from '../lib/ledCountHandoff.js';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { projectFromCardParts } from '../lib/cardPickup.js';
-import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
+import { adoptedProjectName, guardedResolutionRun, LOOKS_UNREADABLE_MESSAGE, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
@@ -502,6 +505,7 @@ export function SetupScreen({
     cancelled: 'Studio kept the open project, so nothing was adopted from the card.',
     invalid: 'The card described a project Studio could not read. Read this card again.',
     'no-geometry': 'This card did not report any light outputs, so there is no wiring to start from. Read this card again.',
+    'looks-unreadable': LOOKS_UNREADABLE_MESSAGE,
   });
   // Adoption now runs BY ITSELF when nothing can be lost, and an automatic
   // attempt that fails must not raise an alert: the owner did nothing, so an
@@ -641,7 +645,7 @@ export function SetupScreen({
     event?.preventDefault?.();
     return applyLedCount(Math.trunc(Number(ledCountDraft)));
   };
-  const applyLedCount = async pixels => {
+  const applyLedCount = async (pixels, { saveToCard = false } = {}) => {
     if (ledCountState.busy) return;
     if (!Number.isSafeInteger(pixels) || pixels < 1) {
       setLedCountState({ busy: false, message: 'Enter how many lights are on this strip.' });
@@ -652,6 +656,18 @@ export function SetupScreen({
       setLedCountState({ busy: false, message: 'Find the strip output first, then enter the count.' });
       return;
     }
+    // An installed card's row button is Save to card. Layout owns how a total
+    // is spread across drawn strips, so the count goes to Layout's own setter,
+    // which then opens the same Save to card every other door uses.
+    if (saveToCard) {
+      if (!requestLedTotal(pixels)) {
+        setLedCountState({ busy: false, message: 'Studio could not hand the count to Layout. Change it in Layout.' });
+        return;
+      }
+      setLedCountState({ busy: false, message: '' });
+      go('#screen=layout&mode=draw');
+      return;
+    }
     setLedCountState({ busy: true, message: '' });
     // Only a card holding the temporary bench setup takes a count straight
     // away (and lights the strip to it). A card holding a real project keeps
@@ -659,10 +675,14 @@ export function SetupScreen({
     // project here, and the status row / Install door carry the difference.
     const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
     const host = cardTakesCount ? (cardLink?.host || cardHost || '') : '';
-    const nextStatus = cardState.status
-      ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
-      : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
     try {
+      // Inside the try: cardStatusWithPixelCount refuses a count for an output
+      // split into more than one run (a wiring change, not a length). Thrown
+      // outside it, that refusal escaped and left the row on "Saving…" for
+      // good (real card, 2026-11-22; tests/count-row-release.spec.ts).
+      const nextStatus = cardState.status
+        ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
+        : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
       await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
       if (!cardTakesCount) {
         setLedCountDraft('');
@@ -741,8 +761,13 @@ export function SetupScreen({
   const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
   useEffect(() => {
     if (!onCountEditor) return undefined;
-    onCountEditor(countPin == null || !cardTakesCount ? null : {
-      apply: applyLedCount,
+    // Every card offers the count in its own row (THINKING 2026-09-11: every
+    // fact stays editable in its row). A card that takes the count straight
+    // away sets it; an installed card keeps its project until the owner saves,
+    // so its row button IS that save (simpler-journeys C3).
+    onCountEditor(countPin == null ? null : {
+      apply: cardTakesCount ? applyLedCount : pixels => applyLedCount(pixels, { saveToCard: true }),
+      saves: !cardTakesCount,
       busy: ledCountState.busy,
       message: ledCountState.message,
       pin: countPin,
@@ -853,6 +878,8 @@ export function SetupScreen({
       setDraftSave({ pending: false, message: result?.message || 'Result not confirmed. Read the card before trying again.' });
     } catch (error) { setDraftSave({ pending: false, message: error?.message || 'Result not confirmed. Read the card before trying again.' }); }
   };
+  const installedProjectId = String(cardLink?.readiness?.projectId || cardState.status?.projectId || '').trim();
+  const installedProjectOpen = Boolean(installedProjectId) && installedProjectId === String(currentProject?.id || '').trim();
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
     && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
     && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
@@ -1052,13 +1079,29 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
-            {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
-              ? 'Review the connected lights'
-              : ledCountEntry
-                ? 'Find the lights'
-                : 'Find and count the lights'}
-          </button>
+          {/* Way in 1 (Find my strips, combined flow): a blank card and an open
+              project whose wiring is known get the project in one save, then a
+              light check. Otherwise finding comes first, as before. */}
+          <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
+                {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
+                  ? 'Review the connected lights'
+                  : ledCountEntry
+                    ? 'Find the lights'
+                    : 'Find and count the lights'}
+              </button>
+            )}
+          />
         </div>
       );
     }
@@ -1102,10 +1145,25 @@ export function SetupScreen({
           // (setup-open-patterns) for the identical click, and this rung used
           // to print the same button a second time directly beneath it, with
           // a paragraph describing an install that had already happened.
-          <>
-            <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
-          </>
+          // A blank card takes the whole project in one save right here, then
+          // the light check (Find my strips way in 1). Otherwise as before.
+          <FirstSaveOrFind
+            elsewhere={Boolean(installAction)}
+            firstSave={(
+              <CardInstallAction
+                firstSaveOnly
+                connected={connected}
+                cardHost={cardHost}
+                onEditInWire={() => go('#screen=layout&mode=draw')}
+              />
+            )}
+            find={(
+              <>
+                <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
+                <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Save and open Patterns</button>
+              </>
+            )}
+          />
         ) : null}
       </div>
     );
@@ -1207,7 +1265,12 @@ export function SetupScreen({
                 </button>
                 <div className="lw-identity-project">
                   <span>{installedHome ? 'On the card' : 'Your draft'}</span>
-                  {installedHome ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
+                  {/* An installed card whose project is the one open here renames in
+                      place (simpler-journeys C7); the name reaches the card with
+                      Save to card like any other edit. A different open project
+                      keeps the card's name read-only, since renaming would rename
+                      the draft, not what the card holds. */}
+                  {installedHome && !installedProjectOpen ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
                     <input
                       className="lw-identity-rename"
                       data-testid="setup-project-name-input"

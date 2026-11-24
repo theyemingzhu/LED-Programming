@@ -189,7 +189,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0;
   border: 0;
   background: transparent;
@@ -275,7 +275,7 @@
 /* The row's second grid track is 48px, so the window stays inside it: a wider
    .pl-art would simply overflow its own column. Five 5px beads at a 3px gap is
    37px of strand in 42px of usable width. */
-.pm .pl-art { width: 44px; height: 32px; }
+.pm .pl-art { width: var(--lw-tap, 44px); height: 32px; }
 .pm .pl-actions {
   display: grid;
   grid-template-columns: 144px 52px 36px;
@@ -520,8 +520,8 @@
   .pm .pl-actions { grid-template-columns: minmax(0, 1fr) 52px 44px; }
   .pm .pl-actions > .plbtn,
   .pm .pl-more,
-  .pm .pl-dwell-input { min-height: 44px; }
-  .pm .pl-more { width: 44px; min-width: 44px; }
+  .pm .pl-dwell-input { min-height: var(--lw-tap, 44px); }
+  .pm .pl-more { width: var(--lw-tap, 44px); min-width: var(--lw-tap, 44px); }
   .pl-pool.pl-pool .pl-pattern-tile { min-height: 52px; }
 }
 

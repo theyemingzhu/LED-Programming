@@ -4,6 +4,7 @@
    radial-halo look, and optionally streamed to the card's LEDs through
    the bridge frame protocol (v1). Compute lives in lib/mandalaEngine.js;
    transport in lib/cardFrameStream.js — this file is UI + wiring only. */
+import { cardReportsNoTouch } from '../lib/cardNeedsTouch.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext.jsx';
 import {
@@ -1146,6 +1147,7 @@ function ShowScreen({
       Compatible scenes run on the card after installation. Flow recordings play fixed motion from Playlist.
     </p>
     <SceneExpressionEditor
+      cardNoTouch={cardReportsNoTouch(cardLink?.readiness)}
       hostName="Show"
       project={project}
       onSaveProject={onSaveProject}

@@ -1064,6 +1064,33 @@ await assert.rejects(
   'a delayed adoption of A cannot persist or connect after host/newer discovery B replaces it',
 );
 assert.equal(JSON.parse(storedValues.get('lw_card_identity_v1')).id, 'lw-001122aabbcc');
+
+// D5 (todo/plans/practice-card-interruptions.md): on a slow card the
+// background poll lands mid-pairing every time. A newer poll of the SAME card
+// at the SAME address is not a replacement, so pairing still completes.
+{
+  const slowLink = createCardLink({ host: '192.168.18.70' });
+  slowLink.dispatch({
+    type: 'direct-status', connected: true, host: '192.168.18.70',
+    card: { id: 'lw-slow-same', name: 'Slow' },
+  });
+  let releaseSlow;
+  const slowGate = new Promise(resolve => { releaseSlow = resolve; });
+  const slowAdoption = adoptDiscoveredDirectCard({
+    link: slowLink,
+    fetchImpl: async () => {
+      await slowGate;
+      return { ok: true, json: async () => readyEnvelope('lw-slow-same', { cardName: 'Slow' }) };
+    },
+  });
+  slowLink.dispatch({
+    type: 'direct-status', connected: true, host: '192.168.18.70',
+    card: { id: 'lw-slow-same', name: 'Slow' },
+  });
+  releaseSlow();
+  const paired = await slowAdoption;
+  assert.equal(paired.id, 'lw-slow-same', 'the same card polled again mid-pairing still pairs');
+}
 assert.equal(isolatedDirectLink.getState().discoveredCard.id, 'lw-newer-b');
 assert.equal(isolatedDirectLink.getState().state, 'disconnected');
 
@@ -1773,3 +1800,9 @@ assert.equal(shared.getState().readiness, null,
 }
 
 console.log('card-link-state tests passed');
+
+// Every assertion above has run by this line; a failed one throws before it.
+// Some links under test leave retry and reconnect timers armed, and the
+// longer slow-card waits kept this process alive for minutes after passing,
+// long enough to exhaust the CI job's time limit. End the process here.
+process.exit(0);

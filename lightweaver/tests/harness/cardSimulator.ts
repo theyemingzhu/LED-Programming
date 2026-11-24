@@ -378,6 +378,10 @@ function statusBody(state: CardSimulator['state']) {
     productionJobDigest: '',
     capabilities: {
       kaleidoscopeReflectionPoints: 1,
+      // Opt-in (state.symmetrySides), like firmwareUpdateReady below: the real
+      // card reports it (fixtures/real-card-bench-2026-11-21/status.json), and
+      // fixtures that predate it keep today's shape.
+      ...((state as { symmetrySides?: boolean }).symmetrySides ? { symmetrySides: 1 } : {}),
       firmwareUpdate: { version: 1, network: true, softwareGrant: true },
     },
     // F35: real firmware reports this live bit separately from the
@@ -509,7 +513,9 @@ function patternsBody(state: CardSimulator['state']) {
     patterns: (state.installedLooks || state.patterns).map((pattern: any) => ({
       id: String(pattern.id || ''),
       label: String(pattern.label || pattern.id || ''),
-      mode: pattern.mode || 'pattern',
+      // The real card reports a stock pattern as mode 'procedural' (fixtures/
+      // real-card-bench-2026-11-23-patterns.json); owner looks are 'combo'.
+      mode: pattern.mode || 'procedural',
       runtimePatternId: String(pattern.preset || pattern.id || ''),
       controls: { customColor: true, breathe: true, drift: true },
       zones: pattern.zones || [{ id: ZONE_ID, label: 'All lights', patternId: pattern.id }],
@@ -631,6 +637,12 @@ export function createCardSimulator(
      * real card (firmware 1.2.4): about 14 s. Unset keeps today's instant card.
      */
     restartAfterSaveMs?: number;
+    /**
+     * The same restart for /api/wiring/activate: the card answers the
+     * activation, then reboots into the candidate and is silent for this many
+     * ms before it reports `testing` (real: ~14000). Unset keeps the instant card.
+     */
+    restartAfterActivateMs?: number;
   } = {},
 ): CardSimulator {
   const latency = options.latencyMs || CARD_LATENCY_MS;
@@ -746,9 +758,9 @@ export function createCardSimulator(
   const delayedAnswers: { path: string | null; ms: number; times: number }[] = [];
   function quietNow() { return Date.now() < silentUntil || Date.now() < restartingUntil; }
   function quietEndsIn() { return Math.max(silentUntil, restartingUntil) - Date.now(); }
-  function beginPlannedRestart() {
+  const restartAfterActivateMs = Number(options.restartAfterActivateMs) || 0;
+  function beginPlannedRestart(ms = restartAfterSaveMs) {
     if (restartPendingTimer) { clearTimeout(restartPendingTimer); restartPendingTimer = null; }
-    const ms = restartAfterSaveMs;
     restartGeneration += 1;
     restartingUntil = Date.now() + ms;
     (state as { bootingUntil?: number }).bootingUntil = restartingUntil + 1500;
@@ -1035,15 +1047,30 @@ export function createCardSimulator(
           // The card's button/dial pins, as firmware-info reports them. Opt-in
           // (state.firmwareControls) so fixtures without them keep today's shape.
           ...((state as { firmwareControls?: unknown }).firmwareControls ? { controls: (state as { firmwareControls?: unknown }).firmwareControls } : {}),
+          // Firmware-info, not status, carries physicalFrameOrder on the real
+          // card (firmware LightweaverWeb.cpp handleFirmwareInfo; trace
+          // fixtures/real-card-bench-2026-11-21/firmware-info.json). Without it
+          // every physical-order light frame from Studio was refused here.
+          capabilities: {
+            ...(statusBody(state) as { capabilities?: Record<string, unknown> }).capabilities,
+            outputColor: 1,
+            physicalFrameOrder: { version: 1 },
+          },
           bridgeVersion: 6,
           build: state.buildId,
           pixels: state.pixels,
-          lookCount: state.patterns.length,
+          // Opt-out (state.omitLookCount): an older card that does not report it.
+          lookCount: (state as { omitLookCount?: boolean }).omitLookCount ? undefined : state.patterns.length,
           freeHeap: 180000,
           rssi: -52,
         });
-      case '/api/patterns':
-        return ok(patternsBody(state));
+      case '/api/patterns': {
+        // Opt-in (state.patternsReadBackLimit): the card answers only the
+        // first N looks, a short read-back (L1).
+        const limit = (state as { patternsReadBackLimit?: number }).patternsReadBackLimit;
+        const body = patternsBody(state) as { patterns?: unknown[] };
+        return ok(Number.isInteger(limit) ? { ...body, patterns: (body.patterns || []).slice(0, limit) } : body);
+      }
       case '/api/zones':
         return ok({ syncZones: true, kaleidoscopeMappings: [], zones: zonesFor(state) });
       case '/api/control':
@@ -1188,6 +1215,9 @@ export function createCardSimulator(
         state.wiringTestActive = true;
         state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
         state.bootId = `${state.bootId}-act`;
+        // respond() runs after the in-flight quiet check, so this reply still
+        // goes out; everything after it meets the restart.
+        if (restartAfterActivateMs) beginPlannedRestart(restartAfterActivateMs);
         return ok({
           ok: true, state: 'testing', activationId: STAGED_ACTIVATION_ID,
           rebooting: true, remainingProbationMs: WIRING_PROBATION_MS,

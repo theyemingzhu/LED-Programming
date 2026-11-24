@@ -242,7 +242,7 @@
 
 .set .pm-input,
 .set .num-input {
-  height: 44px;
+  height: var(--lw-tap, 44px);
   border: none;
   border-radius: 7px;
   background: var(--lw-well);
@@ -264,7 +264,7 @@
 /* ── buttons ─────────────────────────────────────────────── */
 
 .set .btn {
-  min-height: 44px;
+  min-height: var(--lw-tap, 44px);
   padding: 0 20px;
   border-radius: 8px;
   font-size: 13.5px;
@@ -605,7 +605,7 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     white-space: normal;
     text-align: center;
     line-height: 1.3;
@@ -640,7 +640,7 @@
   .set .lw-color-order-check .lwb-quiz-open {
     width: auto;
     max-width: 100%;
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     height: auto;
     white-space: normal;
     text-align: center;
@@ -686,7 +686,7 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
-    min-height: 44px;
+    min-height: var(--lw-tap, 44px);
     white-space: normal;
     line-height: 1.3;
     padding-block: 8px;

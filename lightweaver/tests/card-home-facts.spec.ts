@@ -203,17 +203,22 @@ test('the brightness fader in the row writes the limit', async ({ page }) => {
   }, { timeout: 10000 }).toBe(200);
 });
 
-test('an installed, matching project sends count changes to Layout', async ({ page }) => {
+test('an installed, matching project edits its count in the row, and the row button is Save to card', async ({ page }) => {
+  // simpler-journeys C3: the count stays editable in its own row on an
+  // installed card. Layout's own setter spreads it across the drawn strips on
+  // the way to Save to card (tests/simpler-journeys.spec.ts proves the save).
   const spec = cardState('installed-match');
   await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
   await page.getByRole('button', { name: 'Open installed project' }).click();
   await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'ready');
-  await expect(page.getByTestId('fact-lights-stepper')).toHaveCount(0);
-  await expect(page.getByTestId('fact-lights')).toContainText(String(spec.pixels));
-  await page.getByTestId('fact-lights').getByRole('button', { name: 'Change count' }).click();
-  await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
+  const stepper = page.getByTestId('fact-lights-stepper');
+  await expect(stepper).toBeVisible();
+  await expect(stepper.getByLabel('Light count')).toHaveValue(String(spec.pixels));
+  await expect(stepper.getByTestId('fact-lights-set')).toHaveText('Save to card');
+  await expect(stepper.getByTestId('fact-lights-set')).toBeDisabled();
+  await expect(page.getByTestId('fact-lights').getByRole('button', { name: 'Change count' })).toHaveCount(0);
 });
 
 for (const width of [1440, 390]) {

@@ -42,6 +42,9 @@ import { installedByThisBrowser } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
+import { clearCardProject } from '../../../lib/cardClearProject.js';
+import { BENCH_PROJECT_ID } from '../../../lib/benchConfig.js';
+import { mergeCardLooksIntoController, readCardLooksController } from '../../../lib/lookLossGuard.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
@@ -173,12 +176,55 @@ export function CardPushControl({
   const openCardProject = useOpenCardProject();
   const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed,
     wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
-    gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
+    gammaEnabled, gammaValue, symSettings, sectionTargets, setStandaloneController } = useProject();
+  // L1: a save that would remove looks from the card stops and asks.
+  const [lookLoss, setLookLoss] = useState(null);
+  const allowLookRemovalRef = useRef(false);
+  const keepCardLooks = async () => {
+    try {
+      const cardController = await readCardLooksController({
+        host: pushHost || getCardLinkState().host, cardId: getCardLinkState().card?.id || '', transport: getCardLinkState().transport,
+        skeleton: { strips, patchBoard: board, wiring },
+      });
+      const merged = mergeCardLooksIntoController(standaloneController, cardController);
+      const added = (merged.looks?.length || 0) - (standaloneController?.looks?.length || 0);
+      setStandaloneController(merged);
+      setLookLoss(null);
+      setPushStatus(added > 0
+        ? `Kept the card's looks: ${added} added back to your project. Save to card again to send them.`
+        : "Your project already has the card's looks. Save to card again.");
+    } catch (error) {
+      setPushStatus(`Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.`);
+    }
+  };
   const [pushHost, setPushHost] = useState(() => getCardHostname());
   // An install queued by the URL (Layout's "Check and install") or a press
   // shows it is working at once: the preflight reads come before the send's
   // own status, and on a busy page that left about a second of a screen with
   // no sign of work (F-D4, todo/plans/false-failures.md).
+  // The card said it has no room for the change (F-F1). When it is holding the
+  // temporary Find-my-strips setup, clearing that setup is the way out, so it
+  // is offered right where the save failed.
+  const [storageFull, setStorageFull] = useState(false);
+  const [clearState, setClearState] = useState('');
+  const cardHoldsTemporarySetup = (() => {
+    const readiness = getCardLinkState().readiness || {};
+    return readiness.provisionalSetup === true || String(readiness.projectId || readiness.piece?.id || '') === BENCH_PROJECT_ID;
+  })();
+  const clearTemporarySetupHere = async () => {
+    if (clearState === 'busy') return;
+    setClearState('busy');
+    setPushStatus('Clearing the temporary Find-my-strips setup…');
+    try {
+      await clearCardProject({ host: pushHost.trim().toLowerCase() || 'lightweaver.local', transport: getCardLinkState().transport });
+      setStorageFull(false);
+      setClearState('done');
+      setPushStatus('The temporary setup was cleared. The card is restarting blank and keeps its Wi-Fi; save to card again in a few seconds.');
+    } catch (error) {
+      setClearState('');
+      setPushStatus(error?.message || 'The card did not confirm the clear. Keep it powered, then try again.');
+    }
+  };
   const [pushStatus, setPushStatus] = useState(() => (autoStart && !disabled ? 'Checking card…' : ''));
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
   const [pushFallbackJson, setPushFallbackJson] = useState('');
@@ -237,6 +283,7 @@ export function CardPushControl({
     if (installInFlightRef.current) return;
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
+    setStorageFull(false);
     setPushStatus(current => current || 'Checking card…');
     // While the install checks a slow card, the footer does not call it gone.
     noteCardCheckHold();
@@ -415,6 +462,7 @@ export function CardPushControl({
               bootBeforeSave = getCardLinkState().validatedBootId || getCardLinkState().readiness?.bootId || '';
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
+                allowLookRemoval: allowLookRemovalRef.current === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
             },
           },
@@ -502,6 +550,10 @@ export function CardPushControl({
         setWiringCandidate({ activationId: response.activationId, attempt });
         setWiringTestState('staged');
         failedAttemptRef.current = null;
+        // The owner just pressed Save and is looking at the lights: start the
+        // test without a second press. Only a candidate THIS press staged —
+        // one resumed after a reload still waits for "Start light test".
+        testAfterStageRef.current = response.activationId;
         setPushStatus('New wiring is ready to test. Your current working setup is still safe.');
         return;
       }
@@ -575,6 +627,12 @@ export function CardPushControl({
         setStaleCardConflict(true);
         return;
       }
+      if (err?.reason === 'looks-would-drop') {
+        dispatchAction({ type: 'reset' });
+        setLookLoss(err.droppedLooks || null);
+        setPushStatus(err.message);
+        return;
+      }
       if (!failedAttemptRef.current?.awaitingCandidateReadback) failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
       dispatchAction({ type: 'fail', error: message });
@@ -584,6 +642,7 @@ export function CardPushControl({
         setPushFallbackPackage(attempt.pkg);
       } else if (err instanceof CardPushError) {
         setPushStatus(err.message);
+        if (err.reason === 'card-storage-full') setStorageFull(true);
       } else {
         setPushStatus(`Push failed: ${err.message || err}`);
       }
@@ -594,6 +653,7 @@ export function CardPushControl({
       setPushStatus(current => (current === 'Checking card…' ? '' : current));
       installInFlightRef.current = false;
       saveAnywayRef.current = false;
+      allowLookRemovalRef.current = false;
     }
   };
 
@@ -803,6 +863,17 @@ export function CardPushControl({
     }, Math.max(0, wiringCandidate.expiresAt - Date.now()) + 250);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [wiringCandidate, wiringTestState]);
+  // A fresh stage starts its own light test (see the stage-new branch above).
+  // Nothing about the protection moves: the card still holds its last working
+  // setup, puts it back on its own if nobody confirms, and the confirm stays a
+  // deliberate press beside "No, restore working setup".
+  const testAfterStageRef = useRef('');
+  useEffect(() => {
+    if (wiringTestState !== 'staged' || !wiringCandidate?.activationId) return;
+    if (testAfterStageRef.current !== wiringCandidate.activationId) return;
+    testAfterStageRef.current = '';
+    void startWiringTest();
+  }, [wiringCandidate, wiringTestState]);
   const autoStartedRef = useRef(false);
   useEffect(() => {
     if (!autoStart || disabled || autoStartedRef.current) return;
@@ -879,8 +950,14 @@ export function CardPushControl({
             ? { 'data-testid': 'card-install-already-current' }
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
-          {(action.status === 'pending' || pushStatus === 'Checking card…') && <span className="lw-notice-spinner" aria-hidden="true" />}
+          {(action.status === 'pending' || pushStatus === 'Checking card…' || clearState === 'busy') && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
+          {storageFull && cardHoldsTemporarySetup && (
+            <button type="button" className="btn primary" data-testid="card-install-clear-temporary" disabled={clearState === 'busy'}
+              title="Remove the temporary Find-my-strips setup from the card so your project has room." data-tooltip="Remove the temporary Find-my-strips setup from the card so your project has room." onClick={() => void clearTemporarySetupHere()}>
+              Clear temporary setup
+            </button>
+          )}
           {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (
             <div className="lw-wire-recovery" role="group" aria-label="Mixed-content recovery">
@@ -894,6 +971,15 @@ export function CardPushControl({
           ) : action.status === 'failed' && (
             <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => void retryAfterCardRestart()}>Retry</button>
           )}
+        </div>
+      )}
+      {lookLoss && (
+        <div className="lw-setup-banner" role="alert" data-testid="look-loss-guard">
+          <p className="hh">The card holds: {lookLoss.cardIds.join(', ')}. This save would send: {lookLoss.sentIds.join(', ') || 'no looks'}.</p>
+          <div className="lw-setup-banner-actions">
+            <button type="button" className="btn primary" title="Read the card's looks again and add the ones this project is missing. Nothing is sent until you save." data-tooltip="Read the card's looks again and add the ones this project is missing. Nothing is sent until you save." data-testid="look-loss-keep" onClick={() => void keepCardLooks()}>Keep the card&rsquo;s looks</button>
+            <button type="button" className="btn" title="Save this project as it is, removing the listed looks from the card." data-tooltip="Save this project as it is, removing the listed looks from the card." data-testid="look-loss-replace" onClick={() => { allowLookRemovalRef.current = true; setLookLoss(null); void pushToCard(null); }}>Replace anyway</button>
+          </div>
         </div>
       )}
       {wiringCandidate && (

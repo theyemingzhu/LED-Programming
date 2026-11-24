@@ -1,7 +1,9 @@
 /* Studio shell (app.jsx), converted from the v3 mockup to an ES module and
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
+import { cardNeedsTouch } from '../lib/cardNeedsTouch.js';
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { FirstInstallCheckSheet } from '../components/card/FirstInstallCheckSheet.jsx';
 import { cardChangedSinceSeen } from '../lib/patternGate.js';
 import { ProjectProvider, useProject } from '../state/ProjectContext.jsx';
 import { CloudLibraryProvider, useCloudLibrary } from '../state/CloudLibraryContext.jsx';
@@ -19,6 +21,7 @@ import { NoticeLayer } from '../components/NoticeLayer.jsx';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge, releaseInheritedBridgeWindowName } from '../lib/cardBridge.js';
 import { bootstrapCardHostFromLocation, canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection.js';
+import { pairDiscoveredCard } from '../lib/cardPairing.js';
 import {
   bootstrapBridgeCallback,
   clearStoredBridgeResult,
@@ -480,7 +483,7 @@ function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProjec
         {action({ label: 'Preferences', title: 'Open Studio preferences', icon: I.preferences, onClick: onPreferences })}
         <span className="top-div" />
         {action({ label: 'Export project', title: 'Download a project file you can reopen on another device', icon: I.exportProject, onClick: onDownload })}
-        {action({ label: 'Save project', title: saveTitle, icon: I.saveProject, primary: true, tooltipAlign: 'end', onClick: onSave })}
+        {action({ label: 'Save project', title: saveTitle, icon: I.saveProject, tooltipAlign: 'end', onClick: onSave })}
       </div>
     </header>
   );
@@ -787,7 +790,11 @@ function Shell({ offlineUpdateController = null }) {
   // on its own, so nothing can leave the two disagreeing.
   const navigateToView = useCallback(nextView => {
     const target = normalizeStudioView(nextView, viewOptions());
-    routeStore.replace(canonicalStudioHash(routeStore.read(), target));
+    const current = routeStore.read();
+    const next = canonicalStudioHash(current, target);
+    // A different screen is a step Back can return to (studioRoute push).
+    if (studioViewFromHash(current, viewOptions()) !== target) routeStore.push(next);
+    else routeStore.replace(next);
   }, [routeStore]);
   const {
     projectName, setProjectName, serializeProject, flushProjectAutosave, replaceProject, replaceWithNewProject, requestReplacementConfirmation,
@@ -1071,9 +1078,11 @@ function Shell({ offlineUpdateController = null }) {
     params.delete('mode');
     params.delete('task');
     params.delete('intent');
-    // Replace, not push, so Back behaves the same for screen and section
-    // changes as it does for rail navigation.
-    routeStore.replace(`#${params.toString()}`);
+    // Arriving on Card from another screen is a step Back returns from;
+    // moving between Card sections replaces (simpler-journeys G2).
+    const fromOtherScreen = new URLSearchParams(routeStore.read().slice(1)).get('screen') !== 'card';
+    if (fromOtherScreen) routeStore.push(`#${params.toString()}`);
+    else routeStore.replace(`#${params.toString()}`);
   }, [flushProjectAutosave, routeStore]);
   const navigateStudio = useCallback((nextView) => {
     if (installActiveRef.current) return;
@@ -1099,6 +1108,15 @@ function Shell({ offlineUpdateController = null }) {
     flushProjectAutosave();
     setCardSetupPersistent(false);
     routeStore.replace('#screen=layout&mode=draw');
+  }, [flushProjectAutosave, routeStore]);
+
+  // The light check's one primary: straight to the card write the owner came
+  // for. Same route Card Home's "Save and open Patterns" opens (lw-setup.jsx
+  // openPatterns), so the install path is shared, not duplicated.
+  const saveCardSetupToCard = useCallback(() => {
+    flushProjectAutosave();
+    setCardSetupPersistent(false);
+    routeStore.replace('#screen=card&section=setup&task=install-project&next=patterns');
   }, [flushProjectAutosave, routeStore]);
 
   const disconnectCardSetup = useCallback(async () => {
@@ -1656,6 +1674,17 @@ function Shell({ offlineUpdateController = null }) {
       void saveProjectToCard();
       return;
     }
+    // "Found — pair" does what it says (simpler-journeys C5): pairing a card
+    // already found is the whole job, the same pairDiscoveredCard the dialog's
+    // Connect calls. Only a failure opens the dialog, which then explains it.
+    if (cardLifecycle.state === 'found-unpaired' && cardLink.discoveredCard?.id) {
+      setCardControlOpen(false);
+      void pairDiscoveredCard(cardLink).then(
+        result => { if (!result?.ok) setConnectionCenterOpen(true); },
+        () => setConnectionCenterOpen(true),
+      );
+      return;
+    }
     if (surface === 'card-control') setCardControlOpen(true);
     else if (surface === 'setup' || commissioningShouldSuppressConnectOverlay(inspectCardCommissioning().flow)) {
       setCardControlOpen(false);
@@ -1665,7 +1694,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
+  }, [cardLifecycle, cardLink, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -2030,7 +2059,9 @@ function Shell({ offlineUpdateController = null }) {
       ? `This installs ${replacement.nextStepCount} scene step${replacement.nextStepCount === 1 ? '' : 's'} as the card playlist. Your ${replacement.previousLookCount} saved library look${replacement.previousLookCount === 1 ? '' : 's'} ${replacement.previousLookCount === 1 ? 'remains' : 'remain'} in the editable project.`
       : 'This installs the current project playback on the card.';
     const confirmed = window.confirm(
-      `${replacementCopy}\n\nTouch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.`,
+      cardNeedsTouch({ readiness: cardLink.readiness, evidence: cardEvidence })
+        ? `${replacementCopy}\n\nTouch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.`
+        : `${replacementCopy}\n\nChoose Continue to save to this card.`,
     );
     if (!confirmed) return { ok: false, reason: 'cancelled', message: sceneDeliveryFailureMessage('cancelled'), replacementSummary: replacement };
 
@@ -2546,6 +2577,7 @@ function Shell({ offlineUpdateController = null }) {
         </Suspense>
       </ScreenErrorBoundary>
 
+      <FirstInstallCheckSheet cardHost={cardLink.host || cardStatus.host} />
       {cardSetupOpen && (
         <Suspense fallback={<div className="card-setup-backdrop"><div className="card-setup-loading" role="status">Opening the light check…</div></div>}>
           <CardSetupOverlay
@@ -2560,6 +2592,7 @@ function Shell({ offlineUpdateController = null }) {
             onDismiss={closeCardSetup}
             onDisconnect={disconnectCardSetup}
             onComplete={completeCardSetup}
+            onSaveToCard={saveCardSetupToCard}
             onMinimizedChange={next => {
               if (next) {
                 setCardSetupPersistent(true);

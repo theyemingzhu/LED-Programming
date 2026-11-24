@@ -7,6 +7,7 @@
 // be blocked by the browser. The client surfaces that as a typed error the
 // UI handles by showing a copy-paste fallback.
 
+import { looksDroppedBySave, lookLossMessage, looksRemovedByOwner, saveWouldLoseLooks } from './lookLossGuard.js';
 import {
   canPushDirectlyToCard,
   cardHostToUrl,
@@ -230,6 +231,9 @@ export async function withCardReadRetry(read, {
   }
   throw lastError;
 }
+
+/** The card answered, and has no room to store the change beside what it holds. */
+export const CARD_STORAGE_FULL_MESSAGE = 'The card has no room to store this change next to what it holds now, so nothing was changed. If it is running the temporary Find-my-strips setup, clear that setup, then save again.';
 
 export const CARD_DID_NOT_ANSWER_MESSAGE = 'The card did not answer. Check it has power and is on this Wi-Fi, then try again.';
 
@@ -565,6 +569,23 @@ export async function requestCardReboot(host, options = {}) {
 function normalizeConfigPushError(host, err, transport = '') {
   if (err instanceof CardConfigCapacityError) return err;
   if (err instanceof CardPushError) return err;
+  // A wiring-safety refusal is the card's own answer ("candidate storage
+  // failed" when there is no room for a staged copy). It used to fall through
+  // to "the card did not answer", which made Studio treat the save as
+  // unconfirmed and report a read-back mismatch (F-F1, real card 2026-11-22).
+  if (err?.name === 'CardWiringSafetyError' && err.reason) {
+    const said = String(err.response?.error || err.message || '');
+    // Both of the real card's no-room answers: the staged copy does not fit
+    // ("candidate storage failed", 2026-11-22) and the project does not fit
+    // ("nvs write failed; previous project remains intact …", 2026-11-19, D8).
+    const storageFull = /candidate storage failed|nvs write failed|too large for card storage|has room for|no room|storage (is )?full|exceed storage/i.test(said);
+    const refusal = new CardPushError(storageFull ? 'card-storage-full' : err.reason,
+      storageFull ? CARD_STORAGE_FULL_MESSAGE : (err.message || 'The card refused this change.'), err, err.status);
+    if (Number(err.status) >= 400 && Number(err.status) < 500) refusal.delivery = 'rejected';
+    else if (storageFull || err.response?.ok === false) refusal.delivery = 'rejected';
+    refusal.response = err.response;
+    return refusal;
+  }
   if (transport === 'bridge' && err?.reason) {
     return new CardPushError(err.reason, err.message || 'The card bridge refused this configuration.', err);
   }
@@ -583,6 +604,19 @@ function normalizeConfigPushError(host, err, transport = '') {
 
 // POST the runtime config to the card. Returns the parsed JSON echo on
 // success; throws CardPushError on failure with a typed reason.
+async function readCardLooksForGuard(host, { useBridge, options }) {
+  if (typeof options.readCardPatternsImpl === 'function') return options.readCardPatternsImpl({ host });
+  if (useBridge) return bridgeRequest('patterns', {}, { host, timeoutMs: Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs) }, options);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CARD_READ_RETRY.timeoutMs);
+  try {
+    const response = await (options.fetchImpl || globalThis.fetch)(`${cardHostToUrl(host)}/api/patterns`, { cache: 'no-store', signal: ctrl.signal });
+    return response.ok ? await response.json() : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function pushConfigToCard(runtimePackage, options = {}) {
   if (runtimePackage?.mediaAssets?.length && options.mediaVerified !== true) {
     throw new CardPushError('recording-media-required',
@@ -696,6 +730,25 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   }
   if (rebootPlan.layoutChanged && options.allowLayoutChange !== true) {
     throw layoutMismatchError(rebootPlan.current, runtimePackage);
+  }
+  // A save must not quietly wipe looks off the card (L1, live 2738 on the
+  // real card: five of six looks lost). Same project only: replacing a
+  // different project is the owner's confirmed choice. If the card's looks
+  // cannot be read, the save is not blocked on that. A card that did not
+  // answer its own identity read (an unresolved .local name, say) is not asked
+  // for its looks either: the save fails over without an extra dead request
+  // (tests/card-installer-package.mjs pins that sequence).
+  if (!rebootPlan.projectChanged && rebootPlan.current && options.allowLookRemoval !== true) {
+    const cardPatterns = await readCardLooksForGuard(host, { useBridge, options }).catch(() => null);
+    if (cardPatterns) {
+      const dropped = looksDroppedBySave(cardPatterns, preparedPayload);
+      if (saveWouldLoseLooks(dropped, { removedByOwner: looksRemovedByOwner() })) {
+        const error = new CardPushError('looks-would-drop', lookLossMessage(dropped));
+        error.delivery = 'not-sent';
+        error.droppedLooks = dropped;
+        throw error;
+      }
+    }
   }
   // Physical output changes are never written over the running/known-good
   // layout. The card owns a separate candidate slot and issues the activation

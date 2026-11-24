@@ -4,6 +4,7 @@ import { RecordedSequenceChoice } from '../components/RecordedSequenceChoice.jsx
    unchanged from the design source; only the data + handlers were swapped
    from the SAMPLE arrays to the live app's real playlist, real pattern bank,
    and real card handlers. No visual structure was altered. */
+import { noteLooksRemovedByOwner } from '../lib/lookLossGuard.js';
 import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { I, LedRow } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
@@ -346,6 +347,9 @@ function realPatternShape(patternId) {
     // ── live playlist write-back to the standalone controller ─────────────
     const writePlaylist = (nextItems) => {
       const normalized = normalizeCardPlaylist(nextItems, { savedLooks, sequenceAssets, allowEmpty: true });
+      // Entries the owner took out of the playlist leave the card too (L1).
+      const removed = derivePlaylistLookIds(playlist).length - derivePlaylistLookIds(normalized).length;
+      if (removed > 0) noteLooksRemovedByOwner(removed);
       playlistRevision.current += 1;
       if (!recoveryPendingRef.current) {
         cardActionGeneration.current += 1;

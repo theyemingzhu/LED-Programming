@@ -3,6 +3,7 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, type CardStateSpec } from './harness/cardStates';
 import { installFakeCardBridge, installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 const CARD_ID = 'lw-b0fe81f61b44';
 const OLD_BUILD = '1'.repeat(40);
@@ -614,7 +615,10 @@ for (const scenario of ['wrong-rom-card', 'old-build', 'stale-boot', 'no-hello']
 test('preserving update: capable card uses Wi-Fi with exact preservation facts and acknowledged phases', async ({ page }, testInfo) => {
   await openPreservingFixture(page, 'wifi');
   const panel = page.getByTestId('preserving-update-panel');
-  await expect(panel.getByRole('button', { name: 'Update over Wi-Fi' })).toBeVisible();
+  // simpler-journeys C6: a Wi-Fi update the card can take opens on its start
+  // button; "Update over Wi-Fi" only revealed it.
+  await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Update over Wi-Fi' })).toHaveCount(0);
   await expect(panel).toContainText(CARD_ID);
   await expect(panel).toContainText('1.1.1 · Build 1198');
   await expect(panel).toContainText('1.2.0 · Build 1300');
@@ -629,7 +633,7 @@ test('preserving update: capable card uses Wi-Fi with exact preservation facts a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('installer-ready-mobile.png'), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 720 });
-  const updateAction = panel.getByRole('button', { name: 'Update over Wi-Fi' });
+  const updateAction = panel.getByRole('button', { name: 'Start secure Wi-Fi update' });
   const targetBuild = panel.getByText('1.2.0 · Build 1300');
   await expect(updateAction).toHaveClass(/btn-lg/);
   const targetBox = await targetBuild.boundingBox();
@@ -637,10 +641,10 @@ test('preserving update: capable card uses Wi-Fi with exact preservation facts a
   expect(targetBox).not.toBeNull();
   expect(actionBox).not.toBeNull();
   expect(actionBox!.y).toBeGreaterThan(targetBox!.y + targetBox!.height);
-  await updateAction.click();
   await expect(panel).toContainText('securely binds this signed update to this exact card');
   await expect(panel.getByRole('checkbox', { name: /physically confirmed/i })).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
+  expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__), 'nothing starts before the press').toEqual([]);
+  await updateAction.click();
   await expect(panel).toContainText('Restarting card');
   expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__)).toEqual([{
     softwareGrant: { grantPayload: '{"test":"software-update-grant"}', grantSignature: 'A'.repeat(86) },
@@ -650,12 +654,12 @@ test('preserving update: capable card uses Wi-Fi with exact preservation facts a
 test('preserving update: a legacy top-level capability cannot unlock network firmware update', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'progress', 'legacy');
   await expect(page.getByRole('button', { name: 'Update over Wi-Fi' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start secure Wi-Fi update' })).toHaveCount(0);
 });
 
 test('preserving update: a card without software grants offers preserving USB without a card press', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'progress', 'network-physical');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel).not.toContainText(/press BOOT|press RESET|card button/i);
   await expect(panel.getByRole('checkbox', { name: /physically confirmed/i })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toHaveCount(0);
@@ -667,7 +671,6 @@ test('preserving update: a card without software grants offers preserving USB wi
 test('preserving update: a software-capable card never offers a physical authorization fallback', async ({ page }) => {
   await openPreservingFixture(page, 'wifi');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel).not.toContainText(/press BOOT|press RESET|card button/i);
   await expect(panel.getByRole('checkbox', { name: /physically confirmed/i })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
@@ -678,7 +681,6 @@ test('preserving update: a software-capable card never offers a physical authori
 test('preserving update: an origin with no grant service gives a software recovery and preserving USB path', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'blocked' });
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
 
   await expect(panel).not.toContainText(/press BOOT|press RESET|card button/i);
   await expect(panel.getByRole('button', { name: 'Start preserving update' })).toHaveCount(0);
@@ -703,7 +705,6 @@ test('preserving update: an origin with no grant service gives a software recove
 test('preserving update: unavailable public signer offers retry and USB without account sign-in', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'service-unavailable' });
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toHaveCount(0);
   await expect(panel).toContainText('cannot reach its firmware update service');
   await expect(panel.getByRole('button', { name: 'Check again' })).toBeVisible();
@@ -722,7 +723,6 @@ test('preserving update: unavailable public signer offers retry and USB without 
 test('preserving update: Wi-Fi panel surfaces the card response detail for a rejected request', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'http-400');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel.getByRole('alert')).toHaveText('owner binding is incomplete');
   await expect(panel.getByRole('alert')).not.toContainText('Card returned HTTP 400');
@@ -731,7 +731,6 @@ test('preserving update: Wi-Fi panel surfaces the card response detail for a rej
 test('preserving update: rollback names the restored build and a redacted reason', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'rollback');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText('Update rolled back');
   await expect(panel).toContainText('restored Build 1198');
@@ -814,12 +813,10 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   await expect.poll(() => card.state.beaconPinned).toBe(18);
   await page.getByTestId('discovery-start').click();
   await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await page.getByTestId('discovery-count-18').fill('41');
-  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-colour-row-rgb').click();
+  await stopRunAt(page, 41);
+  await settleEndCheck(page, 41);
   await page.getByTestId('discovery-end-yes').click();
-  await page.getByTestId('discovery-record-save').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
   await page.getByTestId('discovery-continue-layout').click();
   const realProjectId = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id || '');
@@ -827,10 +824,9 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   await page.evaluate(() => { window.location.hash = 'screen=card&section=setup'; });
   await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'test-and-save');
   await page.getByTestId('setup-verify-action').click();
-  // The temporary discovery project still owns the card. Explicitly replace
-  // it, then confirm the exact saved project's staged light test.
-  await page.getByRole('button', { name: 'Save to card', exact: true }).click();
-  await page.getByRole('button', { name: 'Start light test' }).click();
+  // The temporary discovery project is Studio's own, so Save replaces it
+  // without a second question (simpler-journeys C4) and the staged light test
+  // starts by itself (C2); the owner confirms it.
   await page.getByRole('button', { name: 'The lights look correct' }).click();
   await expect.poll(() => ({ projectId: card.state.projectId, pixels: card.state.pixels }), { timeout: 15_000 })
     .toEqual({ projectId: realProjectId, pixels: 41 });
@@ -931,7 +927,6 @@ test('preserving update: a Wi-Fi reboot self-heals from exact runtime-known-good
 test('preserving update: navigation cannot discard an active update lifecycle or reopen controls', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'pause-sending');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText('Sending signed update');
   // A percentage inside a sentence is a number; the rail is the thing an owner
@@ -955,7 +950,6 @@ test('preserving update: navigation cannot discard an active update lifecycle or
 test('preserving update: an in-place disconnect retains the new session and self-heals through the real coordinator', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'in-place-disconnect');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
   await expect(panel.getByRole('alert')).toHaveCount(0);
@@ -1061,7 +1055,6 @@ test('preserving update: USB reset ends with an actionable bounded reconnect fai
 test('preserving update: a blank card with explicit update readiness can start without a project', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'blank-ready');
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText('Restarting card');
   await expect(panel.getByRole('alert')).toHaveCount(0);
@@ -1144,7 +1137,6 @@ test('[factory-ota-door] an exact factory AP card ready for firmware update open
   });
   const statusReadsBeforeStart = card.requests.filter(request => request.method === 'GET' && request.path === '/api/status').length;
   const panel = page.getByTestId('preserving-update-panel');
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel).toContainText('no firmware update service');
   await expect(panel.getByRole('button', { name: 'Start preserving update' })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Use preserving USB update instead' })).toBeVisible();
@@ -1203,7 +1195,6 @@ test('[factory-ota-direct-unavailable] a bridge-proven factory card keeps the pr
   await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toBeVisible({ timeout: 15000 });
-  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
   await page.route('http://192.168.4.1/api/status', route => route.abort());
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
@@ -1383,14 +1374,14 @@ test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and 
     'a card that can take a Wi-Fi update right now must not be told otherwise',
   ).toHaveCount(0);
 
-  const primary = panel.getByTestId('preserving-update-primary-action');
-  await expect(primary).toHaveText('Update over Wi-Fi');
-  const secondary = panel.getByTestId('preserving-update-secondary-action');
-  await expect(secondary).toHaveText('Use USB instead');
-  await expect(secondary).not.toBeVisible();
-  await panel.getByText('Need another way?').click();
-  await expect(secondary).toBeVisible();
-  await expect(secondary).not.toHaveClass(/btn-lg/);
+  // Wi-Fi leads (simpler-journeys C6): its start button, or straight away the
+  // reason it cannot start yet (here: this Studio has no grant service). The
+  // USB door stays beside it as an ordinary button.
+  await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).or(panel.getByTestId('software-grant-blocked'))).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Update over Wi-Fi' })).toHaveCount(0);
+  const usb = panel.getByRole('button', { name: 'Use preserving USB update instead' });
+  await expect(usb).toBeVisible();
+  await expect(usb).not.toHaveClass(/btn-lg/);
 });
 
 test('Card Home retains an unchecked saved-look notice after shell-only recovery and reload', async ({ page }, testInfo) => {

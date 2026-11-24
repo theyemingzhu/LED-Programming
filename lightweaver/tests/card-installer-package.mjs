@@ -157,11 +157,16 @@ assert.equal(stagedDirect.state, 'staged');
 assert.equal(stagedDirect.activationId, 'installer-layout-candidate');
 assert.equal(stagedDirect.saved, undefined);
 assert.equal(stagedDirect.rebooting, undefined);
+// The look list is read before the candidate goes out (L1): a light count
+// change is exactly this staged write, and on live Studio 2738 it carried one
+// look and wiped five off the real card. The read changes nothing on the card;
+// a look list that cannot be read does not block the save.
 assert.deepEqual(requests.map(request => request.url), [
   'http://192.168.4.1/api/firmware-info',
+  'http://192.168.4.1/api/patterns',
   'http://192.168.4.1/api/wiring/candidate',
 ]);
-assert.deepEqual(JSON.parse(requests[1].options.body), stagedPayload);
+assert.deepEqual(JSON.parse(requests[2].options.body), stagedPayload);
 
 requests.length = 0;
 globalThis.fetch = async (url, options = {}) => {
@@ -197,6 +202,7 @@ assert.equal(pushedAfterFirmwareRequestedReboot.saved, true);
 assert.equal(pushedAfterFirmwareRequestedReboot.rebooting, true);
 assert.deepEqual(requests.map(request => request.url), [
   'http://lightweaver.local/api/firmware-info',
+  'http://lightweaver.local/api/patterns',
   'http://lightweaver.local/api/config',
   'http://lightweaver.local/api/reboot',
 ]);
@@ -302,9 +308,11 @@ const bridgePushed = await pushConfigToCard(pkg, {
 });
 assert.equal(bridgePushed.saved, true);
 assert.equal(bridgeMessages[0].message.type, 'firmware-info');
-assert.equal(bridgeMessages[1].message.type, 'config');
-assert.equal(bridgeMessages[1].message.reboot, false);
-assert.deepEqual(bridgeMessages[1].message.payload, prepared.config);
+// The look list is read before a same-project save (L1).
+assert.equal(bridgeMessages[1].message.type, 'patterns');
+assert.equal(bridgeMessages[2].message.type, 'config');
+assert.equal(bridgeMessages[2].message.reboot, false);
+assert.deepEqual(bridgeMessages[2].message.payload, prepared.config);
 
 bridgeMessages.length = 0;
 bridgeCurrentOutputs = [{ id: 'outer', pin: 16, pixels: 22 }, { id: 'inner', pin: 17, pixels: 22 }];

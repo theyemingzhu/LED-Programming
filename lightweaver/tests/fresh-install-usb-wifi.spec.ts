@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
+import { MIN_TAP } from './harness/tapSize';
 
 const CARD_ID = 'lw-aabbccddeeff';
 const SSID = 'Gallery USB privacy sentinel';
@@ -449,7 +450,7 @@ test('USB Wi-Fi password visibility is keyboard controlled and resets after send
   await expect(password).toHaveAttribute('type', 'text');
   const hide = page.getByRole('button', { name: 'Hide Wi-Fi password' });
   await expect(hide).toHaveAttribute('aria-pressed', 'true');
-  expect((await hide.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await hide.boundingBox())!.height).toBeGreaterThanOrEqual(MIN_TAP);
   await page.keyboard.press('Space');
   await expect(password).toHaveAttribute('type', 'password');
   await page.getByRole('button', { name: 'Show Wi-Fi password' }).click();
@@ -728,7 +729,7 @@ test('USB Wi-Fi form stays usable on a narrow browser viewport', async ({ page, 
   await expect(form).toBeVisible();
   expect(await form.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   const input = await page.getByTestId('usb-wifi-password').boundingBox();
-  expect(input!.height).toBeGreaterThanOrEqual(44);
+  expect(input!.height).toBeGreaterThanOrEqual(MIN_TAP);
   expect(input!.x + input!.width).toBeLessThanOrEqual(390);
   await form.screenshot({ path: '/tmp/lightweaver-usb-wifi-narrow.png' });
 });

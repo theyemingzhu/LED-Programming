@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { MIN_TAP } from './harness/tapSize';
 
 // Symmetry sides in Layout: the piece is divided into 2 or 4 sides, each an
 // ordered group of strips the pattern flows through; strips in no side play
@@ -304,7 +305,7 @@ test('the sides fit a 300px desktop inspector and a 390px phone', async ({ page 
     await expect(page.getByTestId('symmetry-offer-mirror')).not.toHaveClass(/primary/);
     await expect(page.getByTestId('layout-check-and-install')).toHaveClass(/primary/);
     const mirrorHeight = await page.getByTestId('symmetry-offer-mirror').evaluate(el => el.getBoundingClientRect().height);
-    if (label === 'phone') expect(mirrorHeight).toBeGreaterThanOrEqual(44);
+    if (label === 'phone') expect(mirrorHeight).toBeGreaterThanOrEqual(MIN_TAP);
     await page.screenshot({ path: `test-results/layout-symmetry-offer-${label}.png` });
     await page.getByTestId('symmetry-offer-mirror').click();
     await selectStrip(page, ids['Left top']);

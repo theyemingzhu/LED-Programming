@@ -40,7 +40,20 @@ import { readCardStatusEnvelope, requestCardReboot } from './cardPushClient.js';
 // honest answer is "it did not come back", not a longer silence.
 export const BENCH_READY_TIMEOUT_MS = 40_000;
 export const BENCH_READY_POLL_INTERVAL_MS = 750;
-export const BENCH_READY_STATUS_TIMEOUT_MS = 2_000;
+// Each read gets as long as every read before a save (CARD_READ_RETRY, 6 s):
+// a busy real card answers in ~3.4 s, so 2 s reads never saw a slow card come
+// back (interruption test D7, todo/plans/practice-card-interruptions.md).
+export const BENCH_READY_STATUS_TIMEOUT_MS = 6_000;
+// The exact-card check before the one blank-card write. Its own default
+// (1.5 s) ran out on a slow card, and the fallback then blamed a card page a
+// local Studio never has.
+export const BENCH_PREFLIGHT_TIMEOUT_MS = 6_000;
+export const BENCH_INSTALL_SLOW_CARD_MESSAGE = 'The card took too long to answer, so nothing was sent to it. '
+  + 'Keep it powered and on this Wi-Fi, then press Yes, count this strip again.';
+
+function isTimedOutRead(error) {
+  return error?.name === 'AbortError' || error?.name === 'TimeoutError' || /\baborted?\b|timed out/i.test(String(error?.message || ''));
+}
 
 export const BENCH_INSTALL_STAGED_MESSAGE = 'This card is running older firmware that files a blank '
   + 'card’s first setup as a staged wiring change instead of applying it, so its LEDs cannot be '
@@ -99,7 +112,7 @@ async function postBenchConfigDirect({ host, config, guardImpl, fetchImpl, prefl
   // identity guard every other direct mutation runs, then the ordinary
   // /api/config POST. No bridge authority is involved because there is no
   // bridge.
-  if (!preflightComplete) await guardImpl(host, { fetchImpl });
+  if (!preflightComplete) await guardImpl(host, { fetchImpl, timeoutMs: BENCH_PREFLIGHT_TIMEOUT_MS });
   const doFetch = fetchImpl || globalThis.fetch;
   const response = await doFetch(`${cardHostToUrl(host)}/api/config`, {
     method: 'POST',
@@ -310,8 +323,13 @@ export async function installBenchConfig({
     // Keep preflight outside the mutation. Once POST starts, every failure is
     // delivery-ambiguous and must escape without a bridge retry.
     try {
-      await guardImpl(host, { fetchImpl });
-    } catch {
+      await guardImpl(host, { fetchImpl, timeoutMs: BENCH_PREFLIGHT_TIMEOUT_MS });
+    } catch (preflightError) {
+      // On a local (http) Studio there is no card page to fall back to: a slow
+      // answer is a slow card, and saying so is the truth.
+      if (direct && isTimedOutRead(preflightError)) {
+        throw new BenchInstallError('no-answer', BENCH_INSTALL_SLOW_CARD_MESSAGE);
+      }
       transport = 'bridge';
       response = await postBenchConfigOverBridge({ host, config, flowId, initial, authorizeImpl, bridgeRequestImpl });
     }
@@ -341,7 +359,16 @@ export async function installBenchConfig({
   // itself — without this the card kept running the OLD pixel buffers and never
   // reached the new config at all.
   if (response?.rebooting !== true && benchConfigNeedsReboot(response)) {
-    await rebootImpl(host, { fetchImpl });
+    try {
+      await rebootImpl(host, { fetchImpl });
+    } catch (rebootError) {
+      // The card already accepted the setup. A reboot request that got no
+      // answer is a slow card, and firmware restarts on its own within 5 s
+      // of an accepted save anyway — the ready-wait below is what decides.
+      // Saying "could not be set up" here was a failure about a write that
+      // landed (interruption test D7). A card that answered and refused still fails.
+      if (!isTimedOutRead(rebootError)) throw rebootError;
+    }
   }
 
   await waitForPlaybackImpl({ host, transport, fetchImpl, ...waitOptions });

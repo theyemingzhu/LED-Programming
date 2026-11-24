@@ -57,6 +57,7 @@ import {
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
+import { promotePatternFirst } from '../lib/installController.js';
 import {
   cardConnectionOptionsFor,
   cardHostToUrl,
@@ -74,6 +75,8 @@ import { deriveCardAccess } from '../lib/cardAccess.js';
 import { evaluateCardInstallGate, STAGED_WIRING_CONFLICT_MESSAGE } from '../lib/cardInstallGate.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { mergeCardLooksIntoController, noteLooksRemovedByOwner, readCardLooksController } from '../lib/lookLossGuard.js';
+import { clearPendingCardSave, pendingSaveHeldByCard, readPendingCardSave, writePendingCardSave } from '../lib/pendingCardSave.js';
 import {
   consumeCardEditAuthorization,
   currentCardProjectAuthorizationExpiresAt,
@@ -81,7 +84,7 @@ import {
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
 import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
-import { noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
+import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
@@ -397,6 +400,7 @@ function writeSectionDisplayOrder(projectId, ids) {
   function patternGateMessage(gate) {
     if (gate === 'blank') return 'This card has no project yet. Set up its LED strips, then install this Studio project.';
     if (gate === 'project') return 'Open Hardware and verify that this exact Studio project is still installed on this card before sending lights.';
+    if (gate === 'restarting') return 'The card is restarting to apply your save. Your pick is kept in Studio; tap it again once the card is back.';
     return 'This card is not ready for pattern commands. Recover and verify it before sending lights.';
   }
 
@@ -915,10 +919,15 @@ function writeSectionDisplayOrder(projectId, ids) {
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
       gateRaisedWhileUnreadyRef.current = access !== 'ready';
       invalidatePendingPreview();
-      setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
+      // A card that is not ready because a save just restarted it on purpose
+      // is not a card to recover (interruption test D4,
+      // todo/plans/practice-card-interruptions.md).
+      const restartingOnPurpose = Number(getCardLinkState()?.plannedRestartUntil || 0) > Date.now();
+      const gate = access === 'blank' ? 'blank' : access === 'project' ? 'project' : restartingOnPurpose ? 'restarting' : 'recovery';
+      setPatternCardGate(gate);
       setHandoffUrl('');
-      setStatusKind('err');
-      setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
+      setStatusKind(gate === 'restarting' ? 'info' : 'err');
+      setStatus(patternGateMessage(gate));
     }, [invalidatePendingPreview]);
 
     // A "not ready" refusal describes the card at the moment of the tap. When
@@ -2226,29 +2235,8 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
 
     // ── handlers ────────────────────────────────────────────────────────
-    const promotePatternFirst = (controller, patternId) => {
-      const controllerLooks = normalizeSavedLooks(controller?.looks);
-      const currentPlaylist = normalizeCardPlaylist(controller?.playlist, {
-        savedLooks: controllerLooks,
-        fallbackPatternIds: [
-          patternId,
-          ...(Array.isArray(controller?.controls?.encoder?.patternCycleIds) ? controller.controls.encoder.patternCycleIds : []),
-        ],
-      });
-      const item = makePatternPlaylistItem(patternId);
-      const nextPlaylist = normalizeCardPlaylist([
-        item,
-        ...currentPlaylist.filter(entry => !(entry.type === 'pattern' && entry.patternId === patternId)),
-      ].filter(Boolean), { savedLooks: controllerLooks, fallbackPatternIds: [patternId] });
-      return {
-        ...(controller || {}),
-        playlist: nextPlaylist,
-        controls: {
-          ...(controller?.controls || {}),
-          encoder: { ...(controller?.controls?.encoder || {}), patternCycleIds: derivePlaylistLookIds(nextPlaylist) },
-        },
-      };
-    };
+    // promotePatternFirst lives in lib/installController.js so Layout's install
+    // builds the same body.
 
     const offerCardHandoff = (runtimePackageForCard, message) => {
       setHandoffUrl(buildCardConfigHandoffUrl(cardHost, runtimePackageForCard));
@@ -2315,14 +2303,67 @@ function writeSectionDisplayOrder(projectId, ids) {
       const timer = setTimeout(() => setSavedAt(0), 6000);
       return () => clearTimeout(timer);
     }, [savedAt]);
+    // The other half: after a reload or a lost reply, the card itself is read
+    // holding exactly what this browser sent. Make that the project (it was
+    // the owner's Save), so Studio and the card agree again.
+    const liveFingerprint = String(cardLink?.readiness?.projectFingerprint || '');
+    const liveCardId = String(cardLink?.card?.id || cardLink?.readiness?.cardId || '');
+    useEffect(() => {
+      if (cardSave.status === 'pending' || !liveFingerprint) return;
+      const pending = pendingSaveHeldByCard(readPendingCardSave(), { cardId: liveCardId, projectFingerprint: liveFingerprint }, { projectId });
+      if (!pending) return;
+      clearPendingCardSave();
+      commitProjectStateWithoutEdit(() => {
+        if (pending.patchBoard) setPatchBoard(pending.patchBoard);
+        if (pending.standaloneController) setStandaloneController(pending.standaloneController);
+      });
+      // A save that ended "failed" because its reply or the card's restart
+      // ran past Studio's wait did land: the card holds exactly what it sent.
+      // Only this proof turns "Try saving again" into Saved — a card that
+      // merely already held the project before a failed write does not
+      // (studio-hardening "exposes retry after failure").
+      if (cardSave.status === 'failed') {
+        dispatchCardSave({ type: 'confirm' });
+        setSavedAt(Date.now());
+        setStatusKind('ok');
+        setStatus('Saved to the card.');
+      }
+    }, [cardSave.status, liveFingerprint, liveCardId, projectId]);
     // Another window saved to this card since this window last saw it. Held
     // until the owner chooses: open the card's version, or save this one anyway.
     const [staleCardConflict, setStaleCardConflict] = useState(false);
     const saveAnywayRef = useRef(false);
+    // L1: a save that would remove looks from the card stops here and asks.
+    const [lookLoss, setLookLoss] = useState(null);
+    // The outcome of "Keep the card's looks", shown where the banner was. It
+    // is its own state, not `status`: changing the project's looks re-runs the
+    // screen's look effects, which clear `status`, and the confirmation
+    // vanished the moment it was set (L1, GitHub run 45270603214).
+    const [lookKeepOutcome, setLookKeepOutcome] = useState(null);
+    const allowLookRemovalRef = useRef(false);
     const openCardProject = useOpenCardProject();
+    // Keep the card's looks: re-read them from the card and add the ones this
+    // draft lacks, keeping every other edit. The owner then saves again (L1).
+    const keepCardLooks = async () => {
+      const host = cardLink?.host || cardHost;
+      try {
+        const cardController = await readCardLooksController({ host, cardId: cardLink?.card?.id || '', transport: cardLink?.transport, skeleton: { strips, patchBoard: board, wiring } });
+        const merged = mergeCardLooksIntoController(standaloneController, cardController);
+        const added = (merged.looks?.length || 0) - (standaloneController?.looks?.length || 0);
+        setStandaloneController(merged);
+        setLookLoss(null);
+        setLookKeepOutcome({ kind: 'ok', text: added > 0
+          ? `Kept the card's looks: ${added} added back to your project. Save to card again to send them.`
+          : 'Your project already has the card\'s looks. Save to card again.' });
+      } catch (error) {
+        setLookKeepOutcome({ kind: 'err', text: `Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.` });
+      }
+    };
     const savePreviewToCard = async () => {
       if (installPreparing) return;
       if (staleCardConflict) setStaleCardConflict(false);
+      if (lookLoss) setLookLoss(null);
+      if (lookKeepOutcome) setLookKeepOutcome(null);
       setSavedAt(0);
       setInstallPreparing(true);
       // While the save checks a slow card, the footer does not call it gone.
@@ -2422,6 +2463,20 @@ function writeSectionDisplayOrder(projectId, ids) {
           return;
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
+        // A save whose reply is lost (reload, closed tab, card back after the
+        // restart wait) must still be recognised once the card holds it. Note
+        // exactly what is being sent; the note becomes the project only when
+        // the card is read holding this fingerprint, and a refusal clears it,
+        // so a rejected save still leaves the pick a draft.
+        // Interruption tests D1/D2, todo/plans/practice-card-interruptions.md.
+        writePendingCardSave({
+          projectId,
+          generation: requestedGeneration,
+          cardId: before.cardId,
+          projectFingerprint: exactPrepared.config.projectFingerprint,
+          patchBoard: nextBoard,
+          standaloneController: nextController,
+        });
         dispatchCardSave({ type: 'start', revision: requestedRevision });
         if (checkingShown) { setStatusKind(''); setStatus(''); }
         let response;
@@ -2433,6 +2488,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             reboot: 'if-needed',
             allowLayoutChange: undefined,
             allowProjectChange: undefined,
+            allowLookRemoval: allowLookRemovalRef.current === true,
           });
         } catch (pushError) {
           // The write went out and no answer came back. A real card restarts
@@ -2473,6 +2529,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           } : {}),
         });
         dispatchCardSave({ type: 'confirm' });
+        clearPendingCardSave();
         setSaveRestarting(false);
         setSavedAt(Date.now());
         const commitBoard = JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
@@ -2526,6 +2583,18 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
       } catch (error) {
         dispatchCardSave({ type: 'fail', error: error?.message });
+        // The card answered and said no, or nothing was sent: the save did not
+        // land, so there is nothing to recognise later.
+        if (Number(error?.status) >= 400 || error?.delivery === 'not-sent' || error?.delivery === 'rejected'
+          || ['layout-mismatch', 'project-mismatch', 'config-too-large', 'save-not-applied', 'mixed-content'].includes(error?.reason)) {
+          clearPendingCardSave();
+        }
+        if (error?.reason === 'looks-would-drop') {
+          setLookLoss(error.droppedLooks || null);
+          setStatusKind('err');
+          setStatus(error.message);
+          return;
+        }
         if (error?.reason === 'restart-timeout') {
           setStatusKind('err');
           setStatus(error.message);
@@ -2554,6 +2623,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           setStatus(`Not saved to the card: ${String(error.message).replace(/^Stopped before saving:\s*/i, '')}`);
         }
       } finally {
+        allowLookRemovalRef.current = false;
         if (restartPlanned) { noteCardRestartSettled(); setSaveRestarting(false); }
         if (installIntentRef.current === installIntent) installIntentRef.current = null;
       }
@@ -2617,6 +2687,8 @@ function writeSectionDisplayOrder(projectId, ids) {
         setLookSaveState('Could not delete this look. Check the project and try again.');
         return;
       }
+      // A deliberate delete: the save guard lets this one look go (L1).
+      noteLooksRemovedByOwner(1);
       setDeletedLook({
         projectId, previous: lookDeletionState(standaloneController), next: lookDeletionState(next),
         label: savedLook.label, wasActive,
@@ -2706,6 +2778,9 @@ function writeSectionDisplayOrder(projectId, ids) {
 
     const writePlaylist = (nextItems) => {
       const normalized = normalizeCardPlaylist(nextItems, { savedLooks, allowEmpty: true });
+      // Entries the owner took out of the playlist leave the card too (L1).
+      const removed = derivePlaylistLookIds(playlist).length - derivePlaylistLookIds(normalized).length;
+      if (removed > 0) noteLooksRemovedByOwner(removed);
       updateController({
         playlist: normalized,
         controls: { encoder: { patternCycleIds: derivePlaylistLookIds(normalized) } },
@@ -3129,7 +3204,9 @@ function writeSectionDisplayOrder(projectId, ids) {
       // role from 'alert' to 'status' while still showing both boxes; here
       // there is no role to downgrade, so this notice simply stands down and
       // lets the gate notice own the announcement — same fix, no duplicate.
-      if (!status || isPatternRecoveryConfirmFlow || patternCardGate) {
+      // The look-loss banner carries the same refusal with its own buttons;
+      // the floating notice stood over "Keep the card's looks" (L1).
+      if (!status || isPatternRecoveryConfirmFlow || patternCardGate || lookLoss) {
         dismissNoticeKey('pattern-card-status');
         return;
       }
@@ -3158,7 +3235,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         source: 'pattern-status',
         action,
       });
-    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
+    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, lookLoss, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
 
     const stackReviewIsOpen = stackNeedingSectionReviewId
       && expandedStackId === stackNeedingSectionReviewId && libraryTab === 'stacks';
@@ -3625,9 +3702,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <button
                       type="button"
                       className="wordlink"
-                      data-testid={sectionCount <= 1 ? 'divide-in-layout' : layoutReturnStrip ? 'return-to-layout-section' : 'edit-section-layout'}
+                      // Arriving from a Layout section, the way back comes first, whatever
+                      // the section count (90916add's order, lost in the 17 Nov merge
+                      // c365d5fe; layout-section-overview.spec.ts:7).
+                      data-testid={layoutReturnStrip ? 'return-to-layout-section' : sectionCount <= 1 ? 'divide-in-layout' : 'edit-section-layout'}
                       onClick={openSectionLayout}
-                    >{sectionCount <= 1 ? 'Divide in Layout' : layoutReturnStrip ? 'Back to Layout' : 'Edit layout'}</button>
+                    >{layoutReturnStrip ? 'Back to Layout' : sectionCount <= 1 ? 'Divide in Layout' : 'Edit layout'}</button>
                     {showCopyToSections && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
                   </div>
                   {copyToSectionsOpen && <div className="project-stack-copy" data-testid="stack-copy-panel">
@@ -3839,11 +3919,26 @@ function writeSectionDisplayOrder(projectId, ids) {
                     </div>
                   </div>
                 }
+                {lookLoss &&
+                  <div className="lw-setup-banner" role="alert" data-testid="look-loss-guard">
+                    <p>{status}</p>
+                    <p className="hh">The card holds: {lookLoss.cardIds.join(', ')}. This save would send: {lookLoss.sentIds.join(', ') || 'no looks'}.</p>
+                    <div className="lw-setup-banner-actions">
+                      <button type="button" className="btn primary" data-testid="look-loss-keep" onClick={() => void keepCardLooks()}>Keep the card&rsquo;s looks</button>
+                      <button type="button" className="btn" data-testid="look-loss-replace" onClick={() => { allowLookRemovalRef.current = true; setLookLoss(null); savePreviewToCard(); }}>Replace anyway</button>
+                    </div>
+                  </div>
+                }
+                {lookKeepOutcome && !lookLoss &&
+                  <div className="lw-setup-banner" role={lookKeepOutcome.kind === 'err' ? 'alert' : 'status'} data-testid="look-loss-kept">
+                    <p>{lookKeepOutcome.text}</p>
+                  </div>
+                }
                 {patternCardGate &&
                   <div className="pattern-gate-inline lw-field" data-testid="pattern-gate-notice" role="alert" aria-live="assertive">
                     <p className="pattern-gate-inline-title">That tap was not sent to the card.</p>
                     <p className="pattern-gate-inline-body">{status || patternGateMessage(patternCardGate)}</p>
-                    <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>
+                    {patternCardGate !== 'restarting' && <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>}
                   </div>
                 }
 

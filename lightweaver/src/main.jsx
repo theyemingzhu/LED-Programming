@@ -61,6 +61,9 @@ import './styles/lw-notice.css';
 // Approved public Studio polish. Kept out of card-main.jsx so it cannot alter
 // the signed embedded card bundle.
 import './styles/approved-ui-refinements.css';
+// The phone shell (≤ 640px): tab bar, status line on top, notices that never
+// cover a control. Last, so it wins; public Studio only, like the line above.
+import './styles/lw-phone.css';
 import App from './v3/app.jsx';
 import { createOfflineUpdateController } from './lib/offlineUpdate.js';
 import { detectRuntimeMode } from './lib/runtimeMode.js';

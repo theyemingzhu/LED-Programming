@@ -22,6 +22,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
+import { findStrip, settleEndCheck, stopRunAt } from './ux/drivers';
 
 // ---------------------------------------------------------------------------
 // Copied from journey-continuity.spec.ts verbatim (that file exports only its
@@ -76,12 +77,12 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // hand — every `.click()` below, in source order:
   // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
-  // discovery-end-yes, discovery-record-save, discovery-continue-layout,
-  // setup-verify-action, replace-card-project, wiring-test-start,
+  // discovery-end-yes, discovery-continue-layout,
+  // setup-verify-action,
   // wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '15 deliberate clicks' },
+  annotation: { type: 'clicks', description: '12 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -129,18 +130,16 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
 
   await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
-  await page.getByTestId('discovery-color-red').click();
-  await page.getByTestId('discovery-color-green').click();
-  await expect(page.getByTestId('discovery-decade')).toBeVisible();
-
+  // One tap: the colours lights 1, 2, 3 show. Then a light runs down the
+  // strip and Stop is the count; the end check settles a late Stop.
+  await page.getByTestId('discovery-colour-row-rgb').click();
   const COUNTED_PIXELS = 41;
-  await page.getByTestId(`discovery-count-${PROBE_PIN}`).fill(String(COUNTED_PIXELS));
-  await page.getByTestId('discovery-counts-done').click();
+  await stopRunAt(page, COUNTED_PIXELS);
   await expect(page.getByTestId('discovery-end-marker')).toBeVisible();
+  await settleEndCheck(page, COUNTED_PIXELS);
   await page.getByTestId('discovery-end-yes').click();
 
-  await expect(page.getByTestId('discovery-record')).toBeVisible();
-  await page.getByTestId('discovery-record-save').click();
+  // The last end-marker confirm saves what was found (simpler-journeys C8).
 
   // Embedded discovery's "done" screen only ever offers Continue to Layout —
   // recording never installs the real project, so the card is still holding
@@ -230,29 +229,24 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
     + 'not layout placement — there is no strip left to place',
   ).toHaveAttribute('data-journey-task', 'test-and-save', { timeout: CONNECT_BUDGET_MS });
 
-  // ── Phase 4 opens the install task. The discovery bench sentinel still
-  // names a different project, so Studio first asks the owner to explicitly
-  // replace it on this card. The real discovered project has 41 pixels on
+  // ── Phase 4 opens the install task. The card still holds the discovery
+  // bench sentinel, which is Studio's own temporary setup, so replacing it
+  // needs no second question (simpler-journeys C4). The real discovered project has 41 pixels on
   // GPIO 18, but its output identity, LED type, and current limit differ
   // from the temporary bench setup. Firmware stages that structural change
   // for a physical light test even though the pin is unchanged.
   const configPostsBeforeInstall = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length;
   await page.getByTestId('setup-verify-action').click();
   await expect(page).toHaveURL(/next=patterns/);
-  await expect(page.getByTestId('replace-card-project')).toBeVisible();
-  expect(card.state.projectId, 'opening the install task must not silently replace the bench project').toBe('lightweaver-bench-discovery-v1');
-  await page.getByTestId('replace-card-project').click();
-  await expect(page).toHaveURL(/replace=project/);
+  await expect(page.getByTestId('replace-card-project'), 'the temporary setup is not someone else\'s project').toHaveCount(0);
 
-  await expect(page.getByTestId('wiring-test-start'), 'the structural change must stage a physical light test').toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  expect(card.state.projectId, 'staging must preserve the bench project until activation').toBe('lightweaver-bench-discovery-v1');
+  // The structural change stages a physical light test, which starts on its
+  // own after the owner's Save (simpler-journeys C2).
+  await expect(page.getByTestId('wiring-test-confirm'), 'the structural change must run a physical light test').toBeVisible({ timeout: CONNECT_BUDGET_MS });
   expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length - configPostsBeforeInstall,
     'the structural install must not overwrite the known-good project through /api/config').toBe(0);
   expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate').length,
     'the exact real project must be staged once').toBe(1);
-
-  await page.getByTestId('wiring-test-start').click();
-  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   expect(card.state.wiringTestActive, 'activation must enter probation before confirmation').toBe(true);
   expect(card.state.pixels, 'the physical light test must run the counted 41 pixels').toBe(COUNTED_PIXELS);
   expect(card.state.projectId, 'probation must boot the real discovered project').toBe(realProjectId);
