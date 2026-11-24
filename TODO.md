@@ -13,6 +13,21 @@ carries them all automatically. See [docs/firmware-queue.md](docs/firmware-queue
 cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmware:waiting
 ```
 
+## Shipping queue (open PRs, sorted 2026-11-24)
+
+In order. The shipper's full log is `todo/plans/overnight-ship-2026-11-19.md` on branch `claude/overnight-ship-f1719c`.
+
+- [ ] Merge the smoke split (`claude/smoke-two-jobs`) once its GitHub Tests run is green, because main cannot deploy or sign while one smoke job runs past its 45-minute cap _(band: agent-runnable)_ _(effort: quick)_
+- [ ] Merge card update 1.2.6 (PR #508, head 1ea4ef2b; Adrian said "Release now" and "Yes, both" on 2026-11-24 with the rare panic unexplained), watch the signer publish, then close #490, #491, #505 and #506, which it carries _(band: agent-runnable)_ _(effort: medium)_
+- [ ] Merge Back to Layout (PR #510, e2a0353b), green 3/3 locally; its GitHub run only failed on the smoke cap _(band: agent-runnable)_ _(effort: quick)_
+- [ ] Fix and merge the lost-looks fix L1 (PR #512, head 9ebf0dd4), the live owner data loss: `save-keeps-card-looks` still never shows "Kept the card's looks" after Keep, likely hidden by the fix-3 notice suppression _(band: agent-runnable)_ _(effort: medium)_
+- [ ] Merge Studio no-touch prompts (PR #509) after 1.2.6 is published, since only 1.2.6 cards report `capabilities.ownerNoTouch` _(band: agent-runnable)_ _(effort: quick)_
+- [ ] Fix and merge the Find my strips stack (`claude/find-strips-stack` ebd5c80b = #502 D11 + #497 D9 + #503 FS1 + FS3 v2): `step3-activate.spec.ts:82` is red on it, then close the three single PRs _(band: agent-runnable)_ _(effort: medium)_
+- [ ] Merge the docs-only PRs #513 (crash recorder to-do) and #460 (practice card resume note) with the next batch _(band: agent-runnable)_ _(effort: quick)_
+- [ ] Decide on PR #465 (run every PR's tests on GitHub): its browser smoke is red and it now conflicts with the smoke split _(band: agent-runnable)_ _(effort: medium)_
+- [ ] Pick which of the 9 proposed cuts in PR #450 (simpler journeys, 52 → 41 phone presses) to build; the PR conflicts with main and is a proposal, not code to merge _(band: you-required)_ _(effort: quick)_
+- [ ] Delete the merged or superseded branches after the queue lands: `claude/batch-l1-510`, `claude/ship-510`, `claude/overnight-durability-v2`, `-v3-*`, `codex/lightweaver-isolation-delivery-20261105` _(band: agent-runnable)_ _(effort: quick)_
+
 ## Follow-ups
 - [ ] FS1: during the protected light test after Save to card, the card runs the candidate on probation and reports runtimePhase 'recovering' (firmware LightweaverProvisioningPolicy.h provisioningPhaseForLoad), and Card Home's connection label (src/lib/cardLifecycle.js, complete-but-not-ready → attention-required) shows "Needs attention" for about a second. Measured on the practice card Real-timing with the combined Find my strips walk; main's older walk did not show it. Teach the lifecycle that a light test is running (wiring status), then drop the FS1 allowance in lightweaver/tests/find-strips-combined.spec.ts _(band: agent-runnable)_ _(effort: medium)_
 - [ ] FS2: Save after Find my strips never reaches the light test while the card settles after its restart (measured on the practice card Real-timing with restartAfterSaveMs 14200 and the profile's unsettledAfterRestart on, live build 2733): by tap it ends "Studio could not verify this install (read-back-mismatch)" with the card still on the temporary setup (src/lib/sceneExpressionDelivery.js:230-235); by sweep it stops with no light test and no words. Owned by the practice-card session (save read-back). The two fixme walks at the end of lightweaver/tests/find-strips-combined.spec.ts show it; the fix removes their marker _(band: agent-runnable)_ _(effort: medium)_
