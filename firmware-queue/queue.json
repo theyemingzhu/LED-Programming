@@ -20,6 +20,16 @@
         "kind": "patch",
         "patch": "firmware-queue/patches/client-pattern-after-query-get.patch"
       }
+    },
+    {
+      "id": "crash-recorder",
+      "what": "The card now keeps a record of a crash (what it was doing, where it failed) and reports its last three.",
+      "why": "It changes nothing an owner sees; it is evidence for the next crash and can ride the next card update.",
+      "added": "2026-11-24",
+      "source": {
+        "kind": "branch",
+        "branch": "claude/crash-recorder"
+      }
     }
   ]
 }
