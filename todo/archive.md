@@ -15,3 +15,5 @@
 
 - [x] Shipping queue of 2026-11-24 morning: smoke split, card update 1.2.6 (#508, closing #490/#491/#505; #506 closed), Back to Layout (#510), lost-looks fix L1 (#512), Studio no-touch prompts (#509), docs PRs #513 and #460.
   All merged by 2026-11-24 (checked by the ship coordinator against GitHub).
+
+- [x] Real-card check of `relative-look-tuning-default-boot`: PASS on every step, run 2026-11-24 with Adrian's "Yes, run it" (Save to card 200, read-back keeps sections, phone brightness keeps sections, boots into the saved default after a USB hard reset). Card left on signed 1.2.6. Setup-phone spec fix merged as #519.
