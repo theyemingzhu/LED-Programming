@@ -28,8 +28,17 @@ async function openCard(page: Page, answer: (route: any) => Promise<void>) {
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
   }, { id: card.state.cardId, firmwareVersion: card.state.firmwareVersion, buildId: card.state.buildId });
   await page.goto('/#screen=card', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    return /^connected-/.test(String(getSharedCardLink().getState()?.state || ''));
+  }), { timeout: 30_000 }).toBe(true);
+  // Studio may already be opening the card's project by itself; then the
+  // button is busy or gone. Press it only while it is offered, and never wait
+  // on it without a limit (a busy button held a GitHub run to its timeout).
   const open = page.getByTestId('installed-project-open');
-  await open.waitFor({ timeout: 30_000 }).then(() => open.click()).catch(() => {});
+  if (await open.isEnabled({ timeout: 10_000 }).catch(() => false)) {
+    await open.click({ timeout: 5_000 }).catch(() => {});
+  }
   return card;
 }
 

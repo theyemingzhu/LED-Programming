@@ -27,7 +27,13 @@ function sixLookCard() {
   const card = createCardSimulator(spec);
   card.state.installedLooks = SIX.map(id => id === 'fire'
     ? { id, label: 'Fire', patternId: id, brightness: 0.9, speed: 1 }
-    : { id, label: id.replace(/^combo-/, ''), mode: 'combo', preset: id.replace(/^combo-/, ''), patternId: id.replace(/^combo-/, ''), brightness: 0.9, speed: 1 });
+    // A combo carries its sections' own patterns, as on the real card
+    // (fixtures/real-card-bench-2026-11-23-patterns.json); without them its
+    // section pattern reads as "combo-…", which Studio rightly calls unsupported.
+    : {
+      id, label: id.replace(/^combo-/, ''), mode: 'combo', preset: id.replace(/^combo-/, ''), patternId: id.replace(/^combo-/, ''), brightness: 0.9, speed: 1,
+      zones: [{ id: 'zone-all', label: 'All lights', patternId: id.replace(/^combo-/, ''), brightness: 1, speed: 1 }],
+    });
   return { card, spec };
 }
 
@@ -51,7 +57,11 @@ async function connect(page: Page, card: ReturnType<typeof createCardSimulator>,
     return /^connected-/.test(String(getSharedCardLink().getState()?.state || ''));
   }), { timeout: 30_000 }).toBe(true);
   const open = page.getByTestId('installed-project-open');
-  await open.waitFor({ timeout: 15_000 }).then(() => open.click()).catch(() => {});
+  // Never wait on a busy button without a limit: Studio may be opening the
+  // card's project by itself.
+  if (await open.isEnabled({ timeout: 15_000 }).catch(() => false)) {
+    await open.click({ timeout: 5_000 }).catch(() => {});
+  }
   await expect.poll(() => page.evaluate(() => {
     try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || ''; } catch { return ''; }
   }), { timeout: 30_000 }).toBe(card.state.projectId);
