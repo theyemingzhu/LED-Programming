@@ -197,7 +197,8 @@ test('real build 2160 count sends top-level LED outputs through the actual direc
           assert.equal(body.led.maxMilliamps, 2000);
           assert.equal(body.piece.id, 'lightweaver-bench-discovery-v1');
           assert.equal(body.provisional, true);
-          assert.equal(body.controls.encoder.a, 4);
+          // Encoder pin A is the card's own default (4), so the body leaves it out.
+          assert.equal(body.controls?.encoder?.a, undefined);
           return jsonResponse({ ok: true, requiresReboot: true });
         }
         if (path === '/api/reboot') return jsonResponse({ ok: true });
