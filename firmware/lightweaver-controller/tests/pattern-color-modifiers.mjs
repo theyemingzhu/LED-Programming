@@ -39,8 +39,14 @@ assert.match(source, /if \(mods\.hasPatternClock\) return mods\.patternClockMs;/
     && bare.indexOf('scaleTime(now, mods.speed)') > clockStart,
     'the remaining uptime scaling must live inside patternClock() as its fallback');
 }
-assert.match(runtime, /mods\.patternClockMs = advanceZoneAnimationClock\(zoneIndex, now, zone\.speed\);/,
-  'each zone must render on its own integrated animation clock');
+const renderZoneStart = runtime.indexOf('bool renderZone(const ZoneConfig& zone,');
+const renderZoneEnd = runtime.indexOf('\n}', renderZoneStart);
+assert.ok(renderZoneStart >= 0 && renderZoneEnd > renderZoneStart);
+const renderZone = runtime.slice(renderZoneStart, renderZoneEnd);
+assert.match(renderZone, /mods\.speed = zone\.speed \* speedScale;/,
+  'each zone must preserve its authored speed as the base for whole-look tuning');
+assert.match(renderZone, /mods\.patternClockMs = advanceZoneAnimationClock\(zoneIndex, now, mods\.speed\);/,
+  'each zone must integrate animation time at its effective tuned speed');
 assert.match(runtime, /const uint32_t elapsed = now - clock\.lastNow;/,
   'the zone clock must integrate elapsed time so a speed change never teleports the pattern');
 assert.match(source, /int16_t\(mods\.customHue\) - int16_t\(LW_DEFAULT_CUSTOM_HUE\)/);

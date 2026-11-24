@@ -2347,6 +2347,9 @@ bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String
 
 namespace {
 constexpr const char* CLIENT_PATTERN_KEY = "clientPatterns";
+constexpr const char* LOOK_TUNING_KEY = "lookTuningV1";
+LookTuning savedLookTunings[LW_MAX_LOOKS];
+uint32_t lookTuningRevisions[LW_MAX_LOOKS];
 uint32_t clientPatternGeneration = 0;
 ClientPatternOverride clientPatternOverrides[LW_MAX_LOOKS];
 ClientPatternOverride activeClientPatternOverrides;
@@ -2459,6 +2462,132 @@ bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVaria
 // saved looks and the playlist are refused before they grow into that room.
 size_t runtimeConfigStorageLimitBytes() {
   return lightweaver::projectRoomBytes(nvsFreeEntries(), NVS_STRING_LIMIT);
+}
+
+bool patchLookTuning(JsonVariantConst value, LookTuning& tuning) {
+  JsonObjectConst patch = value.as<JsonObjectConst>();
+  if (patch.isNull() || patch.size() == 0 || patch.size() > 3) return false;
+  LookTuning next = tuning;
+  for (JsonPairConst field : patch) {
+    const char* key = field.key().c_str();
+    JsonVariantConst val = field.value();
+    if (strcmp(key, "hueOffset") == 0) {
+      if (!val.is<int>() || !lookHueOffsetValid(val.as<int>())) return false;
+      next.hueOffset = val.as<int>();
+      continue;
+    }
+    const bool brightness = strcmp(key, "brightnessScale") == 0;
+    if ((!brightness && strcmp(key, "speedScale") != 0) || !val.is<float>()) return false;
+    const float num = val.as<float>();
+    if (!(brightness ? lookBrightnessScaleValid(num) : lookSpeedScaleValid(num))) return false;
+    if (brightness) next.brightnessScale = num;
+    else next.speedScale = num;
+  }
+  tuning = next;
+  return true;
+}
+
+void encodeLookTuning(const LookTuning& tuning, JsonObject out) {
+  out["brightnessScale"] = tuning.brightnessScale;
+  out["speedScale"] = tuning.speedScale;
+  out["hueOffset"] = tuning.hueOffset;
+}
+
+void loadSavedLookTuning(const RuntimeConfig& config) {
+  for (uint8_t i = 0; i < LW_MAX_LOOKS; ++i) {
+    savedLookTunings[i] = LookTuning{};
+    lookTuningRevisions[i] = 0;
+  }
+  if (!config.knownGoodProject || config.configDigest.length() != 64) return;
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return;
+  const String json = prefs.getString(LOOK_TUNING_KEY, "");
+  prefs.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["configDigest"].as<String>() != config.configDigest ||
+      doc["installId"].as<String>() != currentConfirmedInstallationId() ||
+      !doc["entries"].is<JsonArrayConst>()) return;
+  LookTuning candidate[LW_MAX_LOOKS];
+  uint32_t revisions[LW_MAX_LOOKS] = {};
+  for (JsonArrayConst row : doc["entries"].as<JsonArrayConst>()) {
+    // Indices are stable for this exact config digest and confirmed installation.
+    // A compact row keeps a fully tuned 32-look bank within the NVS budget.
+    if (row.size() != 5 || !row[0].is<uint8_t>() || !row[1].is<uint32_t>()) return;
+    const auto i = row[0].as<uint8_t>();
+    const auto revision = row[1].as<uint32_t>();
+    if (i >= config.lookCount || i >= LW_MAX_LOOKS || revisions[i] || !revision ||
+        !row[2].is<float>() || !row[3].is<float>() || !row[4].is<int>()) return;
+    const float brightness = row[2].as<float>();
+    const float speed = row[3].as<float>();
+    const int hue = row[4].as<int>();
+    if (!lookBrightnessScaleValid(brightness) || !lookSpeedScaleValid(speed) ||
+        !lookHueOffsetValid(hue)) return;
+    candidate[i] = LookTuning{brightness, speed, static_cast<int16_t>(hue)};
+    revisions[i] = revision;
+  }
+  for (uint8_t i = 0; i < LW_MAX_LOOKS; ++i) {
+    savedLookTunings[i] = candidate[i];
+    lookTuningRevisions[i] = revisions[i];
+  }
+}
+
+LookTuning savedLookTuning(const RuntimeConfig& config, const String& patternId) {
+  const int i = installedClientPatternIndex(config, patternId);
+  return i < 0 ? LookTuning{} : savedLookTunings[i];
+}
+
+String savedLookTuningRevision(const RuntimeConfig& config, const String& patternId) {
+  const int i = installedClientPatternIndex(config, patternId);
+  if (i < 0) return "";
+  return sha256Hex(config.configDigest + ":" + currentConfirmedInstallationId() +
+      ":look-tuning:" + patternId + ":" + String(lookTuningRevisions[i]));
+}
+
+bool saveLookTuning(const RuntimeConfig& config, const String& patternId,
+                    const LookTuning& tuning, String& message) {
+  const int index = installedClientPatternIndex(config, patternId);
+  if (index < 0 || config.configDigest.length() != 64 || lookTuningRevisions[index] == UINT32_MAX) {
+    message = "installed look unavailable";
+    return false;
+  }
+  JsonDocument doc;
+  doc["configDigest"] = config.configDigest;
+  doc["installId"] = currentConfirmedInstallationId();
+  JsonArray entries = doc["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < config.lookCount; ++i) {
+    const bool changed = i == index;
+    const uint32_t revision = lookTuningRevisions[i] + (changed ? 1U : 0U);
+    if (!revision) continue;
+    JsonArray row = entries.add<JsonArray>();
+    const auto& entry = changed ? tuning : savedLookTunings[i];
+    row.add(i);
+    row.add(revision);
+    row.add(entry.brightnessScale);
+    row.add(entry.speedScale);
+    row.add(entry.hueOffset);
+  }
+  String json;
+  serializeJson(doc, json);
+  if (json.length() > NVS_STRING_LIMIT) { message = "saved tuning exceeds storage limit"; return false; }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) { message = "tuning storage unavailable"; return false; }
+  if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
+    prefs.end();
+    message = "wiring transaction is active";
+    return false;
+  }
+  const bool written = prefs.putString(LOOK_TUNING_KEY, json) == json.length();
+  prefs.end();
+  if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
+    message = "tuning write could not be verified";
+    return false;
+  }
+  const bool verified = prefs.getString(LOOK_TUNING_KEY, "") == json;
+  prefs.end();
+  if (!verified) { message = "tuning readback failed"; return false; }
+  savedLookTunings[index] = tuning;
+  ++lookTuningRevisions[index];
+  return true;
 }
 
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message) {
@@ -2583,7 +2712,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   // but clearing it here means a stale record never lingers on flash.
   clearPersistedLiveLookRecord();
   Preferences clientPrefs;
-  if (clientPrefs.begin(NVS_NAMESPACE, false)) { clientPrefs.remove(CLIENT_PLAYLIST_KEY); clientPrefs.remove(CLIENT_PATTERN_KEY); clientPrefs.end(); }
+  if (clientPrefs.begin(NVS_NAMESPACE, false)) { clientPrefs.remove(CLIENT_PLAYLIST_KEY); clientPrefs.remove(CLIENT_PATTERN_KEY); clientPrefs.remove(LOOK_TUNING_KEY); clientPrefs.end(); }
   clientPlaylistGeneration = 0;
   clientPatternGeneration = 0;
   activeClientPatternOverrides = ClientPatternOverride();
@@ -3216,7 +3345,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   // True only when a persisted live-tweak record (owner brightness/hue/scene
   // changes made from this page, previously lost at power-cycle) matched this
   // boot's project and was applied on top of the installed look's defaults.
-  doc["resumedLiveLook"] = runtimeResumedLiveLook();
+  doc["resumedLiveLook"] = false;
   // True while the card is running Find-my-strips scaffolding rather than a
   // project the owner chose — Studio reads this to say "unfinished setup"
   // instead of presenting the bench project as commissioned.
@@ -3228,6 +3357,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
   doc["capabilities"]["clientPlaylist"]["version"] = 1;
   doc["capabilities"]["clientPattern"]["version"] = 1;
+  doc["capabilities"]["lookTuning"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["crashRecorder"] = 1;

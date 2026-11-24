@@ -67,7 +67,7 @@ assert.match(storage, /zone\.mirrorSource = LW_ZONE_NO_MIRROR;\n  zone\.symmetry
 
 // Render order: every source is drawn before any mirror copies it.
 const renderCurrent = slice(main, 'bool renderCurrentLook(bool force) {', '\nbool renderSequenceFrame(');
-const ownPass = renderCurrent.indexOf('renderZone(runtimeConfig.zones[i], i, now)');
+const ownPass = renderCurrent.indexOf('renderZone(runtimeConfig.zones[i], i, now, speedScale)');
 const mirrorPass = renderCurrent.indexOf('renderMirrorZone(runtimeConfig.zones[i], i)');
 assert.ok(ownPass >= 0 && mirrorPass > ownPass, 'mirror pass must run after every source zone rendered');
 assert.match(renderCurrent, /if \(activeZoneMirrorSource\[i\] != LW_ZONE_NO_MIRROR\) continue;/,
@@ -93,8 +93,10 @@ assert.match(slice(main, 'void applyLookToRuntimeZones(const LookConfig& look) {
   /resolveActiveZoneMirrors\(runtimeConfig, &look\)/);
 assert.match(slice(main, 'void applyRuntimeConfig(const RuntimeConfig& config) {', '\n}'),
   /resolveActiveZoneMirrors\(config, nullptr\)/);
-assert.match(slice(main, 'bool restoreLiveLookIfMatching() {', '\n}'),
-  /resolveActiveZoneMirrors\(runtimeConfig, resumedLook\)/, 'a power cycle keeps the look\'s mirroring');
+assert.match(slice(main, 'void setup() {', 'void loop() {'),
+  /currentLookIndex = findStartupLook\(\)[\s\S]*startLook\(currentLookIndex\)/,
+  'a power cycle starts the configured look, which applies its own mirror state');
+assert.doesNotMatch(slice(main, 'void setup() {', 'void loop() {'), /restoreLiveLookIfMatching/);
 
 // Capability flag on both identity payloads.
 const firmwareInfo = main.match(/String runtimeFirmwareInfo\(\)\s*\{[\s\S]*?\n\}/)?.[0] || '';
