@@ -24,6 +24,7 @@
 #include "LightweaverArtnet.h"
 #include "LightweaverWledWebSocket.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverCrashRecorder.h"
 #include "LightweaverMedia.h"
 #include "LightweaverOwnerCapability.h"
 #include <Preferences.h>
@@ -434,6 +435,9 @@ bool addLedsForOrder(CRGB* start, uint16_t count) {
 void setup() {
   initializeBootIdentity();
   const bool firmwareBootProbation = beginLightweaverFirmwareBootHealth();
+  // Store what the previous start-up left behind before anything else can
+  // fail, then start this start-up's own breadcrumb.
+  lightweaverCrashRecorderBoot();
   Serial.begin(115200);
   uint32_t serialWaitStart = millis();
   while (!Serial && millis() - serialWaitStart < 2000) {
@@ -625,6 +629,7 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
+  lightweaverCrashRecorderTick(now);
   {
     // Measurement only: how long one pass of this loop takes.
     const uint32_t nowUs = micros();
@@ -3008,6 +3013,8 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["crashLog"] = 1;
+  lightweaverCrashReportSummary(doc["crash"].to<JsonObject>());
   doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());

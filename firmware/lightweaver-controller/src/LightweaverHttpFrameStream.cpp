@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverHttpFrameStream.h"
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -26,6 +27,7 @@ uint32_t g_streamExpiresAtMs = 0;
 uint32_t g_streamNextSequence = 1;
 
 void sendStreamCors() {
+  lightweaverCrashNoteActivity(g_streamServer->uri().c_str());
   const String origin = g_streamServer->header("Origin");
   if (corsOriginAllowed(origin)) {
     g_streamServer->sendHeader("Access-Control-Allow-Origin", origin);

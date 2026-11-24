@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverProjectRepository.h"
 
 #include <ArduinoJson.h>
@@ -382,6 +383,7 @@ bool g_projectBodyReady = false;
 bool g_projectBodyRejected = false;
 
 void sendProjectCors() {
+  lightweaverCrashNoteActivity(g_projectServer->uri().c_str());
   String origin = g_projectServer->header("Origin");
   if (corsOriginAllowed(origin)) {
     g_projectServer->sendHeader("Access-Control-Allow-Origin", origin);

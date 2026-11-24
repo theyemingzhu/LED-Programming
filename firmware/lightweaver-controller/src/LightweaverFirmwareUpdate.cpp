@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverFirmwareUpdate.h"
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -133,6 +134,7 @@ void freeUpdateBody() {
 }
 
 void sendUpdateCors() {
+  lightweaverCrashNoteActivity(g_updateServer->uri().c_str());
   const String origin = g_updateServer->header("Origin");
   if (corsOriginAllowed(origin)) {
     g_updateServer->sendHeader("Access-Control-Allow-Origin", origin);

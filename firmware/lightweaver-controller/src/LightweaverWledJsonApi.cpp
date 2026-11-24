@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverWledJsonApi.h"
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverFrameSource.h"
@@ -34,6 +35,7 @@ WebServer* serverPtr = nullptr;
 // corsOriginAllowed in LightweaverWeb.cpp): these endpoints control the
 // lights unauthenticated, so they must not echo "*" to arbitrary sites.
 void sendCors() {
+  lightweaverCrashNoteActivity(serverPtr->uri().c_str());
   String origin = serverPtr->header("Origin");
   if (corsOriginAllowed(origin)) {
     serverPtr->sendHeader("Access-Control-Allow-Origin", origin);

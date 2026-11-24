@@ -5,6 +5,7 @@
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverCrashRecorder.h"
 #include "LightweaverMedia.h"
 #include "LightweaverOwnerCapability.h"
 #include "LightweaverRecipe.h"
@@ -3229,6 +3230,8 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilities"]["clientPattern"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["crashLog"] = 1;
+  lightweaverCrashReportSummary(doc["crash"].to<JsonObject>());
   doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
