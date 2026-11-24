@@ -24,6 +24,7 @@
 #include "LightweaverArtnet.h"
 #include "LightweaverWledWebSocket.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverCrashRecorder.h"
 #include "LightweaverMedia.h"
 #include "LightweaverOwnerCapability.h"
 #include <Preferences.h>
@@ -229,29 +230,19 @@ uint32_t cardStateRevision = 0;
 ErrorCode errorCode = ERROR_NONE;
 
 // ---- Live-look resume record (power-cycle survival for /api/control tweaks) ----
-// See LiveLookRecord in LightweaverStorage.h for the data model and why it is
-// its own NVS key. LW_LIVE_LOOK_MAX_ZONES there is an independent literal
-// (that header stays Arduino-free) — pin it to the real hardware ceiling here,
-// where LightweaverTypes.h is already included.
-static_assert(LW_LIVE_LOOK_MAX_ZONES == LW_MAX_ZONES,
-              "the live-look record must be able to hold every zone a card can render");
-// Debounce window: a persist is scheduled ~2s after the LAST change, never
-// per-frame and never mid-fade (fadeTo() blocks loop(), so a service call can
-// only run between ticks — see runtimeServiceLiveLookPersist()).
-constexpr uint32_t LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS = 2000;
-bool liveLookDirty = false;
-uint32_t liveLookDirtyAtMs = 0;
-// True for the rest of this boot once a persisted record matched this
-// project and was applied. Surfaced on /api/status as resumedLiveLook.
-bool resumedLiveLookFlag = false;
+LookTuning liveLookTuning;
+uint32_t lookTuningSession = 0;
+bool tuningInstalledLook = false;
+
+void selectLookTuning(const String& patternId) {
+  tuningInstalledLook = installedClientPatternIndex(runtimeConfig, patternId) >= 0;
+  liveLookTuning = savedLookTuning(runtimeConfig, patternId);
+  lookTuningSession = lookTuningSession == UINT32_MAX ? 1 : lookTuningSession + 1;
+}
 
 // ---- Playlist sequencing (timed dwell + cross-fade auto-advance) ----
 // See PlaylistConfig in LightweaverTypes.h for the persisted project-JSON
-// block. Play state (playing/entryIndex) is live, in-memory state, same as
-// every other /api/control tweak — never part of runtimeConfig — and is
-// folded into the liveLook resume record above so it survives a power-cycle
-// the same way a manual brightness/pattern tweak does (see
-// captureLiveLookRecordFromRuntime() / restoreLiveLookIfMatching()).
+// block. Play state is in memory and starts paused at boot.
 // fadeTo() (below) is the codebase's only whole-output fade primitive
 // (fadeScale, a brightness multiplier applied at render time) — it cannot
 // blend the PIXEL CONTENT of two different patterns, only fade the currently
@@ -379,7 +370,6 @@ bool openSequence(const LookConfig& look, PreparedSequence* prepared = nullptr);
 bool isLoadedLookRenderable(const LookConfig& look, bool zoneTargeted);
 bool renderCurrentLook(bool force = false);
 bool renderSequenceFrame(bool force = false);
-bool restoreLiveLookIfMatching();
 void playlistPauseForManualChange();
 bool playlistAdvanceToIndex(uint8_t targetIndex);
 void applySequenceFrameBufferToLeds();
@@ -434,6 +424,9 @@ bool addLedsForOrder(CRGB* start, uint16_t count) {
 void setup() {
   initializeBootIdentity();
   const bool firmwareBootProbation = beginLightweaverFirmwareBootHealth();
+  // Store what the previous start-up left behind before anything else can
+  // fail, then start this start-up's own breadcrumb.
+  lightweaverCrashRecorderBoot();
   Serial.begin(115200);
   uint32_t serialWaitStart = millis();
   while (!Serial && millis() - serialWaitStart < 2000) {
@@ -455,6 +448,7 @@ void setup() {
   if (loadResult.ok && !loadResult.bootedCandidate) {
     loadClientPlaylist(runtimeConfig);
     loadClientPatterns(runtimeConfig);
+    loadSavedLookTuning(runtimeConfig);
   }
   runtimeSafeMode = loadResult.safeMode;
   if (Serial) {
@@ -536,10 +530,6 @@ void setup() {
       if (loadResult.bootedCandidate) rollbackCandidateBeforeRestart("candidate startup frame failed");
       return;
     }
-    // Overlay any persisted live tweaks on top of the startup look's own
-    // defaults, before the first visible fade-in — see restoreLiveLookIfMatching().
-    resumedLiveLookFlag = liveLookMayRestore(loadResult.bootedCandidate) &&
-        restoreLiveLookIfMatching();
     if (runtimeConfig.provisionalProject && !loadResult.bootedCandidate) {
       // A provisional (Find-my-strips bench) setup must not silently relight
       // the whole strip on an unattended boot. fadeScale stays 0: the internal
@@ -625,6 +615,7 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
+  lightweaverCrashRecorderTick(now);
   {
     // Measurement only: how long one pass of this loop takes.
     const uint32_t nowUs = micros();
@@ -637,16 +628,7 @@ void loop() {
     lastLoopPassAtUs = nowUs ? nowUs : 1;
   }
   esp_task_wdt_reset();  // pet the watchdog every iteration, before any early return
-  // Unconditional every tick, regardless of mode below: a fade started this
-  // tick (fadeTo()) always blocks loop() until it finishes, so by the time
-  // control reaches here no fade from THIS tick is in flight, and any fade
-  // from a PRIOR tick already returned before loop() could run again — this
-  // can never fire mid-fade. See runtimeServiceLiveLookPersist().
-  runtimeServiceLiveLookPersist();
-  // Playlist advance never runs mid-fade, same reasoning as the live-look
-  // persist call above: any fade started this tick blocks loop() until it
-  // finishes, and any fade from a prior tick already returned before loop()
-  // could run again.
+  // Fades block this task, so playlist advance cannot run mid-fade.
   runtimeServicePlaylist();
   bool recoveryHoldActive = int32_t(recoveryHoldUntilMs - now) > 0;
   handleLightweaverWeb();
@@ -1434,7 +1416,6 @@ void selectLook(int index) {
   if (runtimeConfig.provisionalProject)
     provisionalNativeArmedZones = nativeArmAllZones(runtimeConfig.zoneCount);
   fadeTo(1.0f, looks[currentLookIndex].fadeInMs);
-  runtimeMarkLiveLookDirty();
 }
 
 bool selectLookInstant(int index) {
@@ -1456,7 +1437,6 @@ bool applyPreparedLookInstant(uint8_t nextIndex, PreparedSequence* prepared) {
   fadeScale = 1.0f;
   if (!startLook(currentLookIndex, prepared)) return false;
   showLeds();
-  runtimeMarkLiveLookDirty();
   return true;
 }
 
@@ -1476,6 +1456,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
       return false;
     }
     applyLookToRuntimeZones(look);
+    selectLookTuning(look.id);
     applySequenceFrameBufferToLeds();
     activePatternId = look.id;
     return true;
@@ -1484,6 +1465,7 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
   const String patternId = look.preset.length() > 0 ? look.preset : look.id;
   lightweaver::restartNativeRecipe(patternId.c_str(), millis());
   applyLookToRuntimeZones(look);
+  selectLookTuning(look.id);
   bool rendered = renderCurrentLook(true);
   if (rendered) activePatternId = look.id;
   return rendered;
@@ -1832,7 +1814,7 @@ static uint32_t advanceZoneAnimationClock(uint8_t zoneIndex, uint32_t now, float
   return clock.virtualMs;
 }
 
-bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
+bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now, float speedScale) {
   if (zone.rangeCount == 0) return false;
   if (!nativeArmZoneVisible(runtimeConfig.provisionalProject,
                             provisionalNativeArmedZones, zoneIndex)) {
@@ -1848,8 +1830,8 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
   const LookConfig* look = isSupportedCompiledPattern(zone.patternId) ? nullptr : findLookById(zone.patternId);
 
   PatternModifiers mods;
-  mods.speed = zone.speed;
-  mods.hueShift = zone.hueShift;
+  mods.speed = zone.speed * speedScale;
+  mods.hueShift = wrapLookHue(zone.hueShift, liveLookTuning.hueOffset);
   mods.customHue = zone.customHue;
   mods.customSaturation = zone.customSaturation;
   mods.customBreathe = zone.customBreathe;
@@ -1859,7 +1841,7 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
   mods.customDrift = zone.customDrift;
   mods.driftHueMin = zone.driftHueMin;
   mods.driftHueMax = zone.driftHueMax;
-  mods.patternClockMs = advanceZoneAnimationClock(zoneIndex, now, zone.speed);
+  mods.patternClockMs = advanceZoneAnimationClock(zoneIndex, now, mods.speed);
   mods.hasPatternClock = true;
 
   // Continuous zone (a symmetry side): the ranges are ONE pattern run in range
@@ -1938,6 +1920,14 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
   return any;
 }
 
+LookTuningSpeedRange lookTuningSpeedRange() {
+  LookTuningSpeedRange range;
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; ++i) {
+    if (activeZoneMirrorSource[i] == LW_ZONE_NO_MIRROR) range.include(runtimeConfig.zones[i].speed);
+  }
+  return range;
+}
+
 bool renderCurrentLook(bool force) {
   // Legacy sequence path: only when zone 0 holds the entire strip and the
   // selected look is a frame sequence. Sequences predate zones; they take
@@ -1957,10 +1947,12 @@ bool renderCurrentLook(bool force) {
   // mirroring zone copies its (already drawn) source. resolveActiveZoneMirrors
   // guarantees a source never mirrors, so one pass of each is always enough,
   // whatever order the zones were declared in.
+  const float speedScale = liveLookTuning.speedScale == 1.0f
+      ? 1.0f : lookTuningSpeedRange().clamp(liveLookTuning.speedScale);
   bool anyRendered = false;
   for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
     if (activeZoneMirrorSource[i] != LW_ZONE_NO_MIRROR) continue;
-    if (renderZone(runtimeConfig.zones[i], i, now)) anyRendered = true;
+    if (renderZone(runtimeConfig.zones[i], i, now, speedScale)) anyRendered = true;
   }
   for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
     if (activeZoneMirrorSource[i] == LW_ZONE_NO_MIRROR) continue;
@@ -2234,7 +2226,8 @@ bool isValidLedColorOrder(const String& order) {
 uint8_t computeBrightnessByte() {
   OutputBrightnessInputs input{};
   input.brightnessLimit = brightnessLimit;
-  input.lookBrightness = lookCount ? looks[currentLookIndex].brightness : 0.35f;
+  input.lookBrightness = (lookCount ? looks[currentLookIndex].brightness : 0.35f) *
+      liveLookTuning.brightnessScale;
   input.fadeScale = fadeScale;
   input.knob = int32_t(recoveryBrightnessBypassUntilMs - millis()) > 0 ? 1.0f : readBrightnessKnob();
   input.manualBrightness = manualBrightness;
@@ -2374,9 +2367,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
         break;
       }
     }
-    // Every zone-level mutation funnels through this one function — this is
-    // the single choke point for arming the live-look persist debounce.
-    if (touched > 0) runtimeMarkLiveLookDirty();
     return touched;
   }
   // No target: when sync is on, broadcast. When sync is off, only zone 0.
@@ -2389,7 +2379,6 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
     fn(runtimeConfig.zones[0]);
     touched = 1;
   }
-  if (touched > 0) runtimeMarkLiveLookDirty();
   return touched;
 }
 
@@ -2580,6 +2569,7 @@ bool runtimeSelectPatternById(const String& id) {
   }
   if (isSupportedCompiledPattern(id)) {
     uint8_t applied = applyToZones("", [&](ZoneConfig& z) { z.patternId = id; });
+    selectLookTuning("");
     activePatternId = applied == runtimeConfig.zoneCount ? id : String("");
     return applied > 0;
   }
@@ -2666,6 +2656,7 @@ bool runtimeCommitPreparedPatternSelection() {
         z.patternId = preparedPatternSelection.patternId;
       });
       applied = affected > 0;
+      selectLookTuning("");
       activePatternId = affected == runtimeConfig.zoneCount
           ? preparedPatternSelection.patternId : String("");
       }
@@ -2676,6 +2667,7 @@ bool runtimeCommitPreparedPatternSelection() {
           [&](ZoneConfig& z) {
             z.patternId = preparedPatternSelection.patternId;
           }) > 0;
+      selectLookTuning("");
       activePatternId = String("");
       if (applied && runtimeConfig.zoneCount == 1) {
         activePatternId = runtimeConfig.zones[0].patternId;
@@ -2874,10 +2866,8 @@ bool runtimeBeaconPortsAvailable(uint8_t* gpios, uint8_t capacity, uint8_t& coun
 }
 
 void runtimeApplySavedConfig() {
-  // A direct install cleared the old NVS resume record. Do not let a pending
-  // pre-install slider debounce write it back under the new config identity.
-  liveLookDirty = false;
-  resumedLiveLookFlag = false;
+  loadSavedLookTuning(runtimeConfig);
+  selectLookTuning("");
   // handleConfigPost and loop run on the same Arduino task, so the complete
   // mirror + lookup replacement finishes before another frame can render.
   applyRuntimeConfig(runtimeConfig);
@@ -3008,6 +2998,9 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["crashRecorder"] = 1;
+  lightweaverCrashReportSummary(doc["crash"].to<JsonObject>());
+  doc["lastCrash"] = serialized(lightweaverCrashLastCrashJson());
   doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
@@ -3383,7 +3376,7 @@ bool runtimeCanSetLedColorOrder(const String& order) {
 }
 String runtimeGetLedColorOrder() { return ledColorOrder; }
 
-void runtimeSetSyncZones(bool on) { runtimeConfig.syncZones = on; runtimeMarkLiveLookDirty(); }
+void runtimeSetSyncZones(bool on) { runtimeConfig.syncZones = on; }
 bool runtimeGetSyncZones() { return runtimeConfig.syncZones; }
 
 void runtimeSetDriftRange(uint8_t lo, uint8_t hi) {
@@ -3399,178 +3392,40 @@ uint8_t runtimeGetDriftHueMin() { return driftHueMin; }
 uint8_t runtimeGetDriftHueMax() { return driftHueMax; }
 
 // ---- Live-look resume record: capture, persist, restore ----
-// See LiveLookRecord in LightweaverStorage.h for the data model and why it
-// exists (POST /api/control mutates runtimeConfig.zones[] in memory only,
-// so a tweak was previously lost at every power-cycle).
-
-// Builds a snapshot of the CURRENT live zone state — called only from
-// runtimeServiceLiveLookPersist() at flush time, never on the request that
-// marked the record dirty, so a burst of slider drags encodes once.
-bool runtimeLiveLookIdsRepresentable() {
-  if (!lightweaver_live_look_detail::idFits(runtimeConfig.pieceId.c_str()) ||
-      (lookCount && !lightweaver_live_look_detail::idFits(
-          looks[currentLookIndex].id.c_str()))) return false;
-  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
-    const ZoneConfig& zone = runtimeConfig.zones[i];
-    if (!lightweaver_live_look_detail::idFits(zone.id.c_str()) ||
-        !lightweaver_live_look_detail::idFits(zone.patternId.c_str())) return false;
-  }
+uint32_t runtimeLookTuningSession() { return lookTuningSession; }
+bool runtimeLookTuningAvailable() {
+  return lookCount && tuningInstalledLook && activePatternId == looks[currentLookIndex].id &&
+      !runtimeIsStreaming();
+}
+bool runtimeLookTuningMotionAvailable() {
+  return runtimeLookTuningAvailable() && looks[currentLookIndex].mode != "sequence";
+}
+LookTuning runtimeLookTuning() {
+  LookTuning tuning = liveLookTuning;
+  tuning.speedScale = lookTuningSpeedRange().clamp(tuning.speedScale);
+  return tuning;
+}
+bool runtimeSetLookTuning(const LookTuning& tuning) {
+  if (!runtimeLookTuningAvailable()) return false;
+  liveLookTuning = tuning;
+  liveLookTuning.speedScale = lookTuningSpeedRange().clamp(tuning.speedScale);
   return true;
 }
-
-bool captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
-  if (!runtimeLiveLookIdsRepresentable()) return false;
-  outRecord = LiveLookRecord();
-  lightweaver_live_look_detail::copyBounded(
-      outRecord.projectId, LW_LIVE_LOOK_ID_BYTES, runtimeConfig.pieceId.c_str());
-  outRecord.projectRevision = runtimeConfig.projectRevision;
-  lightweaver_live_look_detail::copyBounded(
-      outRecord.configDigest, LW_LIVE_LOOK_CONFIG_DIGEST_BYTES,
-      runtimeConfig.configDigest.c_str());
-  const String confirmedInstallId = currentConfirmedInstallationId();
-  lightweaver_live_look_detail::copyBounded(
-      outRecord.confirmedInstallId, LW_LIVE_LOOK_INSTALL_ID_BYTES,
-      confirmedInstallId.c_str());
-  lightweaver_live_look_detail::copyBounded(
-      outRecord.currentLookId, LW_LIVE_LOOK_ID_BYTES,
-      lookCount ? looks[currentLookIndex].id.c_str() : "");
-  outRecord.syncZones = runtimeConfig.syncZones;
-  outRecord.playlistPlaying = playlistPlaying;
-  outRecord.playlistEntryIndex = playlistEntryIndex;
-  outRecord.playlistGeneration = currentClientPlaylistGeneration();
-  outRecord.clientPatternGeneration = currentClientPatternGeneration();
-  outRecord.zoneCount = 0;
-  for (uint8_t i = 0; i < runtimeConfig.zoneCount && outRecord.zoneCount < LW_LIVE_LOOK_MAX_ZONES; i++) {
-    const ZoneConfig& z = runtimeConfig.zones[i];
-    LiveLookZoneRecord& zr = outRecord.zones[outRecord.zoneCount];
-    lightweaver_live_look_detail::copyBounded(zr.zoneId, LW_LIVE_LOOK_ID_BYTES, z.id.c_str());
-    lightweaver_live_look_detail::copyBounded(zr.patternId, LW_LIVE_LOOK_ID_BYTES, z.patternId.c_str());
-    zr.brightness = z.brightness;
-    zr.speed = z.speed;
-    zr.hueShift = z.hueShift;
-    zr.customHue = z.customHue;
-    zr.customSaturation = z.customSaturation;
-    zr.customBreathe = z.customBreathe;
-    zr.breatheLowerPct = z.breatheLowerPct;
-    zr.breatheUpperPct = z.breatheUpperPct;
-    zr.breatheCycleSeconds = z.breatheCycleSeconds;
-    zr.customDrift = z.customDrift;
-    zr.driftHueMin = z.driftHueMin;
-    zr.driftHueMax = z.driftHueMax;
-    zr.blackout = z.blackout;
-    outRecord.zoneCount++;
-  }
-  return true;
+void runtimeWriteLookTuning(JsonObject out) {
+  const bool motion = runtimeLookTuningMotionAvailable();
+  const auto range = lookTuningSpeedRange();
+  LookTuning saved = savedLookTuning(runtimeConfig, activePatternId);
+  saved.speedScale = range.clamp(saved.speedScale);
+  out["patternId"] = activePatternId;
+  out["session"] = lookTuningSession;
+  out["revision"] = savedLookTuningRevision(runtimeConfig, activePatternId);
+  out["motion"] = motion;
+  out["speedMin"] = range.min;
+  out["speedMax"] = range.max;
+  encodeLookTuning(runtimeLookTuning(), out["live"].to<JsonObject>());
+  encodeLookTuning(saved, out["saved"].to<JsonObject>());
 }
-
-void runtimeMarkLiveLookDirty() {
-  liveLookDirty = true;
-  liveLookDirtyAtMs = millis();
-}
-
-// Called once per loop() tick (see loop() below). Flushes to flash only after
-// LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS of quiet — a slider dragged for two
-// seconds re-arms this on every /api/control call and never writes until the
-// owner stops touching it.
-void runtimeServiceLiveLookPersist() {
-  if (!liveLookDirty) return;
-  if (!liveLookMayPersist(wiringProbationActive)) {
-    // Candidate controls are temporary. Keeping the prior record intact lets
-    // rollback resume the known-good project, even after a long probation.
-    liveLookDirty = false;
-    return;
-  }
-  if (millis() - liveLookDirtyAtMs < LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS) return;
-  liveLookDirty = false;
-  LiveLookRecord record;
-  if (!captureLiveLookRecordFromRuntime(record)) {
-    clearPersistedLiveLookRecord();
-    return;
-  }
-  String message;
-  persistLiveLookRecord(record, message);
-}
-
-bool runtimeResumedLiveLook() { return resumedLiveLookFlag; }
-
-// Called once from setup(), after the installed project's startup look has
-// already been applied (startLook() has seeded runtimeConfig.zones[] from
-// the look's own defaults) and before the first visible fade-in. Overlays any
-// matching persisted per-zone tweaks on top of those defaults — exactly the
-// way a live /api/control tweak would land — and sets resumedLiveLookFlag so
-// GET /api/status can say whether anything was restored.
-//
-// Deliberately does NOT re-select a different look even when the record's
-// currentLookId names one: doing so would mean a second startLook() call this
-// boot (double fade / possible flicker) for a case the record's zone-level
-// restore already covers for the common single-look-per-card setup. The
-// field is still persisted (see captureLiveLookRecordFromRuntime) for a
-// future Studio-facing use, and for the project-match check below.
-bool restoreLiveLookIfMatching() {
-  if (!runtimeLiveLookIdsRepresentable()) return false;
-  LiveLookRecord record;
-  if (!loadPersistedLiveLookRecord(record)) return false;
-  if (!liveLookRecordMatchesProject(
-          record, runtimeConfig.pieceId.c_str(), runtimeConfig.projectRevision,
-          runtimeConfig.configDigest.c_str(),
-          currentConfirmedInstallationId().c_str())) {
-    return false;
-  }
-  bool appliedAny = false;
-  for (uint8_t i = 0; i < record.zoneCount; i++) {
-    const LiveLookZoneRecord& zr = record.zones[i];
-    for (uint8_t z = 0; z < runtimeConfig.zoneCount; z++) {
-      if (runtimeConfig.zones[z].id != zr.zoneId) continue;
-      ZoneConfig& zone = runtimeConfig.zones[z];
-      if (zr.patternId[0] != '\0') zone.patternId = zr.patternId;
-      zone.brightness = zr.brightness;
-      zone.speed = zr.speed;
-      zone.hueShift = zr.hueShift;
-      zone.customHue = zr.customHue;
-      zone.customSaturation = zr.customSaturation;
-      zone.customBreathe = zr.customBreathe;
-      zone.breatheLowerPct = zr.breatheLowerPct;
-      zone.breatheUpperPct = zr.breatheUpperPct;
-      zone.breatheCycleSeconds = zr.breatheCycleSeconds;
-      zone.customDrift = zr.customDrift;
-      zone.driftHueMin = zr.driftHueMin;
-      zone.driftHueMax = zr.driftHueMax;
-      zone.blackout = zr.blackout;
-      appliedAny = true;
-      break;
-    }
-  }
-  // Startup selection stays unchanged: another look's resume snapshot cannot
-  // overwrite its saved controls, even when both share the saved generation.
-  // Same-look unsaved tweaks and all unedited zone controls still resume.
-  if (lookCount && clientPatternNeedsSavedRestore(record.clientPatternGeneration,
-          currentClientPatternGeneration(), record.currentLookId,
-          looks[currentLookIndex].id.c_str()))
-    applyClientPatternOverrides(runtimeConfig, looks[currentLookIndex].id, false);
-  runtimeConfig.syncZones = record.syncZones;
-  // Symmetry sides: whether the sides mirror each other is saved per look, not
-  // per zone, so it follows the look the owner was on rather than the startup
-  // look just applied. Only the mirror state moves; no second look start.
-  if (const LookConfig* resumedLook = findLookByExactId(String(record.currentLookId))) {
-    resolveActiveZoneMirrors(runtimeConfig, resumedLook);
-  }
-  // Playlist play state. Deliberately does NOT force a boot-time look switch
-  // to land visibly on entries[entryIndex] even when it differs from the
-  // startup look — same reasoning as the currentLookId note above (a second
-  // startLook() this boot risks a double fade/flicker). The index is
-  // restored so /api/status reports it correctly immediately, and the next
-  // natural playlist tick (runtimeServicePlaylist(), a full dwell from now)
-  // carries the strip on from here.
-  if (runtimeConfig.playlist.enabled && runtimeConfig.playlist.entryCount > 0 &&
-      record.playlistGeneration == currentClientPlaylistGeneration()) {
-    playlistPlaying = record.playlistPlaying;
-    playlistEntryIndex = record.playlistEntryIndex < runtimeConfig.playlist.entryCount
-        ? record.playlistEntryIndex : 0;
-    playlistEntryStartedAtMs = millis();
-    if (record.playlistPlaying) appliedAny = true;
-  }
-  return appliedAny;
-}
+bool runtimePlaylistPlaying() { return playlistPlaying; }
 
 // ---- Playlist sequencing: resolve, cross-fade, tick, control verbs ----
 // See PlaylistConfig in LightweaverTypes.h for the persisted project-JSON
@@ -3602,11 +3457,11 @@ bool playlistSelectPatternById(const String& id) {
     blackedOut = false;
     if (!startLook(currentLookIndex, &prepared)) return false;
     showLeds();
-    runtimeMarkLiveLookDirty();
     return true;
   }
   if (isSupportedCompiledPattern(id)) {
     uint8_t applied = applyToZones("", [&](ZoneConfig& z) { z.patternId = id; });
+    selectLookTuning("");
     activePatternId = applied == runtimeConfig.zoneCount ? id : String("");
     return applied > 0;
   }
@@ -3634,7 +3489,6 @@ bool playlistAdvanceToIndex(uint8_t targetIndex) {
   if (!applied) return false;
   playlistEntryIndex = targetIndex;
   playlistEntryStartedAtMs = millis();
-  runtimeMarkLiveLookDirty();
   return true;
 }
 
@@ -3667,7 +3521,6 @@ bool runtimePlaylistPlay() {
     playlistEntryStartedAtMs = millis() - (static_cast<uint32_t>(
         runtimeConfig.playlist.entries[0].dwellSeconds) * 1000UL);
   }
-  runtimeMarkLiveLookDirty();
   return true;
 }
 
@@ -3677,7 +3530,6 @@ bool runtimePlaylistPause() {
   if (!runtimePlaylistConfigured()) return false;
   if (playlistPlaying) {
     playlistPlaying = false;
-    runtimeMarkLiveLookDirty();
   }
   return true;
 }
@@ -3689,7 +3541,6 @@ bool runtimePlaylistPause() {
 void playlistPauseForManualChange() {
   if (playlistPlaying) {
     playlistPlaying = false;
-    runtimeMarkLiveLookDirty();
   }
 }
 
@@ -4034,6 +3885,7 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
     zone.driftHueMax = 255;
     zone.blackout = false;
   }
+  selectLookTuning("");
   activePatternId = id;
 
   PatternModifiers mods;
@@ -4111,6 +3963,8 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
 String runtimeZonesJson() {
   JsonDocument doc;
   doc["syncZones"] = runtimeConfig.syncZones;
+  doc["blackout"] = blackedOut;
+  if (runtimeLookTuningAvailable()) runtimeWriteLookTuning(doc["lookTuning"].to<JsonObject>());
   serializeKaleidoscopeMappings(
       doc["kaleidoscopeMappings"].to<JsonArray>(), runtimeConfig);
   JsonArray arr = doc["zones"].to<JsonArray>();

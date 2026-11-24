@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverOwnerCapability.h"
 
 namespace {
@@ -123,6 +124,7 @@ bool g_ownerBodyReady = false;
 bool g_ownerBodyRejected = false;
 
 void sendOwnerCors() {
+  lightweaverCrashNoteActivity(g_ownerServer->uri().c_str());
   String origin = g_ownerServer->header("Origin");
   if (corsOriginAllowed(origin)) {
     g_ownerServer->sendHeader("Access-Control-Allow-Origin", origin);

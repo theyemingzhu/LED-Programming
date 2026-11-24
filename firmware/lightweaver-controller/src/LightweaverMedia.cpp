@@ -1,3 +1,4 @@
+#include "LightweaverCrashNote.h"
 #include "LightweaverMedia.h"
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -131,6 +132,7 @@ bool sameOwner(const LightweaverOwnerBinding& a, const LightweaverOwnerBinding& 
 }
 
 void sendCors() {
+  lightweaverCrashNoteActivity(g_server->uri().c_str());
   const String origin = g_server->header("Origin");
   if (corsOriginAllowed(origin)) {
     g_server->sendHeader("Access-Control-Allow-Origin", origin);

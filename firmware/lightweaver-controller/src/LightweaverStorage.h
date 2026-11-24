@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include "LightweaverClientPattern.h"
+#include "LightweaverLookTuning.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -9,23 +10,8 @@
 // ---------------------------------------------------------------------------
 // Live-look resume record
 // ---------------------------------------------------------------------------
-// POST /api/control mutates the live in-memory zone state only (see
-// applyToZones() in main.cpp) — it never touches the installed project JSON,
-// because that JSON's fingerprint is how Studio verifies what is on the card.
-// That means every brightness/hue/pattern tweak an owner makes from the
-// phone was, until this record existed, lost at the next power-cycle: boot
-// always resumed startupLookId with the project's stock zone defaults.
-//
-// This record captures just the live per-zone modifiers (+ syncZones and the
-// currently selected look id) into their OWN small NVS key, separate from
-// the project JSON, so it can never eat into that JSON's fingerprinted bytes
-// or its 3968-byte budget (LW_WEB_CONFIG_MAX_BODY_BYTES). It is written
-// debounced (see runtimeServiceLiveLookPersist() in main.cpp), and restored
-// on boot only when it demonstrably belongs to the project that just loaded
-// (exact project id, revision, selected config digest, and install generation
-// match — see liveLookRecordMatchesProject()).
-// A mismatch (different project installed, or no record at all) is silently
-// ignored: the installed project's own defaults stand.
+// Historical live-state record kept for compatibility and clearing old data.
+// Configured-default startup uses the installed look and its explicit saves.
 //
 // Deliberately Arduino/Preferences/SD-free (ArduinoJson + cstdint/cstring
 // only), the same way LightweaverRecipe's NativeRecipe stays host-testable —
@@ -97,12 +83,7 @@ struct LiveLookRecord {
   bool syncZones = true;
   uint8_t zoneCount = 0;
   LiveLookZoneRecord zones[LW_LIVE_LOOK_MAX_ZONES];
-  // Timed-playlist auto-advance play state (power-cycle resume). Independent
-  // of the zone/pattern tweaks above — see runtimeServicePlaylist() in
-  // main.cpp. entryIndex is bounds-checked against the CURRENT project's
-  // playlist.entryCount on restore (restoreLiveLookIfMatching()), never
-  // trusted blindly: a record captured under a longer playlist that was
-  // since edited down must not index out of bounds.
+  // Historical paused/playing metadata for older firmware records.
   bool playlistPlaying = false;
   uint8_t playlistEntryIndex = 0;
   uint32_t playlistGeneration = 0;
@@ -440,6 +421,14 @@ String clientPatternRevision(const RuntimeConfig& config, const String& patternI
 void writeClientPatternOverrides(const RuntimeConfig& config, const String& patternId, JsonObject out);
 bool loadClientPatterns(const RuntimeConfig& config);
 bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVariantConst changes, String& message);
+bool patchLookTuning(JsonVariantConst patch, LookTuning& tuning);
+void encodeLookTuning(const LookTuning& tuning, JsonObject out);
+void loadSavedLookTuning(const RuntimeConfig& config);
+LookTuning savedLookTuning(const RuntimeConfig& config, const String& patternId);
+String savedLookTuningRevision(const RuntimeConfig& config, const String& patternId);
+bool saveLookTuning(const RuntimeConfig& config, const String& patternId,
+                    const LookTuning& tuning, String& message);
+
 void removeActiveClientPatternOverrides(RuntimeConfig& config);
 void applyClientPatternOverrides(RuntimeConfig& config, const String& patternId, bool captureBase = true);
 uint32_t currentClientPlaylistGeneration();
@@ -468,10 +457,7 @@ bool saveWifiConfigJson(const String& json, RuntimeConfig& config, String& messa
 bool markWifiCredentialsProven(RuntimeConfig& config, uint8_t channel = 0);
 String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint16_t totalPixels, uint8_t currentLookIndex);
 
-// Live-look NVS persistence. main.cpp owns WHEN to capture/restore (it holds
-// the live globals — runtimeConfig, looks[], currentLookIndex); this owns
-// HOW the record gets to and from flash, in its own "liveLook" NVS key,
-// entirely separate from the project JSON's keys.
+// Historical live-state NVS record. Normal startup plays the configured look.
 bool persistLiveLookRecord(const LiveLookRecord& record, String& message);
 bool loadPersistedLiveLookRecord(LiveLookRecord& outRecord);
 void clearPersistedLiveLookRecord();

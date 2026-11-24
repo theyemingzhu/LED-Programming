@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "LightweaverProvisioningPolicy.h"
+#include "LightweaverLookTuning.h"
 #include "LightweaverOutputColorConfig.h"
 
 struct RuntimeConfig;
@@ -168,23 +169,14 @@ bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
                            size_t pixelCount, bool physicalOrder);
 String runtimeNetworkIdentity();
 
-// Live per-zone tweak persistence (power-cycle resume). The data model and
-// its NVS-backed load/save/clear live in LightweaverStorage.h/.cpp; these are
-// the hooks the runtime layer (main.cpp) drives them through.
-// Arms the debounce timer — call after any zone mutation (brightness, speed,
-// hue, pattern, breathe/drift, blackout, syncZones) or a look/scene switch.
-// The actual NVS write happens later, from runtimeServiceLiveLookPersist(),
-// never synchronously on the request that triggered it.
-void runtimeMarkLiveLookDirty();
-// Call once per loop() tick. Flushes a dirty record to flash ~2s after the
-// last change, never more often, and never mid-fade (fadeTo() blocks the
-// loop task, so this can only run between ticks, after any fade in the same
-// tick already completed).
-void runtimeServiceLiveLookPersist();
-// True for the rest of this boot once a persisted live-tweak record matched
-// this project and was applied on top of the installed look's defaults.
-// Surfaced on GET /api/status as resumedLiveLook.
-bool runtimeResumedLiveLook();
+// Versioned relative controls for the currently selected installed look.
+uint32_t runtimeLookTuningSession();
+bool runtimeLookTuningAvailable();
+bool runtimeLookTuningMotionAvailable();
+bool runtimeSetLookTuning(const LookTuning& tuning);
+LookTuning runtimeLookTuning();
+void runtimeWriteLookTuning(JsonObject out);
+bool runtimePlaylistPlaying();
 
 // Timed playlist (dwell + cross-fade auto-advance through installed looks /
 // compiled patterns / presets — same resolution POST /api/control's
@@ -203,7 +195,7 @@ bool runtimePlaylistPrevious();
 // advance. A no-op when nothing is playing.
 void playlistPauseForManualChange();
 String runtimePlaylistStatusJson();
-// Call once per loop() tick, same shape as runtimeServiceLiveLookPersist().
+// Call once per loop() tick.
 void runtimeServicePlaylist();
 
 uint8_t runtimeOutputRequestedBrightnessByte();

@@ -18,6 +18,7 @@
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverFirmwareBootHealth.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverCrashRecorder.h"
 #include "LightweaverMedia.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
@@ -218,6 +219,7 @@ String sanitizeHostname(const String& raw) {
 // shares it, and a definition in here would shadow the global declaration and
 // make every call ambiguous.
 void sendCors() {
+  lightweaverCrashNoteActivity(server.uri().c_str());
   String origin = server.header("Origin");
   const bool clientRoute = server.uri() == "/api/status" || server.uri() == "/api/patterns" ||
       server.uri() == "/api/zones" || server.uri() == "/api/control" ||
@@ -511,7 +513,7 @@ String studioBridgeScript() {
                   "if(ev.origin==='https://light.mandalacodes.com'){"
                     "if(ev.source!==window.opener||ev.origin!==lwReadyOrigin)throw lwBridgeError('forbidden','client opener mismatch');"
                     "if(!['status','ping','patterns','zones','control','client-playlist','client-pattern','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
-                    "if(m.type==='control'){const p=m.payload||{};const allowed=['on','blackout','syncZones','brightness','patternId','playlist','zone','speed','hueShift','hue','saturation','expectedCardId','expectedRevision'];if(Object.keys(p).some(k=>!allowed.includes(k)))throw lwBridgeError('forbidden','client control unavailable')}"
+                    "if(m.type==='control'){const p=m.payload||{};const allowed=['on','blackout','syncZones','brightness','patternId','playlist','zone','speed','hueShift','hue','saturation','expectedCardId','expectedRevision','lookTuning'];if(Object.keys(p).some(k=>!allowed.includes(k)))throw lwBridgeError('forbidden','client control unavailable')}"
                   "}"
                   "if(m.type==='client-pattern'){const p=m.payload||{};if(p.method==='GET'&&typeof p.patternId==='string')response=await get('/api/client-pattern?patternId='+encodeURIComponent(p.patternId));else if(p.method==='POST')response=await post('/api/client-pattern',p.body||{});else throw lwBridgeError('invalid-payload','pattern method and id required')}"
                   "else if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
@@ -1533,7 +1535,9 @@ void handleConfigPost() {
     server.send(staged ? 200 : 400, "application/json", body);
     return;
   }
+  lightweaverCrashNoteSave(true);
   bool ok = saveRuntimeConfigJson(requestJson, *runtimeConfigPtr, message);
+  lightweaverCrashNoteSave(false);
   if (!ok) {
     server.send(400, "application/json", String("{\"ok\":false,\"error\":\"") + message + "\"}");
     return;
@@ -2207,6 +2211,50 @@ static void handlePlaylistControl(JsonDocument& doc) {
   return;
 }
 
+bool matchesLookTuningSession(JsonObjectConst target, const String& patternId) {
+  return runtimeLookTuningAvailable() && target["expectedBootId"].is<const char*>() &&
+      target["expectedBootId"].as<String>() == runtimeBootId() &&
+      target["session"].is<uint32_t>() &&
+      target["session"].as<uint32_t>() == runtimeLookTuningSession() &&
+      patternId == runtimeCurrentPatternId();
+}
+
+void handleLookTuningControl(JsonObjectConst request) {
+  if (request.size() != 5 || !request["patternId"].is<const char*>() ||
+      !request["expectedCardId"].is<const char*>()) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid tuning envelope\"}");
+    return;
+  }
+  const String patternId = request["patternId"].as<String>();
+  if (request["expectedCardId"].as<String>() != runtimeCardId() ||
+      !matchesLookTuningSession(request, patternId)) {
+    server.send(409, "application/json", "{\"ok\":false,\"error\":\"the active look changed\"}");
+    return;
+  }
+  LookTuning next = runtimeLookTuning();
+  JsonObjectConst changes = request["changes"].as<JsonObjectConst>();
+  if (!patchLookTuning(changes, next) ||
+      (!runtimeLookTuningMotionAvailable() &&
+       (changes["speedScale"].is<float>() || changes["hueOffset"].is<int>()))) {
+    server.send(422, "application/json", "{\"ok\":false,\"error\":\"unsupported look adjustment\"}");
+    return;
+  }
+  const auto scope = ProvisioningOutputScope::AllOutputs;
+  if (!runtimeAffectedOutputCount("", false, scope) || !runtimeSetLookTuning(next)) {
+    server.send(422, "application/json", "{\"ok\":false,\"error\":\"look tuning is unavailable\"}");
+    return;
+  }
+  JsonDocument out;
+  out["ok"] = true;
+  out["cardId"] = runtimeCardId();
+  out["bootId"] = runtimeBootId();
+  out["stateRevision"] = runtimeAdvanceStateRevision();
+  runtimeWriteLookTuning(out["lookTuning"].to<JsonObject>());
+  String body;
+  serializeJson(out, body);
+  server.send(200, "application/json", body);
+}
+
 void handleControlPost() {
   sendCors();
   if (!provisioningControlAdmitted(runtimePlaybackReady())) {
@@ -2246,9 +2294,18 @@ void handleControlPost() {
       const String key = field.key().c_str();
       if (key != "on" && key != "blackout" && key != "syncZones" && key != "brightness" && key != "patternId" && key != "playlist" &&
           key != "zone" && key != "speed" && key != "hueShift" && key != "hue" &&
-          key != "saturation" && key != "expectedCardId" && key != "expectedRevision") valid = false;
+          key != "saturation" && key != "expectedCardId" && key != "expectedRevision" &&
+          key != "lookTuning") valid = false;
     }
     if (!valid) { server.send(403, "application/json", "{\"ok\":false,\"error\":\"client control unavailable\"}"); return; }
+  }
+  if (!doc["lookTuning"].isNull()) {
+    if (doc.size() != 1 || server.args() != 0) {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"send the tuning patch on its own\"}");
+      return;
+    }
+    handleLookTuningControl(doc["lookTuning"].as<JsonObjectConst>());
+    return;
   }
   if (hasControlField(doc, "armNative")) {
     if (!nativeArmEnvelopeValid(doc.as<JsonVariantConst>())) {
@@ -2915,6 +2972,9 @@ void sendClientPattern(const String& patternId) {
   doc["revision"] = clientPatternRevision(*runtimeConfigPtr, patternId);
   doc["lookBrightness"] = runtimeConfigPtr->looks[index].brightness;
   writeClientPatternOverrides(*runtimeConfigPtr, patternId, doc["overrides"].to<JsonObject>());
+  JsonObject tuning = doc["tuning"].to<JsonObject>();
+  tuning["revision"] = savedLookTuningRevision(*runtimeConfigPtr, patternId);
+  encodeLookTuning(savedLookTuning(*runtimeConfigPtr, patternId), tuning["values"].to<JsonObject>());
   String body; serializeJson(doc, body); server.send(200, "application/json", body);
 }
 void handleClientPatternGet() {
@@ -2930,7 +2990,7 @@ void handleClientPatternPost() {
   const bool parsed = controlRequestBodyReady && !controlRequestBodyRejected &&
       !deserializeJson(doc, controlRequestBody, controlRequestBodyLength);
   controlRequestBodyReady = false; controlRequestBodyLength = 0;
-  if (!parsed || !doc.is<JsonObject>() || doc.size() != 4 || server.args() != 0 ||
+  if (!parsed || !doc.is<JsonObject>() || doc.size() != 4 ||
       !doc["expectedCardId"].is<const char*>() || !doc["expectedRevision"].is<const char*>() ||
       !doc["patternId"].is<const char*>()) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid pattern envelope\"}"); return;
@@ -2939,6 +2999,34 @@ void handleClientPatternPost() {
     server.send(423, "application/json", "{\"ok\":false,\"error\":\"card not ready\"}"); return;
   }
   const String patternId = doc["patternId"].as<String>();
+  if (doc["tuning"].is<JsonObjectConst>()) {
+    JsonObjectConst tuning = doc["tuning"].as<JsonObjectConst>();
+    LookTuning next;
+    if (tuning.size() != 3 || tuning["values"].size() != 3 || !patchLookTuning(tuning["values"], next)) {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid saved tuning\"}");
+      return;
+    }
+    if (doc["expectedCardId"].as<String>() != runtimeCardId() ||
+        !matchesLookTuningSession(tuning, patternId) || runtimePlaylistPlaying() ||
+        doc["expectedRevision"].as<String>() != savedLookTuningRevision(*runtimeConfigPtr, patternId) ||
+        !sameLookTuning(next, runtimeLookTuning())) {
+      server.send(409, "application/json", "{\"ok\":false,\"error\":\"card, playing look or tuning changed\"}");
+      return;
+    }
+    String message;
+    if (!saveLookTuning(*runtimeConfigPtr, patternId, runtimeLookTuning(), message)) {
+      JsonDocument out;
+      out["ok"] = false;
+      out["error"] = message;
+      String body;
+      serializeJson(out, body);
+      server.send(422, "application/json", body);
+      return;
+    }
+    runtimeAdvanceStateRevision();
+    sendClientPattern(patternId);
+    return;
+  }
   if (doc["expectedCardId"].as<String>() != runtimeCardId() ||
       doc["expectedRevision"].as<String>() != clientPatternRevision(*runtimeConfigPtr, patternId) ||
       runtimeCurrentPatternId() != patternId) {
@@ -2949,7 +3037,6 @@ void handleClientPatternPost() {
     JsonDocument error; error["ok"] = false; error["error"] = message;
     String body; serializeJson(error, body); server.send(422, "application/json", body); return;
   }
-  runtimeMarkLiveLookDirty();
   runtimeAdvanceStateRevision();
   sendClientPattern(patternId);
 }
@@ -3856,6 +3943,7 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.on("/api/beacon/port", HTTP_POST, handleBeaconPort);
 
   registerLightweaverOwnerCapability(server);
+  registerLightweaverCrashRecorder(server);
   registerLightweaverHttpFrameStream(server);
   registerLightweaverFirmwareUpdate(server);
   registerLightweaverProjectRepository(server);
