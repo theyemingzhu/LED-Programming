@@ -30,13 +30,13 @@
       }
     },
     {
-      "id": "crash-recorder-codec",
-      "what": "Add the crash-record format and its host tests: the pure code that turns a watchdog or panic reset into a saved record the card reports on /api/status.",
-      "why": "Groundwork only: nothing in the firmware calls it yet, so it changes no card. The wiring (a breadcrumb in RTC memory, one NVS write per crash, the lastCrash field) is the next step in todo/plans/crash-recorder.md and needs a bench card, so this rides that card release.",
+      "id": "crash-recorder",
+      "what": "The card now keeps a record of a crash (what it was doing, where it failed) and reports its last three.",
+      "why": "It changes nothing an owner sees; it is evidence for the next crash and can ride the next card update.",
       "added": "2026-11-24",
       "source": {
-        "kind": "patch",
-        "patch": "firmware-queue/patches/crash-recorder-codec.patch"
+        "kind": "branch",
+        "branch": "claude/crash-recorder"
       }
     }
   ]

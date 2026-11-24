@@ -1,5 +1,7 @@
 # Crash recorder: a crash that explains itself
 
+> **Superseded 2026-11-24.** The recorder that ships is PR #522 (branch `claude/crash-recorder`, released in 1.2.7). It reports a `crash` object and `GET /api/crash-log`, not the `lastCrash` field below, and the `crash-recorder-codec` patch and Studio parser described here were dropped. Its design and bench steps are in the shared note `crash-recorder.md`. This page is kept for the problem statement and the reasoning.
+
 ## What is wrong today
 
 The real card has restarted by itself twice in two days, and neither time left a cause.
