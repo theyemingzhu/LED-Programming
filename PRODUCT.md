@@ -1,5 +1,19 @@
 # Lightweaver — design context
 
+## Product direction
+
+I want Lightweaver to take an illuminated artwork from its geometry through to how it moves in a gallery. I can map and wire the piece, create looks for individual sections, and sequence them into a show that plays reliably. I also want room to develop more advanced lighting modules over time: custom pattern code, evolving and layered effects, and lighting that responds to sound. I should be able to develop a module on one artwork and reuse it on another.
+
+Use [Pattern Lab](docs/pattern-lab-advanced-user-guide.md) and the [audio mapping reference](docs/mandala-audio-mapping.md) for the existing authoring and sound work.
+
+## Current outcome
+
+Take one real artwork from layout and wiring through to a timed playlist of built-in looks saved to the ESP32-S3 card’s onboard storage. Verify on the actual lights that the looks play on the intended sections, each cue holds for the set duration, and the playlist loops. Confirm playback continues through a Wi-Fi outage and starts on its own after a power cycle. After each interruption, verify that Studio regains control and reads back the same saved project and playlist.
+
+MicroSD work and baked audio are paused. Live microphone response is deferred to a future hardware pass.
+
+Record the exact Studio and card firmware builds with the bench results. See the [roadmap](docs/roadmap.md#phase-1b-make-the-ordinary-project-journey-coherent) and the [project read-back and recovery checks](docs/deployment-checklist.md#live-erased-card-acceptance) for reference.
+
 ## Design Context
 
 ### Users

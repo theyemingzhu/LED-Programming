@@ -4,10 +4,12 @@ status: active
 stack: [ESP32-S3, Lightweaver firmware, React, Vite]
 deploy: public Studio at led.mandalacodes.com; local Lightweaver card command path
 family: installation
-last_reviewed: 2026-09-28
+last_reviewed: 2026-11-24
 ---
 
 # Lightweaver — branded LED installation controller
+
+For orientation, read [Adrian’s North Star](../home-repo/NORTH-STAR.md), [Lightweaver’s product direction](PRODUCT.md#product-direction), and its [current outcome](PRODUCT.md#current-outcome).
 
 ## What this is
 Custom LED lighting control platform for laser-cut art installations. **Project name: Lightweaver.** The active product uses Lightweaver firmware on an ESP32-S3 card, with Studio accessible from phone or browser.
@@ -204,8 +206,8 @@ failures that are not real. So the heavy proof runs on GitHub's machines:
 Full policy: `docs/branch-maintenance.md`. The short version every session must follow:
 - Every branch is either **PR'd**, **`archive/`-prefixed with a TODO.md entry**, or **deletable**. Never end a session with only "pushed to branch X".
 - Before opening a PR for a branch you don't own, open it as a **draft**; you may message the owning session through the app's session messaging, but check git/PR state rather than waiting on a reply.
-- Once the build is confirmed done (per git/PR state) and CI is green, **merge without asking** and delete the branch. Land one stream at a time.
-- "**Wrap it up**" from Adrian means: finish the increment, then merge / PR-and-watch / archive-and-log — pick one, do it, report which.
+- Once the owning session confirms the build is done, hand the reviewed revision to GitHub auto-merge where available. Preserve required checks. Land one stream at a time and remove the branch after confirmed merge.
+- "**Wrap it up**" from Adrian means finish the increment and follow the [branch handoff policy](docs/branch-maintenance.md#session-ending-verb-wrap-it-up). Let CI handle the wait.
 - **Half-built work never merges.** Wrapping an unfinished stream = push the branch + a TODO.md resume entry (branch name, done, remaining, resume point). No resume entry, no wrap.
 
 ## Where to look for…
