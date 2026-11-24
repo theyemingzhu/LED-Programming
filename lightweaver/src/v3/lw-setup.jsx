@@ -36,7 +36,7 @@ import { useProject } from '../state/ProjectContext.jsx';
 import { requestLedTotal } from '../lib/ledCountHandoff.js';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { projectFromCardParts } from '../lib/cardPickup.js';
-import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
+import { adoptedProjectName, guardedResolutionRun, LOOKS_UNREADABLE_MESSAGE, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
@@ -505,6 +505,7 @@ export function SetupScreen({
     cancelled: 'Studio kept the open project, so nothing was adopted from the card.',
     invalid: 'The card described a project Studio could not read. Read this card again.',
     'no-geometry': 'This card did not report any light outputs, so there is no wiring to start from. Read this card again.',
+    'looks-unreadable': LOOKS_UNREADABLE_MESSAGE,
   });
   // Adoption now runs BY ITSELF when nothing can be lost, and an automatic
   // attempt that fails must not raise an alert: the owner did nothing, so an

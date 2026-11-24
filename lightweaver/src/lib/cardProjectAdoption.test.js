@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptedProjectName, controlPinsFromCardReport, guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
+import { readFileSync } from 'node:fs';
+import { adoptedProjectName, controlPinsFromCardReport, guardedResolutionRun, LOOKS_UNREADABLE_MESSAGE, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
+import { CARD_READ_RETRY, CardPushError } from './cardPushClient.js';
+import { readCardPatternsFromCard, MAX_CARD_PATTERNS_RESPONSE_BYTES } from './cardLiveControl.js';
+
+// The bench card's own /api/patterns answer (1.2.6, 2026-11-23): six looks,
+// 9,066 bytes — over the 8 KiB control bound that made L1.
+const BENCH_PATTERNS_TEXT = readFileSync(new URL('./fixtures/real-card-bench-2026-11-23-patterns.json', import.meta.url), 'utf8');
+const SIX_LOOKS = JSON.parse(BENCH_PATTERNS_TEXT).patterns;
 import { cardProjectFingerprint } from './cardProjectResolver.js';
 import { createDefaultProject } from './projectModel.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
@@ -118,7 +126,8 @@ function makeDeps({
       loadProductionJobFromIndexEntry: async () => null,
       readCloudProject: null,
       readBrowserProjects: () => browserProjects,
-      readCardPatternsFromCard: async () => null,
+      readCardPatternsFromCard: async () => ({ currentId: 'fire', currentIndex: 0, patterns: [{ id: 'fire', label: 'Fire' }] }),
+      patternReadRetry: { intervalMs: 0 },
       readCardZonesFromCard: async () => null,
     },
     actions: {
@@ -706,7 +715,10 @@ test('reconstruct strategy falls back to the card link id when the status envelo
   assert.equal(calls.appliedParts[0].parts.origin.cardId, CARD_ID);
 });
 
-test('reconstruct still adopts from the status skeleton alone when patterns and zones endpoints fail', async () => {
+// L1 (live Studio 2738, bench card 1.2.6): this used to adopt the status
+// skeleton alone when the look list could not be read, and the next save sent
+// one look and wiped the other five off the card. Never adopt a partial project.
+test('reconstruct opens nothing when the look list cannot be read, and says so', async () => {
   const { deps, calls } = makeDeps();
   deps.io.readCardStatusEnvelope = async () => statusEnvelope({
     outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
@@ -714,9 +726,97 @@ test('reconstruct still adopts from the status skeleton alone when patterns and 
   deps.io.readCardPatternsFromCard = async () => { throw new Error('404'); };
   deps.io.readCardZonesFromCard = async () => { throw new Error('404'); };
   const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'looks-unreadable');
+  assert.equal(result.message, LOOKS_UNREADABLE_MESSAGE);
+  assert.match(LOOKS_UNREADABLE_MESSAGE, /could not read every look on this card, so nothing was opened/);
+  assert.equal(calls.appliedParts.length, 0, 'the open project is unchanged');
+});
+
+test('the bench card\'s 9,066-byte look list is read whole and opens all six looks (L1)', async () => {
+  assert.equal(new TextEncoder().encode(BENCH_PATTERNS_TEXT.trim()).byteLength, 9066);
+  const payload = JSON.parse(BENCH_PATTERNS_TEXT);
+  const read = await readCardPatternsFromCard({ host: 'lightweaver.local', authority: { request: async () => payload } });
+  assert.equal(read.patterns.length, 6);
+
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  deps.io.readCardPatternsFromCard = async options => readCardPatternsFromCard({ ...options, authority: { request: async () => payload } });
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
   assert.equal(result.ok, true);
-  assert.equal(calls.appliedParts.length, 1);
-  assert.deepEqual(calls.appliedParts[0].parts.devices.standaloneController.looks, []);
+  assert.equal(calls.appliedParts[0].parts.devices.standaloneController.looks.length, 6, 'all six looks opened');
+});
+
+test('a look list over the bound is refused by the reader, not truncated (L1)', async () => {
+  const big = { currentId: 'fire', currentIndex: 0, patterns: [{ id: 'fire', label: 'x'.repeat(MAX_CARD_PATTERNS_RESPONSE_BYTES) }] };
+  await assert.rejects(readCardPatternsFromCard({ host: 'lightweaver.local', authority: { request: async () => big } }), error => error.reason === 'response-too-large');
+});
+
+test('a look list shorter than the card\'s own look count opens nothing (L1)', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  deps.io.readCardFirmwareInfoEnvelope = async () => ({ lookCount: 6 });
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.reason, 'looks-unreadable', 'one look read, six on the card');
+  assert.equal(calls.appliedParts.length, 0);
+  const { cardLooksUnreadable, resetCardLookReadState } = await import('./cardLookReadState.js');
+  assert.equal(cardLooksUnreadable(CARD_ID), true, 'remembered, so Card Home never says the draft matches');
+  resetCardLookReadState();
+});
+
+test('the look list is read alone, before zones and firmware-info (L1: the card answers one request at a time)', async () => {
+  const { deps } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  const order = [];
+  deps.io.readCardPatternsFromCard = async () => {
+    order.push('patterns:start');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    order.push('patterns:end');
+    return { currentId: 'fire', currentIndex: 0, patterns: SIX_LOOKS };
+  };
+  deps.io.readCardZonesFromCard = async () => { order.push('zones'); return null; };
+  deps.io.readCardFirmwareInfoEnvelope = async () => { order.push('firmware-info'); return { lookCount: 6 }; };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(order.slice(0, 2), ['patterns:start', 'patterns:end']);
+});
+
+test('reconstruct opens nothing for a look list too large to read (L1)', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  let reads = 0;
+  deps.io.readCardPatternsFromCard = async () => {
+    reads += 1;
+    throw new CardPushError('response-too-large', 'The card returned more than 131072 bytes for a control command.');
+  };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.reason, 'looks-unreadable');
+  assert.equal(reads, 1, 'an answer that is too large is not asked for again');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
+test('a slow card gets the read allowance and a retry before the looks are judged unreadable (L1)', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  const asked = [];
+  deps.io.readCardPatternsFromCard = async options => {
+    asked.push(options.timeoutMs);
+    if (asked.length < 2) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return { currentId: 'fire', currentIndex: 0, patterns: SIX_LOOKS };
+  };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(asked, [CARD_READ_RETRY.timeoutMs, CARD_READ_RETRY.timeoutMs], 'late once, answered on the retry');
+  assert.equal(calls.appliedParts[0].parts.devices.standaloneController.looks.length, 6);
+
+  const late = makeDeps();
+  late.deps.io.readCardStatusEnvelope = deps.io.readCardStatusEnvelope;
+  let tries = 0;
+  late.deps.io.readCardPatternsFromCard = async () => { tries += 1; throw Object.assign(new Error('aborted'), { name: 'AbortError' }); };
+  const never = await guardedResolutionRun(late.deps, { strategy: 'reconstruct' });
+  assert.equal(never.reason, 'looks-unreadable');
+  assert.equal(tries, CARD_READ_RETRY.tries);
+  assert.equal(late.calls.appliedParts.length, 0, 'a card that never answers in time opens nothing');
 });
 
 test('reconstruct refuses a card that reports no light outputs', async () => {
@@ -746,7 +846,7 @@ test('reconstruct reports a synchronous throw from the patterns readback instead
   deps.io.readCardPatternsFromCard = () => { throw new Error('bridge closed mid-read'); };
   const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
   assert.equal(result.ok, false);
-  assert.equal(result.reason, '');
+  assert.equal(result.reason, 'looks-unreadable');
   assert.equal(result.error?.message, 'bridge closed mid-read');
   assert.equal(calls.appliedParts.length, 0);
 });

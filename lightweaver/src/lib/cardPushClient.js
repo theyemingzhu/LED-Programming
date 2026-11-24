@@ -7,6 +7,7 @@
 // be blocked by the browser. The client surfaces that as a typed error the
 // UI handles by showing a copy-paste fallback.
 
+import { looksDroppedBySave, lookLossMessage, looksRemovedByOwner, saveWouldLoseLooks } from './lookLossGuard.js';
 import {
   canPushDirectlyToCard,
   cardHostToUrl,
@@ -603,6 +604,19 @@ function normalizeConfigPushError(host, err, transport = '') {
 
 // POST the runtime config to the card. Returns the parsed JSON echo on
 // success; throws CardPushError on failure with a typed reason.
+async function readCardLooksForGuard(host, { useBridge, options }) {
+  if (typeof options.readCardPatternsImpl === 'function') return options.readCardPatternsImpl({ host });
+  if (useBridge) return bridgeRequest('patterns', {}, { host, timeoutMs: Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs) }, options);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CARD_READ_RETRY.timeoutMs);
+  try {
+    const response = await (options.fetchImpl || globalThis.fetch)(`${cardHostToUrl(host)}/api/patterns`, { cache: 'no-store', signal: ctrl.signal });
+    return response.ok ? await response.json() : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function pushConfigToCard(runtimePackage, options = {}) {
   if (runtimePackage?.mediaAssets?.length && options.mediaVerified !== true) {
     throw new CardPushError('recording-media-required',
@@ -716,6 +730,25 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   }
   if (rebootPlan.layoutChanged && options.allowLayoutChange !== true) {
     throw layoutMismatchError(rebootPlan.current, runtimePackage);
+  }
+  // A save must not quietly wipe looks off the card (L1, live 2738 on the
+  // real card: five of six looks lost). Same project only: replacing a
+  // different project is the owner's confirmed choice. If the card's looks
+  // cannot be read, the save is not blocked on that. A card that did not
+  // answer its own identity read (an unresolved .local name, say) is not asked
+  // for its looks either: the save fails over without an extra dead request
+  // (tests/card-installer-package.mjs pins that sequence).
+  if (!rebootPlan.projectChanged && rebootPlan.current && options.allowLookRemoval !== true) {
+    const cardPatterns = await readCardLooksForGuard(host, { useBridge, options }).catch(() => null);
+    if (cardPatterns) {
+      const dropped = looksDroppedBySave(cardPatterns, preparedPayload);
+      if (saveWouldLoseLooks(dropped, { removedByOwner: looksRemovedByOwner() })) {
+        const error = new CardPushError('looks-would-drop', lookLossMessage(dropped));
+        error.delivery = 'not-sent';
+        error.droppedLooks = dropped;
+        throw error;
+      }
+    }
   }
   // Physical output changes are never written over the running/known-good
   // layout. The card owns a separate candidate slot and issues the activation

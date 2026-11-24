@@ -439,7 +439,9 @@ test('explicit bridge config transport is honored on an HTTP Studio page', { con
       initialConfigAuthorityImpl: () => false,
     });
     assert.equal(result.saved, true);
-    assert.deepEqual(bridgeCalls.map(call => call.type), ['firmware-info', 'config']);
+    // The look guard reads the card's looks before a same-project save (L1);
+    // its unanswered read (this mock throws) never blocks the save.
+    assert.deepEqual(bridgeCalls.map(call => call.type), ['firmware-info', 'patterns', 'config']);
   } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;

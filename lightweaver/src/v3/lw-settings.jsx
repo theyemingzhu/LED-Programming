@@ -10,6 +10,7 @@
    advanced JSON, autosave, and the relocated encoder controls) is appended as
    additional .card.set-card sections in the same mockup idiom so it reads as
    native, not bolted on. */
+import { OLD_CARD_TOUCH_SENTENCE, cardNeedsTouch } from '../lib/cardNeedsTouch.js';
 import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { I, SWATCHES } from './lw-shared.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -298,10 +299,11 @@ const SettingsFieldContext = createContext(null);
         setStatus('Connect this exact card before saving an editable project copy.');
         return;
       }
-      const confirmed = window.confirm(
+      const needsTouch = cardNeedsTouch(cardLink?.readiness);
+      // A card that reports ownerNoTouch is never asked to be touched: straight to the save.
+      if (needsTouch && !window.confirm(
         'Touch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.',
-      );
-      if (!confirmed) return;
+      )) return;
 
       const expectedHead = cardLink?.readiness?.projectHead || null;
       const envelope = createProjectEnvelope(serializeProject(), {
@@ -313,7 +315,7 @@ const SettingsFieldContext = createContext(null);
       cardProjectSaveAbortRef.current = controller;
       setCardProjectSave({ status: 'pending', progress: 'pairing' });
       setStatusKind('');
-      setStatus('Waiting for the card to confirm the physical pairing gesture…');
+      setStatus(needsTouch ? 'Waiting for the card to confirm the physical pairing gesture…' : 'Asking the card for save permission…');
 
       const result = await saveProjectToCardFromGesture({
         authority,
@@ -342,7 +344,7 @@ const SettingsFieldContext = createContext(null);
       setCardProjectSave({ status: result.reason, progress: '' });
       setStatusKind(result.reason === 'cancelled' ? '' : 'err');
       if (result.reason === 'pairing-required') {
-        setStatus('Pairing required. Touch a physical control on the card, then choose Save project to this card again.');
+        setStatus(OLD_CARD_TOUCH_SENTENCE);
       } else if (result.reason === 'head-conflict') {
         setStatus('The project on the card changed. Nothing was overwritten. Compare or export first, keep both copies, or deliberately replace after reopening the current card copy.');
       } else if (result.reason === 'quota-exceeded') {
@@ -418,7 +420,9 @@ const SettingsFieldContext = createContext(null);
                           <button className="btn ghost-sm" type="button" onClick={() => cardProjectSaveAbortRef.current?.abort()}>Cancel</button>
                         )}
                       </div>
-                      <p className="hh">When prompted, touch a physical control on the card. The card must confirm that gesture before Studio can save.</p>
+                      <p className="hh">{cardNeedsTouch(cardLink?.readiness)
+                        ? 'When prompted, touch a physical control on the card. The card must confirm that gesture before Studio can save.'
+                        : 'Studio saves to this exact card. Nothing needs pressing on the card.'}</p>
                       <p className="hh">Open copy: <strong>{projectCopySource}</strong>{cardProjectSave.progress ? ` · ${cardProjectSave.progress}` : ''}</p>
                     </div>
                   </Row>
