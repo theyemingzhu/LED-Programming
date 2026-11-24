@@ -18,6 +18,7 @@
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverFirmwareBootHealth.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverCrashRecorder.h"
 #include "LightweaverMedia.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
@@ -218,6 +219,7 @@ String sanitizeHostname(const String& raw) {
 // shares it, and a definition in here would shadow the global declaration and
 // make every call ambiguous.
 void sendCors() {
+  lightweaverCrashNoteActivity(server.uri().c_str());
   String origin = server.header("Origin");
   const bool clientRoute = server.uri() == "/api/status" || server.uri() == "/api/patterns" ||
       server.uri() == "/api/zones" || server.uri() == "/api/control" ||
@@ -1533,7 +1535,9 @@ void handleConfigPost() {
     server.send(staged ? 200 : 400, "application/json", body);
     return;
   }
+  lightweaverCrashNoteSave(true);
   bool ok = saveRuntimeConfigJson(requestJson, *runtimeConfigPtr, message);
+  lightweaverCrashNoteSave(false);
   if (!ok) {
     server.send(400, "application/json", String("{\"ok\":false,\"error\":\"") + message + "\"}");
     return;
@@ -3856,6 +3860,7 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.on("/api/beacon/port", HTTP_POST, handleBeaconPort);
 
   registerLightweaverOwnerCapability(server);
+  registerLightweaverCrashRecorder(server);
   registerLightweaverHttpFrameStream(server);
   registerLightweaverFirmwareUpdate(server);
   registerLightweaverProjectRepository(server);
