@@ -321,6 +321,84 @@ inline void lwCrashAppendAddress(LwCrashText& text, uint32_t address) {
   lwCrashAppend(text, piece);
 }
 
+// ---- "lastCrash" on /api/status -------------------------------------------
+//
+// The shape Studio's reader (lightweaver/src/lib/cardCrashReport.js, contract
+// in todo/plans/crash-recorder.md) already expects: null for a card that has
+// never crashed, otherwise the newest record. `sequence` counts every crash
+// this card has recorded. Addresses are hex strings because JSON numbers may
+// be rounded.
+
+inline const char* lwCrashStudioReason(uint8_t resetReason) {
+  switch (resetReason) {
+    case LW_RESET_PANIC: return "panic";
+    case LW_RESET_INT_WATCHDOG: return "interruptWatchdog";
+    case LW_RESET_TASK_WATCHDOG: return "taskWatchdog";
+    case LW_RESET_OTHER_WATCHDOG: return "watchdog";
+    case LW_RESET_BROWNOUT: return "brownout";
+    default: return "unknown";
+  }
+}
+
+inline bool lwCrashPathStarts(const char* path, const char* prefix) {
+  return strncmp(path, prefix, strlen(prefix)) == 0;
+}
+
+// One word for what the card was doing, worked out from what the breadcrumb
+// holds. A request counts only if it came in the two seconds before the reset;
+// otherwise the card was on its own, which the reader calls "idle".
+static constexpr uint32_t LW_CRASH_RECENT_REQUEST_MS = 2000;
+
+inline const char* lwCrashPhase(const LwCrashRecord& record) {
+  if (!record.breadcrumb) return "unknown";
+  if (record.saveInProgress) return "configSave";
+  if (record.activity[0] == 0 || record.activityAgeMs > LW_CRASH_RECENT_REQUEST_MS) return "idle";
+  if (lwCrashPathStarts(record.activity, "/api/config") ||
+      lwCrashPathStarts(record.activity, "/api/wiring")) return "configSave";
+  if (lwCrashPathStarts(record.activity, "/api/update")) return "update";
+  if (lwCrashPathStarts(record.activity, "/api/wifi") ||
+      lwCrashPathStarts(record.activity, "/api/reset-wifi")) return "wifi";
+  if (lwCrashPathStarts(record.activity, "/api/projects") ||
+      lwCrashPathStarts(record.activity, "/api/media")) return "storage";
+  return "http";
+}
+
+static constexpr size_t LW_CRASH_LAST_BYTES = 640;
+
+// Returns the length written, or 0 if `capacity` is too small.
+inline size_t lwCrashLastCrashJson(const LwCrashRing& ring, char* out, size_t capacity) {
+  if (out == nullptr || capacity == 0) return 0;
+  LwCrashText text{out, capacity, 0, false};
+  out[0] = 0;
+  if (ring.count == 0 || ring.total == 0) {
+    lwCrashAppend(text, "null");
+    if (text.overflow) { out[0] = 0; return 0; }
+    return text.length;
+  }
+  const LwCrashRecord& record = ring.records[0];
+  lwCrashAppend(text, "{");
+  lwCrashAppendNumber(text, "sequence", ring.total);
+  lwCrashAppendNumber(text, "resetReason", record.resetReason);
+  lwCrashAppendText(text, "reason", lwCrashStudioReason(record.resetReason), LW_CRASH_ACTIVITY_BYTES);
+  lwCrashAppendText(text, "phase", lwCrashPhase(record), LW_CRASH_ACTIVITY_BYTES);
+  lwCrashAppendText(text, "task", record.task, sizeof(record.task));
+  lwCrashAppendNumber(text, "uptimeMs", record.uptimeMs);
+  lwCrashAppendNumber(text, "freeHeap", record.freeHeap);
+  lwCrashAppendNumber(text, "minFreeHeap", record.minFreeHeap);
+  lwCrashAppend(text, "\"pc\":");
+  lwCrashAppendAddress(text, record.hook ? record.programCounter : 0);
+  lwCrashAppend(text, ",\"backtrace\":[");
+  const uint8_t depth = !record.hook ? 0 : record.backtraceDepth > LW_CRASH_BACKTRACE_MAX
+      ? LW_CRASH_BACKTRACE_MAX : record.backtraceDepth;
+  for (uint8_t frame = 0; frame < depth; frame++) {
+    if (frame) lwCrashAppend(text, ",");
+    lwCrashAppendAddress(text, record.backtrace[frame]);
+  }
+  lwCrashAppend(text, "]}");
+  if (text.overflow) { out[0] = 0; return 0; }
+  return text.length;
+}
+
 // Sized from the worst case, which tests/crash-record.cpp builds and measures:
 // three records, each with 16 frames and every text field full.
 static constexpr size_t LW_CRASH_REPORT_BYTES = 4096;

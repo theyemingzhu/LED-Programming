@@ -22,14 +22,54 @@ const web = read('LightweaverWeb.cpp');
 const platformio = readFileSync(resolve(root, 'platformio.ini'), 'utf8');
 
 // --- Host run of the shipped header ------------------------------------------
+let hostOutput = '';
 const tempDir = mkdtempSync(join(os.tmpdir(), 'lightweaver-crash-record-'));
 try {
   const binary = join(tempDir, 'crash-record');
   execFileSync('c++', ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', resolve(root, 'src'),
     resolve(root, 'tests/crash-record.cpp'), '-o', binary], { stdio: 'inherit' });
-  execFileSync(binary, [], { stdio: 'inherit' });
+  hostOutput = execFileSync(binary, [], { encoding: 'utf8' });
+  process.stdout.write(hostOutput);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
+}
+
+// --- "lastCrash" is what Studio's reader accepts ---------------------------------
+// The rules below are the ones in lightweaver/src/lib/cardCrashReport.js
+// (parseCardCrashReport): the firmware must satisfy that reader unchanged.
+const HEX32 = /^0x[0-9a-f]{8}$/;
+const REASONS = ['panic', 'taskWatchdog', 'interruptWatchdog', 'watchdog', 'brownout'];
+const PHASES = ['idle', 'render', 'configSave', 'wifi', 'storage', 'update', 'http'];
+const isCount = (value) => Number.isInteger(value) && value >= 0 && value <= 0xFFFFFFFF;
+const last = Object.fromEntries(hostOutput.split('\n').filter((line) => line.startsWith('LASTCRASH '))
+  .map((line) => { const [, name, ...rest] = line.split(' '); return [name, JSON.parse(rest.join(' '))]; }));
+assert.deepEqual(Object.keys(last).sort(), ['bare', 'brownout', 'never', 'panic', 'watchdog']);
+assert.equal(last.never, null, 'a card that has never crashed reports null');
+for (const name of ['panic', 'watchdog', 'brownout', 'bare']) {
+  const raw = last[name];
+  for (const field of ['sequence', 'resetReason', 'uptimeMs', 'freeHeap', 'minFreeHeap'])
+    assert.ok(isCount(raw[field]), `${name}.${field} is a count`);
+  assert.ok(raw.sequence >= 1);
+  assert.ok(REASONS.includes(raw.reason), `${name}.reason is one the reader has words for`);
+  assert.equal(typeof raw.phase, 'string');
+  assert.equal(typeof raw.task, 'string');
+  assert.match(raw.pc, HEX32);
+  assert.ok(Array.isArray(raw.backtrace) && raw.backtrace.length <= 16 &&
+    raw.backtrace.every((entry) => HEX32.test(entry)), `${name}.backtrace is hex addresses`);
+}
+assert.deepEqual([last.panic.sequence, last.watchdog.sequence, last.brownout.sequence, last.bare.sequence],
+  [1, 2, 3, 4], 'sequence counts every crash');
+assert.deepEqual([last.panic.reason, last.panic.phase, last.panic.task, last.panic.backtrace.length],
+  ['panic', 'configSave', 'loopTask', 16]);
+assert.deepEqual([last.watchdog.reason, last.watchdog.phase, last.watchdog.uptimeMs, last.watchdog.backtrace.length],
+  ['taskWatchdog', 'idle', 27252000, 9]);
+assert.deepEqual([last.brownout.reason, last.brownout.pc, last.brownout.backtrace.length],
+  ['brownout', '0x00000000', 0]);
+assert.ok(PHASES.includes(last.panic.phase) && PHASES.includes(last.watchdog.phase));
+assert.equal(last.bare.phase, 'unknown', 'no breadcrumb: the reader says "doing something unknown"');
+for (const [name, source] of [['firmware-info', main], ['status', storage]]) {
+  assert.match(source, /doc\["lastCrash"\] = serialized\(lightweaverCrashLastCrashJson\(\)\);/,
+    `${name} carries lastCrash`);
 }
 
 // --- The header stays pure ----------------------------------------------------
@@ -91,13 +131,15 @@ assert.match(web, /lightweaverCrashNoteSave\(true\);\s*bool ok = saveRuntimeConf
 
 // --- Reports ------------------------------------------------------------------
 for (const [name, source] of [['firmware-info', main], ['status', storage]]) {
-  assert.match(source, /doc\["capabilities"\]\["crashLog"\] = 1;\s*lightweaverCrashReportSummary\(doc\["crash"\]\.to<JsonObject>\(\)\);/,
+  assert.match(source, /doc\["capabilities"\]\["crashRecorder"\] = 1;\s*lightweaverCrashReportSummary\(doc\["crash"\]\.to<JsonObject>\(\)\);/,
     `${name} carries the short crash summary and says the full log exists`);
 }
 assert.match(recorder, /server\.on\("\/api\/crash-log", HTTP_GET, handleCrashLog\);/,
   'the full log is a read-only route');
 assert.doesNotMatch(code(recorder), /HTTP_POST|HTTP_DELETE|HTTP_PUT/, 'nothing can write or clear the log over the network');
-assert.doesNotMatch(code(recorder) + code(record), /wifi|ssid|password|capabilit|token/i,
+// "/api/wifi" appears only as a route name used to label what the card was
+// doing; nothing reads the network name, a password, a token or a permission.
+assert.doesNotMatch(code(recorder) + code(record), /ssid|password|passphrase|psk|token|WiFi\.|capability\b|runtimeConfig/i,
   'the recorder never touches a credential');
 assert.match(web, /registerLightweaverCrashRecorder\(server\);/);
 

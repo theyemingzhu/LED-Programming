@@ -3013,8 +3013,9 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
-  doc["capabilities"]["crashLog"] = 1;
+  doc["capabilities"]["crashRecorder"] = 1;
   lightweaverCrashReportSummary(doc["crash"].to<JsonObject>());
+  doc["lastCrash"] = serialized(lightweaverCrashLastCrashJson());
   doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());

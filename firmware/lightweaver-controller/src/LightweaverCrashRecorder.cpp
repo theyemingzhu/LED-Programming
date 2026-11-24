@@ -131,6 +131,12 @@ void lightweaverCrashReportSummary(JsonObject crash) {
   crash["bootsSince"] = summary.bootsSince;
 }
 
+String lightweaverCrashLastCrashJson() {
+  char text[LW_CRASH_LAST_BYTES];
+  if (lwCrashLastCrashJson(g_ring, text, sizeof(text)) == 0) return String("null");
+  return String(text);
+}
+
 void registerLightweaverCrashRecorder(WebServer& server) {
   g_crashServer = &server;
   server.on("/api/crash-log", HTTP_GET, handleCrashLog);
@@ -196,5 +202,6 @@ void lightweaverCrashRecorderTick(uint32_t) {}
 void lightweaverCrashNoteActivity(const char*) {}
 void lightweaverCrashNoteSave(bool) {}
 void lightweaverCrashReportSummary(JsonObject) {}
+String lightweaverCrashLastCrashJson() { return String("null"); }
 void registerLightweaverCrashRecorder(WebServer&) {}
 #endif

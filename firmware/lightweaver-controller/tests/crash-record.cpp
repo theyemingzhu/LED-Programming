@@ -206,6 +206,76 @@ void reports() {
   assert(bareText.find("backtrace") == std::string::npos);
 }
 
+// "lastCrash" on /api/status, in the shape Studio's reader already expects.
+// Each line printed here is parsed and checked by crash-record.mjs with the
+// reader's own rules.
+void lastCrash() {
+  char text[LW_CRASH_LAST_BYTES];
+  LwCrashRing ring;
+  lwCrashRingClear(ring);
+  assert(lwCrashLastCrashJson(ring, text, sizeof(text)) == 4 && std::string(text) == "null");
+  std::printf("LASTCRASH never %s\n", text);
+
+  // 2026-11-23: a panic while a project save was being answered.
+  LwCrashBreadcrumb panic = runningCard(7);
+  panic.saveInProgress = 1;
+  addTrace(panic, LW_CRASH_BACKTRACE_MAX);
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(panic, 4, 6, 2824, "1.2.6"));
+  assert(lwCrashLastCrashJson(ring, text, sizeof(text)) > 0);
+  std::printf("LASTCRASH panic %s\n", text);
+  assert(std::string(lwCrashPhase(ring.records[0])) == "configSave");
+
+  // 2026-11-24: a task watchdog after 7.57 hours with nobody talking to it.
+  LwCrashBreadcrumb stall = runningCard(8);
+  stall.activityAtMs = 1000;  // the last request was hours earlier
+  addTrace(stall, 9);
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(stall, 6, 7, 2824, "1.2.6"));
+  assert(lwCrashLastCrashJson(ring, text, sizeof(text)) > 0);
+  std::printf("LASTCRASH watchdog %s\n", text);
+  assert(std::string(lwCrashPhase(ring.records[0])) == "idle");
+
+  // A brownout: running state, no trace. Zero address and an empty list.
+  LwCrashBreadcrumb brownout = runningCard(9);
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(brownout, 9, 8, 2824, "1.2.6"));
+  assert(lwCrashLastCrashJson(ring, text, sizeof(text)) > 0);
+  std::printf("LASTCRASH brownout %s\n", text);
+
+  // Power lost before the restart: reason only.
+  LwCrashBreadcrumb garbage;
+  memset(&garbage, 0x5A, sizeof(garbage));
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(garbage, 5, 9, 2824, "1.2.6"));
+  assert(lwCrashLastCrashJson(ring, text, sizeof(text)) > 0);
+  std::printf("LASTCRASH bare %s\n", text);
+  assert(std::string(lwCrashPhase(ring.records[0])) == "unknown");
+
+  // What the card was doing, from the last request when it was recent.
+  struct Case { const char* path; const char* phase; };
+  for (const Case& c : {Case{"/api/config", "configSave"}, Case{"/api/wiring/candidate", "configSave"},
+      Case{"/api/update/chunk", "update"}, Case{"/api/wifi", "wifi"}, Case{"/api/reset-wifi", "wifi"},
+      Case{"/api/projects/commit", "storage"}, Case{"/api/media/chunk", "storage"},
+      Case{"/api/status", "http"}, Case{"/json/state", "http"}}) {
+    LwCrashBreadcrumb crumb = runningCard(1);
+    lwCrashSetText(crumb.activity, sizeof(crumb.activity), c.path);
+    crumb.activityAtMs = crumb.uptimeMs - 500;
+    const LwCrashRecord made = lwCrashRecordFromBreadcrumb(crumb, 4, 1, 1, "1.2.6");
+    assert(std::string(lwCrashPhase(made)) == c.phase);
+  }
+
+  // Worst case fits, and too small a buffer returns nothing.
+  LwCrashBreadcrumb full = runningCard(4000000000u);
+  addTrace(full, LW_CRASH_BACKTRACE_MAX);
+  memset(full.task, 't', sizeof(full.task) - 1);
+  full.uptimeMs = full.freeHeap = full.minFreeHeap = 4000000000u;
+  full.saveInProgress = 1;
+  ring.total = 4000000000u;
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(full, 5, 1, 1, "1.2.6"));
+  const size_t worst = lwCrashLastCrashJson(ring, text, sizeof(text));
+  assert(worst > 0 && worst < sizeof(text));
+  std::printf("worst-case lastCrash: %zu of %zu bytes\n", worst, sizeof(text));
+  char tiny[32];
+  assert(lwCrashLastCrashJson(ring, tiny, sizeof(tiny)) == 0 && tiny[0] == 0);
+}
+
 void noSecrets() {
   // The record has no field a credential could go in, and the report names
   // none. The only free text is a path, a pattern id, a task and a fault name.
@@ -230,7 +300,8 @@ int main() {
   rotate();
   persist();
   reports();
+  lastCrash();
   noSecrets();
-  std::puts("crash record: 6 groups passed");
+  std::puts("crash record: 7 groups passed");
   return 0;
 }

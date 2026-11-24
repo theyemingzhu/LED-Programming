@@ -20,5 +20,8 @@ void lightweaverCrashRecorderBoot();
 void lightweaverCrashRecorderTick(uint32_t nowMs);
 // Short summary for /api/status and /api/firmware-info.
 void lightweaverCrashReportSummary(JsonObject crash);
+// The newest record as raw JSON text ("null" if the card has never crashed),
+// in the shape Studio's reader expects for /api/status "lastCrash".
+String lightweaverCrashLastCrashJson();
 // Read-only GET /api/crash-log: the last three records in full.
 void registerLightweaverCrashRecorder(WebServer& server);
