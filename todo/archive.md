@@ -19,3 +19,7 @@
   All merged by 2026-11-24 (checked by the ship coordinator against GitHub).
 
 - [x] Real-card check of `relative-look-tuning-default-boot`: PASS on every step, run 2026-11-24 with Adrian's "Yes, run it" (Save to card 200, read-back keeps sections, phone brightness keeps sections, boots into the saved default after a USB hard reset). Card left on signed 1.2.6. Setup-phone spec fix merged as #519.
+
+- [x] Merge the crash-recorder queue and patch refresh (PR #518): queue/docs plus the Studio crash reader; no card change by itself _(band: agent-runnable)_ _(effort: quick)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
+- [x] Merge the phone top-bar fix (PR #520), then the card save body that leaves out card-default fields (PR #524, 3,895 to 3,084 bytes on the real project; do one real-card Save to card first), one per main run, after the 1.2.7 signer _(band: agent-runnable)_ _(effort: quick)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
+- [x] Send card update 1.2.7 with `npm run firmware:release` (crash recorder #522 + look-tuning + query-GET fix; rehearsed and compiled 2026-11-24, 38.3% of flash), bench-check the exact release commit, merge, prove live, then close #522 _(band: agent-runnable)_ _(effort: medium)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
