@@ -2,6 +2,8 @@
 
 - [x] Build the 9 simpler-journeys cuts proposed in PR #450 (52 → 41 phone presses) _(band: agent-runnable)_ _(effort: deep)_ → Plan: [simpler-journeys.md](plans/simpler-journeys.md)
   Shipped 2026-11-22 as #458 (live from Studio build 2623); re-measured on main 2026-11-24; #450 closed as superseded.
+- [x] Fix and merge the Find my strips stack (#502 D11 + #497 D9 + #503 FS1 + FS3 v2) _(band: agent-runnable)_ _(effort: medium)_
+  Done 2026-11-24 in one integration PR. Cause of the steady-13s red: the 15 s allowance covered only the staging write; every read before and inside the save was still capped at 6 s, so the save stopped at 20 s ("did not return independent firmware and project evidence"). While the card holds the temporary setup every save read now waits 15 s (`CARD_SLOW_READ_MS`). Both interruption-slow-stage profiles green.
 
 - [x] Run every pull request's tests on GitHub (`Branch tests`, PR #465), rebuilt on main with the two smoke halves _(band: agent-runnable)_ _(effort: medium)_
   Shipped 2026-11-24.

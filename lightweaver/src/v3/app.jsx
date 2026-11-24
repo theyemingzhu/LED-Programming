@@ -114,6 +114,7 @@ import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { chooseCardResumePlace, rememberCardResumePlace } from '../lib/cardResumePlace.js';
 import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
+import { activeLightTestPhase, getLightTestActivity, subscribeLightTestActivity } from '../lib/lightTestActivity.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { applyTypedLedCountToCard } from '../lib/applyLedCountToCard.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
@@ -1306,11 +1307,15 @@ function Shell({ offlineUpdateController = null }) {
     projectLifecycle.installedRevision,
     serializeProject,
   ]);
+  // FS3: Studio's own light test in progress (never written to the card link).
+  const lightTestActivity = useSyncExternalStore(subscribeLightTestActivity, getLightTestActivity, getLightTestActivity);
+  const lightTestPhase = activeLightTestPhase(lightTestActivity);
   const cardLifecycle = useMemo(() => deriveCardLifecycle({
     link: cardLink,
     project: lifecycleProject,
     update: firmwareRecoveryState,
-  }), [cardLink, firmwareRecoveryState, lifecycleProject]);
+    lightTestPhase,
+  }), [cardLink, firmwareRecoveryState, lifecycleProject, lightTestPhase]);
   useEffect(() => {
     if (routeHash !== initialResumeHash.current && routeHash !== resumeEntryHash.current) resumeUserNavigated.current = true;
     if (!cardLifecycle.installedControlsReady) return;

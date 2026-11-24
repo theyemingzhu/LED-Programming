@@ -474,3 +474,43 @@ test('activation reports the transport error only after reconnect polling also f
     error => error?.reason === 'reconnect-timeout' && error?.cause === activationError,
   );
 });
+
+// D9: a card back from its restart that takes ~5 s to answer is testing the
+// wiring; the wait must hear it, not report a timeout.
+test('a slow reply from a card that is testing this wiring is heard, not timed out', async () => {
+  let now = 0;
+  const timeouts = [];
+  const status = await waitForCardWiringReconnect({
+    activationId: 'wiring-slow',
+    timeoutMs: 45000,
+    nowImpl: () => now,
+    waitImpl: async ms => { now += ms; },
+    statusImpl: async ({ timeoutMs }) => {
+      timeouts.push(timeoutMs);
+      now += 5000;
+      if (timeoutMs < 5000) throw new Error('aborted');
+      return { activationId: 'wiring-slow', state: 'testing' };
+    },
+  });
+  assert.equal(status.state, 'testing');
+  assert.ok(timeouts[0] >= 5000, `each poll waits long enough for a 5 s card (got ${timeouts[0]} ms)`);
+});
+
+test('when the deadline passes, the card is asked once more before Studio reports a timeout', async () => {
+  let now = 0;
+  let calls = 0;
+  const status = await waitForCardWiringReconnect({
+    activationId: 'wiring-late',
+    timeoutMs: 1000,
+    nowImpl: () => now,
+    waitImpl: async ms => { now += ms; },
+    statusImpl: async () => {
+      calls += 1;
+      now += 600;
+      if (now < 1000) throw new Error('not back yet');
+      return { activationId: 'wiring-late', state: 'testing' };
+    },
+  });
+  assert.equal(status.state, 'testing');
+  assert.ok(calls >= 2);
+});
