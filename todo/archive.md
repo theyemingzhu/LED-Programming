@@ -23,3 +23,8 @@
 - [x] Merge the crash-recorder queue and patch refresh (PR #518): queue/docs plus the Studio crash reader; no card change by itself _(band: agent-runnable)_ _(effort: quick)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
 - [x] Merge the phone top-bar fix (PR #520), then the card save body that leaves out card-default fields (PR #524, 3,895 to 3,084 bytes on the real project; do one real-card Save to card first), one per main run, after the 1.2.7 signer _(band: agent-runnable)_ _(effort: quick)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
 - [x] Send card update 1.2.7 with `npm run firmware:release` (crash recorder #522 + look-tuning + query-GET fix; rehearsed and compiled 2026-11-24, 38.3% of flash), bench-check the exact release commit, merge, prove live, then close #522 _(band: agent-runnable)_ _(effort: medium)_ Done 2026-11-24: shipped as Studio 2896, firmware 1.2.7 build 2895.
+
+## Done 2026-11-24 (branch and card cleanup)
+- [x] Recovered or archived every leftover worktree: clean ones removed, three unsaved pieces pushed as archive/claude/day-batch-5-timeout-spec, archive/codex/pre-sync-main-20261117 and archive/diag/d11-with-d9, the rest discarded on Adrian's word ("Yes, discard them"). Only main and archive/ remain on GitHub.
+- [x] Real-card Save to card on Studio 2896 (PR #524): accepted on lw-b0fe81f61b44 with one strip changed to Ocean, 3,624 of 3,968 bytes; dial and button pins read back unchanged and a real next press registered. Original project restored byte-identical.
+- [x] Card project limit: PR #524 shrank the six-look project from 3,895 to 3,084 bytes, so a one-strip change saves again.
