@@ -40,7 +40,7 @@ function unsupportedTitle(code) {
 export default function SceneExpressionEditor({
   project, onSaveProject, onInstallScene, onRecordFlow, installationReceipt,
   onStartPhysicalPreview, physicalPreviewContextKey = '', onClose,
-  hostName = 'Lab', closeLabel = '',
+  hostName = 'Lab', closeLabel = '', cardNoTouch = false,
 }) {
   const store = project.expressionScenes;
   const storeInspection = inspectExpressionScenes(store);
@@ -430,7 +430,7 @@ export default function SceneExpressionEditor({
         sceneId: scene.id,
         onProgress: progress => setInstallState({
           status: 'installing', source,
-          message: progress === 'pairing' ? 'Confirming the physical card…'
+          message: progress === 'pairing' ? (cardNoTouch ? 'Checking this is the right card…' : 'Confirming the physical card…')
             : progress === 'uploading' ? 'Saving the editable project source…'
               : progress === 'verifying' ? 'Verifying the saved source…'
                 : 'Installing the scene playback…',

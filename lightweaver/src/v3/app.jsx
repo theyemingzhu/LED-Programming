@@ -1,6 +1,7 @@
 /* Studio shell (app.jsx), converted from the v3 mockup to an ES module and
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
+import { cardNeedsTouch } from '../lib/cardNeedsTouch.js';
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { FirstInstallCheckSheet } from '../components/card/FirstInstallCheckSheet.jsx';
 import { cardChangedSinceSeen } from '../lib/patternGate.js';
@@ -2058,7 +2059,9 @@ function Shell({ offlineUpdateController = null }) {
       ? `This installs ${replacement.nextStepCount} scene step${replacement.nextStepCount === 1 ? '' : 's'} as the card playlist. Your ${replacement.previousLookCount} saved library look${replacement.previousLookCount === 1 ? '' : 's'} ${replacement.previousLookCount === 1 ? 'remains' : 'remain'} in the editable project.`
       : 'This installs the current project playback on the card.';
     const confirmed = window.confirm(
-      `${replacementCopy}\n\nTouch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.`,
+      cardNeedsTouch({ readiness: cardLink.readiness, evidence: cardEvidence })
+        ? `${replacementCopy}\n\nTouch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.`
+        : `${replacementCopy}\n\nChoose Continue to save to this card.`,
     );
     if (!confirmed) return { ok: false, reason: 'cancelled', message: sceneDeliveryFailureMessage('cancelled'), replacementSummary: replacement };
 

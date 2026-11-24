@@ -1,6 +1,7 @@
 import { deriveCardLifecycle } from './cardLifecycle.js';
 import { sanitizeProjectId } from './projectIdentity.js';
 import { lifecycleLabel } from './projectLifecycle.js';
+import { cardLooksUnreadable } from './cardLookReadState.js';
 
 // A presentation of existing evidence, never a new transport or write gate.
 export function deriveCardSessionView({ link = {}, project = null, lifecycle = null, status = null, projectLifecycle = null } = {}) {
@@ -22,7 +23,8 @@ export function deriveCardSessionView({ link = {}, project = null, lifecycle = n
     && (!projectLifecycle || lifecycleLabel(projectLifecycle) === 'New project');
   let relationship = !project || untouchedStarter ? 'none' : 'unknown';
   if (untouchedStarter) { /* nothing to compare */ }
-  else if (life.exactProject) relationship = 'matches';
+  // L1: never "matches" while this card's look list could not be read whole.
+  else if (life.exactProject && !cardLooksUnreadable(r.cardId || link.card?.id)) relationship = 'matches';
   else if (id && cardId && id !== cardId || fp && cardFp && fp !== cardFp
     || ['length-mismatch','content-mismatch'].includes(life.state)) relationship = 'differs';
   const changedDomains = life.state === 'length-mismatch' ? ['wiring'] : [];

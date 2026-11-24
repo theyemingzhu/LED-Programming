@@ -100,7 +100,7 @@ test('bench card: the card stages the wiring but its reply is lost, and the owne
   await moveCardToProject(page, card);
 });
 
-test('bench card, Real-timing: a card answering in 3.5 s gets its staged wiring within 20 s of the press', async ({ page }) => {
+test('bench card, Real-timing: a card answering in 3.5 s gets its staged wiring within 25 s of the press', async ({ page }) => {
   // On the real card the candidate was sent 70 s after the press.
   const { card } = createBenchDiscoveryPracticeCard({ timing: 'real' });
   const pressedAt: number[] = [];
@@ -123,7 +123,9 @@ test('bench card, Real-timing: a card answering in 3.5 s gets its staged wiring 
   await expect.poll(() => card.requests.find(r => r.method === 'POST' && r.path === '/api/wiring/candidate')?.at || 0, { timeout: 90000 }).toBeGreaterThan(0);
   const sentAfterMs = card.requests.find(r => r.method === 'POST' && r.path === '/api/wiring/candidate')!.at - pressedAt[0];
   console.log(`[step3] candidate sent ${sentAfterMs} ms after the press`);
-  expect(sentAfterMs).toBeLessThan(20000);
+  // 25 s, not 20: since L1 (2026-11-24) every save first re-reads the card's
+  // look list so it can never drop looks, one more 3.5 s round trip here.
+  expect(sentAfterMs).toBeLessThan(25000);
   await expect(page.getByTestId('wiring-test-start').or(page.getByTestId('wiring-test-confirm')).first()).toBeVisible({ timeout: 60000 });
   card.setReplyDelay(0);
 });

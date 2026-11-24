@@ -492,3 +492,22 @@ test('old firmware, canceled media, or card switch sends no Playlist config', as
   }), /changed after media upload/i);
   assert.equal(configCalls, 0);
 });
+
+test('recordings: an old card is asked to be touched, a card that reports ownerNoTouch never is', async () => {
+  const { next } = await recorded('touch-or-not');
+  const runtimePackage = runtimeFor(next.sequenceAssets);
+  const run = async (capabilities, answer = true) => {
+    let asked = 0;
+    await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimePackage, {
+      host: 'lightweaver.local', transport: 'bridge', project: { strips, wiring, compiledWiring },
+      confirmPairing: () => { asked += 1; return answer; },
+      readEvidence: async () => ({ cardId: 'card', capabilities: { sequenceMedia: { version: 2, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048 }, ...capabilities } }),
+      readStatus: async () => { throw new Error('STOP-AFTER-PAIRING'); },
+    }), answer ? /STOP-AFTER-PAIRING/ : /abort|cancel/i);
+    return asked;
+  };
+  assert.equal(await run({}), 1, 'an old card still gets the confirm');
+  assert.equal(await run({ ownerNoTouch: 0 }), 1, 'a card that says 0 is an old card');
+  assert.equal(await run({ ownerNoTouch: 1 }), 0, 'a no-touch card is never asked');
+  assert.equal(await run({}, false), 1, 'an old card whose owner says no still stops before anything is sent');
+});
