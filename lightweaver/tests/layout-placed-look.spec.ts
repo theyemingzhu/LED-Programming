@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 // A placed look in Layout: a frame the owner drags over the strips. Inside it
-// a sweep or rings move, and each LED dot takes the colour under it. This
-// slice is a try-out on the artwork: it is not saved with the project and
-// nothing goes to a card. Reduced motion holds the look still, which is also
+// a sweep or rings move, and each LED dot takes the colour under it. It is a
+// try-out until "Save as a look" records it into the project's recordings;
+// nothing goes to a card from here. Reduced motion holds the look still, which is also
 // what lets these tests compare colours.
 
 type StripDef = { name: string; d: string };
@@ -110,7 +110,7 @@ test('turning it on puts a frame with four corners on the artwork and lights the
   expect(start.halfWidth).toBeGreaterThan(130);
   expect(lit(await allColours(page, ids)).length).toBeGreaterThan(20);
   // It says what it is, and adds no filled button: Save to card stays the one.
-  await expect(page.getByTestId('placed-look-session-note')).toContainText('not saved with the project yet');
+  await expect(page.getByTestId('placed-look-session-note')).toContainText('a try-out until you save it as a look');
   await expect(page.locator('[data-testid="layout-placed-look"] .primary, [data-testid="layout-placed-look"] .cta')).toHaveCount(0);
   for (const label of ['This look moves as', 'Colours', 'Width', 'Softness', 'Repeat', 'Speed', 'Turn', 'Run the other way', 'Put it on the centre of the piece']) {
     await expect(page.getByTestId('layout-placed-look').getByText(label, { exact: true })).toBeVisible();
@@ -223,32 +223,50 @@ test('alike on all sides: side 2 shows exactly what side 1 shows', async ({ page
   expect(await ledColours(page, sides[3])).not.toEqual(sideOne);
 });
 
-test('Record this look says how long and how big, and that nothing was sent', async ({ page }) => {
+test('Save as a look records it into the project, and Save changes updates the same recording', async ({ page }) => {
   await seedPiece(page, LOTUS);
   await turnOn(page);
   const note = page.getByTestId('placed-look-record-note');
   await expect(note).toHaveAttribute('data-state', 'idle');
-  await expect(note).toContainText('nothing is sent to the card');
+  await expect(note).toContainText('Nothing is sent to the card');
   const record = page.getByTestId('placed-look-record');
   await expect(record).not.toHaveClass(/primary|cta/);
+  await expect(record).toHaveText('Save as a look');
 
   await record.click();
-  await expect(note).toHaveAttribute('data-state', 'done');
+  await expect(note).toHaveAttribute('data-state', 'saved');
   // 7 strips x 24 lights, 24 pictures a second, 6 whole passes in 20 seconds:
   // 64 + 168 x 3 x 480 bytes.
   await expect(note).toHaveAttribute('data-bytes', String(64 + 168 * 3 * 480));
-  await expect(note).toContainText('Recorded a 20 second loop for these 168 lights: 0.23 MB.');
-  await expect(note).toContainText('That fits: a look can be up to 16 MB.');
-  await expect(note).toContainText('It has not gone to the card');
+  await expect(note).toContainText('Saved as “Placed look 1” in this project\'s recordings: a 20 second loop for these 168 lights, 0.23 MB.');
+  await expect(note).toContainText('add it to the Playlist');
+  const recordings = async () => (await saved(page))?.devices?.standaloneController?.sequenceAssets || [];
+  await expect.poll(async () => (await recordings()).map((asset: { label: string; source: { kind: string } }) => [asset.label, asset.source?.kind]))
+    .toEqual([['Placed look 1', 'placed-look']]);
+  const firstId = (await recordings())[0].id;
 
   await page.getByTestId('placed-look-width').fill('60');
   await expect(note).toHaveAttribute('data-state', 'stale');
-  await expect(note).toContainText('Changed since the last recording.');
-  // A look that does not move is one picture.
+  await expect(note).toContainText('Changed since you saved “Placed look 1”.');
+  await expect(record).toHaveText('Save changes');
+  // A look that does not move is one picture, saved over the same recording.
   await page.getByTestId('placed-look-speed').fill('0');
   await record.click();
   await expect(note).toHaveAttribute('data-bytes', String(64 + 168 * 3));
+  await expect(note).toContainText('Updated “Placed look 1”');
   await expect(note).toContainText('does not move');
+  await expect.poll(async () => (await recordings()).map((asset: { id: string; byteLength: number }) => [asset.id, asset.byteLength]))
+    .toEqual([[firstId, 64 + 168 * 3]]);
+
+  // It is one of the project's recordings: the Playlist offers it and adds it
+  // as recorded playback, the path every recording takes to the card.
+  await page.goto('/#screen=playlist', { waitUntil: 'domcontentloaded' });
+  const library = page.getByTestId('playlist-recordings');
+  await expect(library).toContainText('Placed look 1');
+  await library.getByRole('button', { name: /Placed look 1/ }).click();
+  await expect.poll(async () => ((await saved(page))?.devices?.standaloneController?.playlist || [])
+    .find((item: { type: string }) => item.type === 'sequence'))
+    .toMatchObject({ type: 'sequence', sequenceAssetId: firstId, label: 'Placed look 1' });
 });
 
 test('on a phone the frame, the dials and the record line stay inside the screen', async ({ page }) => {
@@ -262,7 +280,7 @@ test('on a phone the frame, the dials and the record line stay inside the screen
   await turnOn(page);
   await page.getByTestId('placed-look-record').scrollIntoViewIfNeeded();
   await page.getByTestId('placed-look-record').click();
-  await expect(page.getByTestId('placed-look-record-note')).toHaveAttribute('data-state', 'done');
+  await expect(page.getByTestId('placed-look-record-note')).toHaveAttribute('data-state', 'saved');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   for (const id of ['placed-look-off', 'placed-look-on', 'placed-look-sweep', 'placed-look-rings', 'placed-look-colours-moss',

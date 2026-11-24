@@ -166,6 +166,19 @@ function validPositiveInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
 }
 
 function normalizeManifest(value) {
+  // A placed look from Layout (placedLookRecording.js): the look itself is
+  // the source, kept whole so it can be opened and recorded again.
+  if (record(value) && value.format === 'lightweaver-placed-lwseq-sidecar') {
+    if (value.version !== 1 || value.hashAlgorithm !== 'SHA-256' || !record(value.look)
+      || value.look.kind !== 'placed'
+      || !SHA256_PATTERN.test(value.lookSha256)
+      || !SHA256_PATTERN.test(value.layoutPhysicalOrderSha256)
+      || !SHA256_PATTERN.test(value.lwseqSha256)
+      || !validPositiveInteger(value.fps, 24)
+      || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
+      || !validPositiveInteger(value.pixelCount, 4096)) return null;
+    return clone(value);
+  }
   if (record(value) && value.format === 'lightweaver-flow-lwseq-sidecar') {
     if (value.version !== 1 || !record(value.scene)
       || !SHA256_PATTERN.test(value.sceneSha256)
@@ -278,6 +291,7 @@ function normalizeSequenceAsset(value) {
   const byteLength = Number(value.byteLength);
   const expectedBytes = LWSEQ_HEADER_BYTES + manifest.pixelCount * manifest.frameCount * 3;
   const isFlow = manifest.format === 'lightweaver-flow-lwseq-sidecar';
+  const isPlaced = manifest.format === 'lightweaver-placed-lwseq-sidecar';
   const recipeId = boundedString(value.recipe?.id, MAX_ID_LENGTH);
   const recipeName = boundedString(value.recipe?.name, MAX_LABEL_LENGTH);
   const outputs = normalizeAssetOutputs(value.outputs, manifest.pixelCount);
@@ -287,9 +301,11 @@ function normalizeSequenceAsset(value) {
     || value.assetRef !== `sha256:${manifest.lwseqSha256}`
     || byteLength !== expectedBytes
     || byteLength > MAX_PATTERN_LAB_LWSEQ_BYTES
-    || (!isFlow && (!recipeId || !recipeName || value.recipe?.sha256 !== manifest.recipeSha256))
+    || (!isFlow && !isPlaced && (!recipeId || !recipeName || value.recipe?.sha256 !== manifest.recipeSha256))
     || !outputs) return null;
-  const source = isFlow
+  const source = isPlaced
+    ? { kind: 'placed-look', payload: clone(manifest.look), sha256: manifest.lookSha256 }
+    : isFlow
     ? { kind: 'expression-scene', payload: clone(manifest.scene), sha256: manifest.sceneSha256 }
     : { kind: 'pattern-lab', payload: clone(manifest.recipe), sha256: manifest.recipeSha256 };
   // The immutable sidecar is the source of truth. A legacy/migrated object's
@@ -310,7 +326,7 @@ function normalizeSequenceAsset(value) {
     file,
     sidecarFile,
     byteLength,
-    ...(!isFlow ? { recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 } } : {}),
+    ...(!isFlow && !isPlaced ? { recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 } } : {}),
     source,
     ...bakedSideModeFields(value.bakedSideMode),
     ...(media ? { media: clone(media) } : {}),

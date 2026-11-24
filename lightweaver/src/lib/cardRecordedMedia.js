@@ -53,6 +53,14 @@ export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
   if (!project?.compiledWiring?.ok || !project?.wiring) {
     throw new Error('Current verified physical wiring is required before installing a recording.');
   }
+  if (asset.manifest?.format === 'lightweaver-placed-lwseq-sidecar') {
+    const { verifyPlacedLookRecording } = await import('./placedLookRecording.js');
+    const result = await verifyPlacedLookRecording({ bytes, sidecar: asset.manifest }, {
+      strips: project.strips, compiledWiring: project.compiledWiring, symmetry: project.symmetry,
+    });
+    if (!result.ok) throw new Error(`Recording “${asset.label}” no longer matches this project's artwork or wiring (${result.reason}). Record it again.`);
+    return true;
+  }
   if (asset.manifest?.format === 'lightweaver-flow-lwseq-sidecar') {
     const sidecar = asset.manifest;
     const result = await verifySceneExpressionFlowBake({

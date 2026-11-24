@@ -16,6 +16,12 @@ function recipeSource(value) {
 export function recordingBakeInput(asset, project) {
   const manifest = asset?.manifest;
   if (!manifest || !/^[a-f0-9]{64}$/.test(manifest.layoutPhysicalOrderSha256 || '')) throw new Error('Recording provenance is incomplete.');
+  // A placed look is its own source: the recording keeps the whole look,
+  // including whether it plays alike on the sides, so no project choice applies.
+  if (manifest.format === 'lightweaver-placed-lwseq-sidecar') {
+    return { input: { ...project, symmetry: project.layoutSymmetry ?? project.symmetry, look: manifest.look },
+      editable: true, kind: 'placed' };
+  }
   const mode = recordingSourceSideMode(asset, project);
   if (mode === undefined) throw new Error('The owning source choice is ambiguous.');
   const input = { ...project, symmetry: project.layoutSymmetry ?? project.symmetry,
@@ -41,6 +47,13 @@ export async function recordedSequenceFreshness(asset, project) {
   try {
     const { input, editable, kind } = recordingBakeInput(asset, project);
     const manifest = asset.manifest;
+    if (kind === 'placed') {
+      const { hashPlacedLookLayout } = await import('./placedLookRecording.js');
+      const hash = await hashPlacedLookLayout(input);
+      return hash === manifest.layoutPhysicalOrderSha256
+        ? { state: 'current', canRebake: true, message: 'Recording matches the saved look and artwork.' }
+        : { state: 'stale', canRebake: true, message: 'Artwork or wiring changed. Record again to update. Frozen playback is preserved.' };
+    }
     const changedSource = kind === 'flow'
       ? canonicalSceneExpressionBakeJson(input.scene) !== canonicalSceneExpressionBakeJson(normalizeSceneExpression(manifest.scene))
       : canonicalPatternLabBakeJson(input.recipe) !== canonicalPatternLabBakeJson(recipeSource(manifest.recipe));
@@ -61,6 +74,14 @@ export async function recordedSequenceFreshness(asset, project) {
 export async function rebakeRecordedSequence(asset, project, { signal } = {}) {
   const { input, kind } = recordingBakeInput(asset, project);
   const controller = project.standaloneController || {};
+  if (kind === 'placed') {
+    const { recordPlacedLook } = await import('./placedLookRecording.js');
+    const bakeResult = await recordPlacedLook({ look: input.look, strips: input.strips,
+      compiledWiring: input.compiledWiring, symmetry: input.symmetry });
+    const result = await createRecordedSequenceAsset({ kind: 'placed-look', bakeResult,
+      controller, label: asset.label, replaceId: asset.id });
+    return applyRecordedSequenceAsset(controller, result);
+  }
   if (kind === 'flow') {
     const bakeResult = await bakeSceneExpressionFlow({ ...input, signal });
     const result = await createRecordedSequenceAsset({ kind: 'expression-scene', bakeResult,

@@ -5,6 +5,7 @@ import { LWSEQ_HEADER_BYTES, assertLwseqOutputTopology, buildStandaloneProfile }
 import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { normalizeSceneExpression } from './sceneExpression.js';
+import { canonicalProjectJson } from './projectRepository.js';
 
 export const MAX_STORED_SEQUENCE_BYTES = 16 * 1024 * 1024;
 export const MAX_STORED_SEQUENCE_TOTAL_BYTES = 48 * 1024 * 1024;
@@ -78,7 +79,8 @@ export async function verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput 
   return bytes;
 }
 
-export async function createRecordedSequenceAsset({ kind, bakeResult, controller = {}, label = '', sourceSnapshot = null } = {}) {
+export async function createRecordedSequenceAsset({ kind, bakeResult, controller = {}, label = '', sourceSnapshot = null, replaceId = '' } = {}) {
+  if (kind === 'placed-look') return createPlacedLookAsset({ bakeResult, controller, label, replaceId });
   if (kind !== 'expression-scene') throw new Error('A supported recording source kind is required.');
   const { bytes, sidecar, sidecarJson, outputs, estimate } = bakeResult || {};
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_STORED_SEQUENCE_BYTES
@@ -128,6 +130,58 @@ export async function createRecordedSequenceAsset({ kind, bakeResult, controller
   profile.runtimeMode = 'sd-sequence';
   profile.looks[0].bytes = bytes.byteLength;
   profile.looks[0].sha256 = mediaHash;
+  return {
+    kind: 'sequence', asset, look: asset.look, manifest: structuredClone(sidecar),
+    ...(replacing ? { replaceSequenceAssetId: replacing.id } : {}),
+    package: { app: 'Lightweaver', format: 'standalone-controller-package', version: 1,
+      files: { '/lightweaver.json': profile, [file]: media, [`${file}.json`]: `${sidecarJson}\n` } },
+  };
+}
+
+// A placed look from Layout (placedLookRecording.js). The look is its own
+// source; `replaceId` names the saved recording it updates, if any.
+async function createPlacedLookAsset({ bakeResult, controller = {}, label = '', replaceId = '' } = {}) {
+  const { bytes, sidecar, sidecarJson, outputs, estimate } = bakeResult || {};
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_STORED_SEQUENCE_BYTES
+    || !sidecar || sidecar.format !== 'lightweaver-placed-lwseq-sidecar' || sidecar.version !== 1
+    || sidecar.look?.kind !== 'placed' || !HASH.test(sidecar.lookSha256) || !HASH.test(sidecar.lwseqSha256)
+    || !HASH.test(sidecar.layoutPhysicalOrderSha256)
+    || sidecarJson !== canonicalProjectJson(sidecar)
+    || estimate?.totalBytes !== bytes.byteLength) throw new Error('The placed look recording is incomplete or exceeds the 16 MiB project media limit.');
+  assertOutputs(outputs, sidecar);
+  assertHeader(bytes, sidecar, outputs);
+  const [lookHash, mediaHash] = await Promise.all([
+    sha256(new TextEncoder().encode(canonicalProjectJson(sidecar.look))), sha256(bytes),
+  ]);
+  if (lookHash !== sidecar.lookSha256 || mediaHash !== sidecar.lwseqSha256) {
+    throw new Error('The placed look recording does not match its look or media hash.');
+  }
+  const existing = normalizePatternLabSequenceAssets(controller.sequenceAssets);
+  const replacing = replaceId ? existing.find(asset => asset.id === replaceId && asset.source?.kind === 'placed-look') : null;
+  if (!replacing && existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) throw new Error('The project recording library is full.');
+  if (existing.filter(asset => asset.id !== replacing?.id)
+    .reduce((sum, asset) => sum + asset.byteLength, bytes.byteLength) > MAX_STORED_SEQUENCE_TOTAL_BYTES) {
+    throw new Error('The project recordings exceed the 48 MiB media limit.');
+  }
+  const title = String(label || replacing?.label || 'Placed look').trim().slice(0, 160);
+  const id = replacing?.id || uniqueId(title, existing);
+  const file = `/sequences/${mediaHash}.lwseq`;
+  const media = { encoding: 'base64', bytes: bytes.byteLength, sha256: mediaHash, data: bytesToBase64(bytes) };
+  const asset = {
+    version: 1, id, label: title, format: 'lwseq', assetRef: `sha256:${mediaHash}`,
+    file, sidecarFile: `${file}.json`, byteLength: bytes.byteLength,
+    source: { kind: 'placed-look', payload: structuredClone(sidecar.look), sha256: lookHash },
+    outputs: structuredClone(outputs), manifest: structuredClone(sidecar),
+    mediaRef: { kind: 'indexeddb-sha256', byteLength: bytes.byteLength, sha256: mediaHash },
+    look: { id, label: title, mode: 'sequence', file, fps: sidecar.fps, loop: true },
+  };
+  const profile = buildStandaloneProfile({
+    projectName: title, runtimeMode: 'sequence', outputs,
+    controls: controller.controls, led: controller.led,
+    looks: [{ ...asset.look, bytes: bytes.byteLength, sha256: mediaHash, brightness: 1 }],
+    cardId: controller.cardId,
+  });
+  profile.runtimeMode = 'sd-sequence';
   return {
     kind: 'sequence', asset, look: asset.look, manifest: structuredClone(sidecar),
     ...(replacing ? { replaceSequenceAssetId: replacing.id } : {}),

@@ -57,12 +57,23 @@ export function useSymmetryRevealRequest() {
 
 // 4. Placed look: the look the owner is trying on the artwork (lib/placedLook.js),
 //    or null. The inspector's controls and the frame on the canvas both write
-//    it. In-session only: it is not part of the project until saved looks can
-//    hold one, so a reload starts without it.
+//    it. The try-out itself is in-session; "Save as a look" records it into the
+//    project's recordings (placedLookRecording.js), and `savedAs` names the
+//    recording it was saved as or opened from, so saving again updates that one.
 const placedLook = createStore(null);
+const placedLookSavedAs = createStore(null);
 
-export function setPlacedLookPreview(look) {
+export function setPlacedLookPreview(look, { savedAs } = {}) {
+  if (!look || savedAs !== undefined) placedLookSavedAs.set(look ? savedAs || null : null);
   placedLook.set(look || null);
+}
+
+export function setPlacedLookSavedAs(savedAs) {
+  placedLookSavedAs.set(savedAs || null);
+}
+
+export function usePlacedLookSavedAs() {
+  return useSyncExternalStore(placedLookSavedAs.subscribe, placedLookSavedAs.get, () => null);
 }
 
 export function usePlacedLookPreview() {
