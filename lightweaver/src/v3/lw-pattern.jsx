@@ -3659,9 +3659,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <button
                       type="button"
                       className="wordlink"
-                      data-testid={sectionCount <= 1 ? 'divide-in-layout' : layoutReturnStrip ? 'return-to-layout-section' : 'edit-section-layout'}
+                      // Arriving from a Layout section, the way back comes first, whatever
+                      // the section count (90916add's order, lost in the 17 Nov merge
+                      // c365d5fe; layout-section-overview.spec.ts:7).
+                      data-testid={layoutReturnStrip ? 'return-to-layout-section' : sectionCount <= 1 ? 'divide-in-layout' : 'edit-section-layout'}
                       onClick={openSectionLayout}
-                    >{sectionCount <= 1 ? 'Divide in Layout' : layoutReturnStrip ? 'Back to Layout' : 'Edit layout'}</button>
+                    >{layoutReturnStrip ? 'Back to Layout' : sectionCount <= 1 ? 'Divide in Layout' : 'Edit layout'}</button>
                     {showCopyToSections && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
                   </div>
                   {copyToSectionsOpen && <div className="project-stack-copy" data-testid="stack-copy-panel">

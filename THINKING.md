@@ -646,3 +646,17 @@ an incomplete rollout, not an owner-sign-in task.
 **Rejected:** a separate symmetry panel (the owner: "fit into the context of what's already there, not the island"); sides living only on the canvas (most of the work belongs in the sidebar); a per-strip "Mirror with…" checklist (v1, retired).
 
 **Open:** recordings do not yet record which choice they were baked with; Pattern Lab's decimated preview does not map side flow.
+
+## 2026-11-23 — Nothing on the card requires a touch
+
+**Decision, Adrian's words:** "Nothing requires a touch on the card. When the artwork is installed, you're not going to be able to touch the card." Earlier the same day, about loading a recording: "It sounds like touching the card is a false limitation ... I won't always be able to touch the card."
+
+**What this supersedes.** Since the owner-permission work, a card that holds a real project issued its owner permission (`/api/owner/capability`) only in the 30 seconds after a press on a card control, answering 403 "touch a card control to pair" otherwise. That one permission is what recordings (`/api/media/*`), the project store (`/api/projects/*`, save and delete), live frame streaming (`/api/stream/*`) and the owner path of the firmware update all present. The firmware update checked the touch a second time and wanted a confirmation nonce. Both checks are removed. This extends the 2026-09-26 entry (flashing has no account or physical-button gate) from flashing to every owner action, and it is consistent with 2026-06-16: the trust model is whoever is on the Wi-Fi.
+
+**What still holds, unchanged.** Allowed page origin; exact card id, boot id, network identity, owner session and generation; the project head the caller believes the card runs; the 60-second lifetime; size and shape checks; the recording store limits. For a firmware update: the signed ticket is verified in preflight before anything is written, a downgrade is refused, the image must match the ticket's SHA-256 at commit and again on read-back, and the request must name this card, this boot and this project head. None of that ever depended on the touch.
+
+**The controls stay controls.** BOOT and the dial still switch looks and are still reported in status. They authorise nothing.
+
+**Honest cost.** Anyone who can load an allowed page while on the card's network can now save or delete a project, load a recording, stream frames or start a signed update without being in the room. That was already true of the ordinary look save (`/api/config`), which never used the owner permission. Future Claude: do not re-add a touch, a button press or a "confirm on the card" step to any owner action. If stronger protection is ever wanted, it has to be something a person standing away from a wall-mounted piece can do.
+
+**Open:** Studio still shows "touch a physical control" prompts and sends a confirmation step; those lines belong to the Studio writer and are listed in the pull request. A card on older firmware still needs the touch, so Studio must keep working against both until the card update is out.

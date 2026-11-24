@@ -138,6 +138,45 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  browser_journeys:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-24.04
+    # Split from browser on 2026-11-24: one job hit the 45-min cap (45:15 on
+    # run 45290952413). The journey chunk now runs beside it in parallel.
+    timeout-minutes: 45
+    name: browser smoke (journeys)
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history: the build number is the total commit count, and a
+          # shallow clone would silently publish "build 1".
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run journey browser smoke
+        working-directory: lightweaver
+        run: npm run ci:browser-smoke-journeys
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   browser_windowless:
     needs: classify
     if: needs.classify.outputs.browser == 'true'

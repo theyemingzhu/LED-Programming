@@ -232,6 +232,7 @@ test('focused package scripts compose existing checks without weakening launch c
   for (const name of [
     'ci:source-build',
     'ci:browser-smoke',
+    'ci:browser-smoke-journeys',
     'ci:browser-regression',
     'ci:cloud',
     'ci:production',
@@ -289,7 +290,9 @@ test('manual deploy cannot bypass protected signing for a firmware-sensitive rev
 
 test('focused browser script covers core workflow without embedding the full release suite', async () => {
   const packageJson = await readJson('lightweaver/package.json');
-  const smoke = packageJson.scripts['ci:browser-smoke'];
+  // Since 2026-11-24 the hosted smoke runs as two parallel jobs; together
+  // they must still carry the whole core workflow.
+  const smoke = `${packageJson.scripts['ci:browser-smoke']} && ${packageJson.scripts['ci:browser-smoke-journeys']}`;
   const regression = packageJson.scripts['ci:browser-regression'];
   // The core workflow the smoke lane must always carry. Pinned as required
   // members rather than one exact string: adding a spec to the lane (as the
@@ -327,7 +330,8 @@ test('focused browser script covers core workflow without embedding the full rel
 test('Tests workflow runs only the bounded browser smoke and targeted card checks', async () => {
   const workflow = (await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8')).replace(/\r\n/g, '\n');
   const browserJobs = [
-    ['browser', 'browser_windowless', 'ci:browser-smoke'],
+    ['browser', 'browser_journeys', 'ci:browser-smoke'],
+    ['browser_journeys', 'browser_windowless', 'ci:browser-smoke-journeys'],
     ['browser_windowless', 'browser_firmware_update', 'test:windowless:browser'],
     ['browser_firmware_update', 'cloud', 'test:firmware-update:browser'],
   ];
@@ -339,8 +343,8 @@ test('Tests workflow runs only the bounded browser smoke and targeted card check
     const segment = workflow.slice(start, end);
     assert.match(segment, /^    needs: classify$/m, `${job} must not wait for a sibling browser job`);
     assert.match(segment, /^    if: needs\.classify\.outputs\.browser == 'true'$/m);
-    assert.equal((segment.match(new RegExp(`npm run ${command}`, 'g')) || []).length, 1);
-    assert.equal((browserRegion.match(new RegExp(`npm run ${command}`, 'g')) || []).length, 1);
+    assert.equal((segment.match(new RegExp(`npm run ${command}(?![\\w:-])`, 'g')) || []).length, 1);
+    assert.equal((browserRegion.match(new RegExp(`npm run ${command}(?![\\w:-])`, 'g')) || []).length, 1);
     assert.doesNotMatch(segment, /ci:browser-regression/);
   }
 });
