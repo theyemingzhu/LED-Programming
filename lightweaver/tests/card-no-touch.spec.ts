@@ -48,7 +48,7 @@ async function connectedCard(page: Page, { noTouch }: { noTouch: boolean }) {
     localStorage.setItem('lw_card_host', 'lightweaver.local');
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
   }, { id: card.state.cardId, firmwareVersion: card.state.firmwareVersion, buildId: card.state.buildId });
-  await page.goto('/#screen=settings', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => linkConnected(page), { timeout: 45000, message: 'the practice card must be connected' }).toBe(true);
   return card;
 }
