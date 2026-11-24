@@ -45,8 +45,8 @@ export function sourceCoreCommands(packageJson) {
     );
   }
   assert.ok(
-    String(packageJson?.scripts?.['ci:browser-smoke'] || '').includes(REQUIRED_BROWSER_SPEC),
-    `ci:browser-smoke must keep the blank-card rescue spec "${REQUIRED_BROWSER_SPEC}"`,
+    `${packageJson?.scripts?.['ci:browser-smoke'] || ''} ${packageJson?.scripts?.['ci:browser-smoke-journeys'] || ''}`.includes(REQUIRED_BROWSER_SPEC),
+    `ci:browser-smoke (or its journeys half) must keep the blank-card rescue spec "${REQUIRED_BROWSER_SPEC}"`,
   );
   return commands.slice(0, -1);
 }
