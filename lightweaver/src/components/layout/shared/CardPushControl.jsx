@@ -15,6 +15,7 @@ import {
   cardConfigStructuralWiringChangedFromInfo,
   withCardReadRetry,
   CARD_READ_RETRY,
+  CARD_SLOW_READ_MS,
 } from '../../../lib/cardPushClient.js';
 import {
   prepareCardDeployment,
@@ -293,6 +294,20 @@ export function CardPushControl({
     setCardHostname(cleanHost);
     setPushHost(getCardHostname());
     let attempt = retryAttempt;
+    // The Save after Find my strips meets a card settling after the restart
+    // that follows it: the real card answers in ~13–14 s about half the time
+    // (D11). At 6 s a read every reply missed, so the save stopped before
+    // sending ("did not return independent firmware and project evidence").
+    // While the card holds the temporary setup every read in this save waits
+    // 15 s; any other save keeps the 6 s reads (F-C1).
+    const slowCard = retryAttempt?.readMs === CARD_SLOW_READ_MS || (() => {
+      const readiness = getCardLinkState().readiness || {};
+      return readiness.provisionalSetup === true || String(readiness.projectId || readiness.piece?.id || '') === BENCH_PROJECT_ID;
+    })();
+    const readMs = slowCard ? CARD_SLOW_READ_MS : CARD_READ_RETRY.timeoutMs;
+    const onSlowRetry = () => setPushStatus(slowCard
+      ? 'Checking the card: it is answering slowly. Studio is still waiting for it.'
+      : 'Checking card…');
     setWiringTestState('idle');
     setWiringCandidate(null);
     setCandidateConflict(null);
@@ -325,10 +340,10 @@ export function CardPushControl({
           // A busy card answers in ~3.4 s and can go quiet 4–12 s: each read
           // gets 6 s and the set is asked up to three times (F-C1).
           [before, status, wiringStatus] = await withCardReadRetry(() => Promise.all([
-            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-          ]), { onRetry: () => setPushStatus('Checking card…') });
+            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+          ]), { onRetry: onSlowRetry });
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
           if (!LOCAL_BRIDGE_RECOVERY_REASONS.has(preflightError?.reason)) throw preflightError;
@@ -403,6 +418,7 @@ export function CardPushControl({
           handoffOnly,
           alreadyCurrent,
           replaceProjectIntent,
+          readMs,
         };
       }
       assertCurrentAttempt(attempt);
@@ -433,9 +449,9 @@ export function CardPushControl({
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
           {
-            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
-            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
-            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
+            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
+            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
             lastSeen: (readProjectLifecycle?.() || projectLifecycle)?.installation || null,
             saveAnyway: saveAnywayRef.current,
             config: async () => {
@@ -467,6 +483,7 @@ export function CardPushControl({
               // (D11). This one write gets 15 s.
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
                 timeoutMs: 15000,
+                readTimeoutMs: readMs,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
                 allowLookRemoval: allowLookRemovalRef.current === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
@@ -511,7 +528,7 @@ export function CardPushControl({
         let answeredLooks = 0;
         for (let look = 0; stagingExpected ? Date.now() < lookDeadline : look < 5; look += 1) {
           if (look > 0) await new Promise(resolve => setTimeout(resolve, 2000));
-          const staged = await getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }).catch(() => null);
+          const staged = await getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }).catch(() => null);
           if (!staged) {
             if (!stagingExpected) break;
             setPushStatus('Checking the card: it is answering slowly. Studio is waiting to see the staged change before the light test.');
@@ -568,7 +585,7 @@ export function CardPushControl({
           for (;;) {
             try {
               candidateEvidence = await readCardWiringCandidateEvidence(response.activationId, {
-                host: attempt.host, transport: getCardLinkState().transport,
+                host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs,
               });
               break;
             } catch (readError) {
