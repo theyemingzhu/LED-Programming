@@ -1069,6 +1069,10 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   .topbar:has(.crumb:empty) { grid-template-rows: 44px 0; }
   .topbar .brand { grid-area: brand; }
   .topbar .crumb { grid-area: crumb; width: 100%; gap: 6px; }
+  /* The project name is breadcrumb text in a 20px row. The global button
+     floor (--lw-tap, 36px on a phone) made it taller than that row, so it
+     rode up over the action buttons by 4px. */
+  .topbar .crumb .proj { min-height: 0; }
   .topbar .crumb:empty { display: none; }
   .top-right { grid-area: actions; justify-self: end; gap: 2px; }
   .top-div { display: none; }
