@@ -37,19 +37,19 @@ merge.
 
 ## Merge authority (Adrian's standing decision, 2026-08-12)
 
-**Agents merge when green.** Once the owning session confirms the work is
-done and CI passes, the agent merges the PR and deletes the branch without
-asking. Adrian reviews outcomes, not buttons: the PR description in plain
-language, then the real thing at the address he uses (per the 2026-07-26
-"live" standard in THINKING.md). Do not batch merges; land one stream at a
-time so a regression always implicates the last merge.
+Once the owning session confirms the work is done, merge if CI is already
+green or enable GitHub auto-merge for the reviewed revision where available.
+Preserve required checks and delete the branch after a confirmed merge. Land
+one stream at a time. For authorized production publication, follow the global
+background publishing rules and this project’s live verification requirements.
 
 ## Session-ending verb: "wrap it up"
 
 When Adrian says **"wrap it up"** (or "land it") in any session, that means:
 finish the current increment, then end the session with exactly one of —
-**merged**, **PR opened and watched to green**, or **archived + logged in
-TODO.md**. Never end a working session with only "pushed to branch X."
+**merged**, **PR handed to CI with the reviewed revision and resumption link
+recorded**, or **archived + logged in TODO.md**. Let CI handle the wait. If
+auto-merge is unavailable, record the remaining merge step on the PR.
 Sessions should apply this standard even unprompted when their work-stream
 is complete.
 
