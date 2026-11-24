@@ -72,6 +72,6 @@ test('local release covers every browser spec selected by the hosted critical sm
   }
   const releaseSpecs = new Set(specsFor('launch:check'));
   visited.clear();
-  const missing = [...new Set(specsFor('ci:browser-smoke'))].filter(spec => !releaseSpecs.has(spec));
+  const missing = [...new Set([...specsFor('ci:browser-smoke'), ...specsFor('ci:browser-smoke-journeys')])].filter(spec => !releaseSpecs.has(spec));
   assert.deepEqual(missing, [], `critical smoke specs missing from local release: ${missing.join(', ')}`);
 });

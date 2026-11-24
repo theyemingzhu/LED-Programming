@@ -20,10 +20,48 @@ assert.match(updater, /RAW_START[\s\S]*clientContentLength\(\)[\s\S]*LW_FIRMWARE
 assert.match(updater, /RAW_ABORTED[\s\S]*(?:abort|cancel)/i,
   'interrupted requests abandon the inactive update');
 assert.match(updater, /LightweaverOwnerValidation::Accepted/);
-assert.match(updater, /runtimeOwnerPairingAuthorized\(\)/,
-  'preflight/begin require a recent physical card confirmation');
-assert.match(updater, /releaseBuildId[\s\S]*ticketSha256[\s\S]*physicalConfirmationNonce/,
-  'release and physical confirmation evidence are carried in the mutation envelope');
+// 2026-11-23: no touch on the card authorises or blocks an update. What keeps
+// an unsigned or tampered image off the card is unchanged and does not depend
+// on which authority the request used.
+assert.doesNotMatch(updater, /runtimeOwnerPairingAuthorized|physicalConfirmationNonce|fresh physical confirmation/,
+  'no update step waits for a touch on the card');
+assert.match(updater, /releaseBuildId[\s\S]*ticketSha256/,
+  'release evidence is carried in the mutation envelope');
+const between = (from, to) => {
+  const start = updater.indexOf(from);
+  const end = updater.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `${from} .. ${to} present`);
+  return updater.slice(start, end);
+};
+const verify = between('bool parseAndVerifyTicket(', 'FirmwareUpdateBinding updateBinding(');
+assert.match(verify, /binding\.ticketSha256 != hexDigest\(digest\)[\s\S]{0,120}return false/,
+  'a ticket that is not the one the request names is refused');
+assert.match(verify, /!verifyPublisherSignature\(bytes, length, signature\)[\s\S]{0,120}return false/,
+  'an unsigned or wrongly signed ticket is refused');
+assert.match(verify, /compareSemver\(ticket\.firmwareVersion, LW_FIRMWARE_VERSION\) <= 0/,
+  'a downgrade or same-version ticket is refused');
+const preflight = between('void handlePreflight()', 'void handleBegin()');
+const verifiedAt = preflight.indexOf('parseAndVerifyTicket(');
+const refusedAt = preflight.indexOf('if (!verified) {');
+const acceptedAt = preflight.indexOf('g_transfer.preflight(');
+assert.ok(verifiedAt > 0 && refusedAt > verifiedAt && acceptedAt > refusedAt,
+  'preflight verifies the signed ticket and refuses before any transfer is accepted');
+assert.doesNotMatch(preflight.slice(0, refusedAt), /g_ticket\s*=/,
+  'no ticket is adopted before it is verified');
+const begin = between('void handleBegin()', 'void handleChunk()');
+assert.match(begin, /g_transfer\.phase\(\) != FirmwareUpdatePhase::Preflighted[\s\S]{0,120}return/,
+  'nothing is written to the spare slot without a verified preflight');
+const commitStart = updater.indexOf('void handleCommit()');
+assert.ok(commitStart > 0, 'commit handler present');
+const commit = updater.slice(commitStart);
+const digestAt = commit.indexOf('hexDigest(digest) != g_ticket.imageSha256');
+const readbackAt = commit.indexOf('readbackDigest != g_ticket.imageSha256');
+const bootAt = commit.indexOf('esp_ota_set_boot_partition(');
+assert.ok(digestAt > 0 && readbackAt > digestAt && bootAt > readbackAt,
+  'a tampered image is refused by digest, then by read-back, before the card may boot it');
+const physicalAuth = between('bool authorizePhysicalUpdate(', 'bool authorizeActiveUpdateCapability(');
+assert.match(physicalAuth, /validate\(capability, owner, millis\(\)\) !=\s*LightweaverOwnerValidation::Accepted \|\|\s*!exactLiveUpdateBinding\(update\)/,
+  'the owner path still demands the owner permission and the exact card, boot and project head');
 assert.match(updater, /Access-Control-Allow-Headers[\s\S]*X-Lightweaver-Capability/);
 assert.match(updater,
   /Access-Control-Allow-Headers[\s\S]*X-Lightweaver-Release-Build[\s\S]*X-Lightweaver-Ticket-Sha256/,
@@ -38,8 +76,8 @@ assert.match(updater, /revokeCapability/,
 assert.match(grant, /LW_UPDATE_GRANT_TTL_MS/);
 assert.doesNotMatch(grant, /runtimeOwnerPairingAuthorized|lightweaverOwnerCapability/,
   'software grants neither require nor create general physical owner authority');
-assert.match(updater, /authorizePhysicalUpdate[\s\S]*runtimeOwnerPairingAuthorized\(\)/,
-  'the existing physical fallback remains independently present');
+assert.match(updater, /authorizePhysicalUpdate[\s\S]*exactLiveUpdateBinding/,
+  'the owner-permission path remains independently present');
 assert.match(updater, /method\s*==\s*HTTP_POST[\s\S]*\/api\/update\/challenge/,
   'the challenge endpoint consumes the bounded POST body used by Studio');
 assert.match(updater, /handleChallenge[\s\S]*cardId[\s\S]*bootId[\s\S]*studioOrigin[\s\S]*expectedProjectHead[\s\S]*releaseBuildId[\s\S]*ticketSha256/,
