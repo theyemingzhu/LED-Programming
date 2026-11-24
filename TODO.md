@@ -23,8 +23,6 @@ _Nothing right now. Adrian approved the deliberate crash test on 2026-11-24 ("Ye
 
 In order. Inventory and log: shared note `ship-coordinator-inventory-2026-11-24.md`.
 
-- [ ] 44 abandoned branches from 2026-09-09 to 2026-11-21 were moved to `archive/` on 2026-11-24 (stash-, wip-, codex-detached-, preserved-, the 2026-11-05 codex/ and fix/ isolation series, overnight-durability-v3*, ship-510, batch-l1-510, laptop-sync). Delete them once nobody has asked for one by 2027-01-31; `git branch -r | grep archive/` lists them _(band: agent-runnable)_ _(effort: quick)_
-- [ ] 8 more branches were moved to `archive/` on 2026-11-24 after a commit-by-commit sort: stability-finish (handover brief), overnight-ship-f1719c (overnight ship log), overnight-durability-v2 and realtiming-reds (bench probes and evidence), false-failures-notes, staged-candidate-never-activated (its test lives on main as step3-activate), and fix-light-test-restart-wording/-order (FS3 by changing the card link; main fixed FS3 by wording only, on purpose). Delete with the 44 by 2027-01-31 _(band: agent-runnable)_ _(effort: quick)_
 
 ## Follow-ups
 - [ ] The real card holds a look whose id has grown into `combo-combo-…-1`, so some save path re-wraps an existing combo id. Find it and stop the growth (measured 2026-11-24, evidence in shared notes card-snapshots/pre-looktuning-2026-11-24) _(band: agent-runnable)_ _(effort: medium)_

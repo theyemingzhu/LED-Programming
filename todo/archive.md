@@ -1,5 +1,8 @@
 # Archive
 
+- [x] Delete the 56 `archive/` branches moved there on 2026-11-24 _(band: agent-runnable)_ _(effort: quick)_
+  Deleted 2026-11-24 on Adrian's word. Backup: `~/builds/backups/led-archive-branches-2026-11-24.bundle` (56 heads, verified); restore one with `git fetch <bundle> refs/remotes/origin/archive/<name>:refs/heads/<name>`.
+
 - [x] Build the 9 simpler-journeys cuts proposed in PR #450 (52 → 41 phone presses) _(band: agent-runnable)_ _(effort: deep)_ → Plan: [simpler-journeys.md](plans/simpler-journeys.md)
   Shipped 2026-11-22 as #458 (live from Studio build 2623); re-measured on main 2026-11-24; #450 closed as superseded.
 - [x] Fix and merge the Find my strips stack (#502 D11 + #497 D9 + #503 FS1 + FS3 v2) _(band: agent-runnable)_ _(effort: medium)_
