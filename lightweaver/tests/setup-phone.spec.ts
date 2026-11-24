@@ -44,6 +44,13 @@ async function openOnPhone(page: Page, status: Record<string, unknown> | null) {
   page.on('console', message => {
     if (message.type() === 'error') errors.push(message.text());
   });
+  if (!status) {
+    // No card: Studio still probes the two addresses a card answers on. The
+    // network guard refuses them, and Chrome words that refusal as a CORS error
+    // that is not a defect in the page. Answer the probes here, as a missing
+    // card would (a failed connection), instead of letting them reach the guard.
+    await page.route(/^http:\/\/(lightweaver\.local|192\.168\.4\.1)\//, route => route.abort('connectionrefused'));
+  }
   if (status) {
     await page.route('**/api/**', route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(status),
