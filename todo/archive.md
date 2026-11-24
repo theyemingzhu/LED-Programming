@@ -1,5 +1,8 @@
 # Archive
 
+- [x] Build the 9 simpler-journeys cuts proposed in PR #450 (52 → 41 phone presses) _(band: agent-runnable)_ _(effort: deep)_ → Plan: [simpler-journeys.md](plans/simpler-journeys.md)
+  Shipped 2026-11-22 as #458 (live from Studio build 2623); re-measured on main 2026-11-24; #450 closed as superseded.
+
 - [x] Run every pull request's tests on GitHub (`Branch tests`, PR #465), rebuilt on main with the two smoke halves _(band: agent-runnable)_ _(effort: medium)_
   Shipped 2026-11-24.
 
@@ -9,3 +12,6 @@
 
 - [x] Card Home leftovers: the Project row opens the Projects panel directly (today it routes to Preferences); the ready banner's firmware sentence duplicates the Card release row; Checks & recovery as a quiet fold row; `card-state-matrix.md` gains the `not-ready` and `real-card-as-found` rows _(band: agent-runnable)_ _(effort: moderate)_
   Shipped 2026-09-11 (PR #278).
+
+- [x] Shipping queue of 2026-11-24 morning: smoke split, card update 1.2.6 (#508, closing #490/#491/#505; #506 closed), Back to Layout (#510), lost-looks fix L1 (#512), Studio no-touch prompts (#509), docs PRs #513 and #460.
+  All merged by 2026-11-24 (checked by the ship coordinator against GitHub).
