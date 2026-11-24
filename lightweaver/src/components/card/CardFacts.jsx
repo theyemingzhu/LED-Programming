@@ -7,6 +7,7 @@ import { cardConnectionOptionsFor, cardLoadMethodForProtocol } from '../../lib/c
 import { isCardTransportConnected } from '../../lib/cardConnectionFlow.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../lib/powerSupplySettings.js';
 import { readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
+import { cardCrashLine, formatCardCrashDetails, parseCardCrashReport } from '../../lib/cardCrashReport.js';
 
 // Card Home's facts: the numbers an owner changes at any moment, without
 // walking a ladder. One module, two columns, and the common edits happen
@@ -65,6 +66,24 @@ function Row({ label, hint, hintTone, children, testId, last, note }) {
   );
 }
 
+function CopyCrashDetails({ text }) {
+  const [copied, setCopied] = useState('');
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied('Copied');
+    } catch {
+      setCopied('Could not copy');
+    }
+  };
+  return (
+    <div className="hh">
+      <button type="button" className="btn ghost-sm" data-testid="card-crash-copy" onClick={copy}>Copy crash details</button>
+      {copied && <span role="status" data-testid="card-crash-copied"> {copied}</span>}
+    </div>
+  );
+}
+
 function Readout({ children, dim, testId }) {
   return <span className={`lw-rv${dim ? ' is-dim' : ''}`} data-testid={testId}>{children}</span>;
 }
@@ -110,6 +129,16 @@ export function CardFacts({
   const installedBuild = Number.isSafeInteger(firmwareStatus?.installedBuildNumber)
     ? firmwareStatus.installedBuildNumber
     : (Number.isSafeInteger(cardLink?.readiness?.buildNumber) ? cardLink.readiness.buildNumber : null);
+  // The card's last crash (firmware 1.2.7+, /api/status lastCrash). A
+  // diagnosis for support, not a task: it lives in the Health row, only when
+  // a crash is recorded, never as a banner (todo/plans/crash-recorder.md).
+  const crashReport = parseCardCrashReport(cardLink?.readiness);
+  const crashLine = cardCrashLine(crashReport);
+  const crashDetails = formatCardCrashDetails(crashReport, {
+    cardId: cardLink?.card?.id || cardLink?.readiness?.cardId || '',
+    firmwareVersion: cardLink?.readiness?.firmwareVersion || '',
+    buildNumber: installedBuild,
+  });
   const releaseBuild = Number.isSafeInteger(firmwareStatus?.releaseBuildNumber) ? firmwareStatus.releaseBuildNumber : null;
   const resumeLayout = arrival?.resumeTask === 'place-lights';
   const updateAvailable = arrival?.update.available === true;
@@ -351,6 +380,8 @@ export function CardFacts({
                 )}
                 {health.note && <p role="status" className={`hh${health.setup ? '' : ' is-warn'}`}>{health.note}</p>}
                 {health.message && <p role={health.messageRole || 'status'} className="hh" data-testid="card-checks-message">{health.message}</p>}
+                {crashLine && <p className="hh" data-testid="card-crash-line">Last crash: {crashLine}</p>}
+                {crashDetails && <CopyCrashDetails text={crashDetails} />}
               </div>
               <div className="lw-fact-v">
                 {health.setup ? (

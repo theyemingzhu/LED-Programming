@@ -1,5 +1,8 @@
 # Archive
 
+- [x] Delete the 56 `archive/` branches moved there on 2026-11-24 _(band: agent-runnable)_ _(effort: quick)_
+  Deleted 2026-11-24 on Adrian's word. Backup: `~/builds/backups/led-archive-branches-2026-11-24.bundle` (56 heads, verified); restore one with `git fetch <bundle> refs/remotes/origin/archive/<name>:refs/heads/<name>`.
+
 - [x] Build the 9 simpler-journeys cuts proposed in PR #450 (52 → 41 phone presses) _(band: agent-runnable)_ _(effort: deep)_ → Plan: [simpler-journeys.md](plans/simpler-journeys.md)
   Shipped 2026-11-22 as #458 (live from Studio build 2623); re-measured on main 2026-11-24; #450 closed as superseded.
 - [x] Fix and merge the Find my strips stack (#502 D11 + #497 D9 + #503 FS1 + FS3 v2) _(band: agent-runnable)_ _(effort: medium)_
@@ -31,3 +34,5 @@
 - [x] FS2: Save after Find my strips on a card still settling after its restart now reaches the light test. Fixed by the D11 save commits (89d02801, 338f0c2d, 3cc0ae21); both Real-timing walks in lightweaver/tests/find-strips-combined.spec.ts passed 8 of 8 on 2026-11-24 and now run in ci:browser-smoke.
 - [x] The `combo-combo-combo-1780274480570-1` look id on the real card is not growing any more: it was created around 2026-05-31 and re-wrapped by builds before the 2026-09-28 prefix fix (`importedLookId`), and it was identical in the 2026-11-23 and 2026-11-24 card snapshots. A unit test now runs that exact id through three open-and-save round trips. Left as is on purpose: renaming it would save about 12 bytes but would have to rewrite every playlist, startup and dial reference to it (2026-11-24).
 - [x] A blank card's first save no longer waits 45 s for a restart that never comes, then flashes "Not connected": BlankCardFirstInstall.jsx now waits only when the card's reply says it is restarting, as CardPushControl does. 'not connected' is back in WORDING_WAY1; way in 1 and the blank-card save specs passed 23 of 24 (the one miss was finding a strip in Real-timing, before any save).
+- [x] FS1: Card Home no longer flashes "Needs attention" during the protected light test after Save: the lifecycle reads the card's `wiringProbation` flag (src/lib/cardLifecycle.js). The allowance in lightweaver/tests/find-strips-combined.spec.ts is gone; way in 2 passed 12 of 12 with no failure wording on 2026-11-24.
+- [x] Card Home's Health row shows the card's last crash in one plain sentence, only when one is recorded, with Copy crash details (card, firmware build, reset reason, task, memory, trace addresses). Reads `lastCrash` from /api/status; tests in lightweaver/tests/card-home-crash.spec.ts (PR lane) and src/lib/cardCrashReport.test.js.

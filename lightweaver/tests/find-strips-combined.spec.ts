@@ -205,15 +205,12 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
         await confirm.click();
         await expect.poll(() => ({ pixels: card.state.pixels, provisional: card.state.provisionalSetup }), { timeout: 60_000 })
           .toEqual({ pixels: 41, provisional: false });
-        // Known defect FS1 (TODO.md): during the protected light test the card
-        // runs the candidate on probation and reports runtimePhase
-        // 'recovering' (LightweaverProvisioningPolicy.h provisioningPhaseForLoad);
-        // Card Home's lifecycle labels that "Needs attention" for about a second.
-        // Named here, not hidden: every other wording still fails the test.
-        const seen = await falseFailures(page);
-        const fs1 = seen.filter(text => /needs attention/i.test(text));
-        if (fs1.length) test.info().annotations.push({ type: 'known-defect', description: `FS1: ${fs1.length} "Needs attention" during the light test` });
-        expect(seen.filter(text => !/needs attention/i.test(text))).toEqual([]);
+        // FS1: during the protected light test the card runs the candidate on
+        // probation and reports runtimePhase 'recovering'; Card Home used to
+        // label that "Needs attention" for about a second. The lifecycle now
+        // reads the card's wiringProbation flag (cardLifecycle.js), so no
+        // failure wording at all is allowed here.
+        expect(await falseFailures(page)).toEqual([]);
       });
 
       if (timing === 'fast') {
