@@ -35,7 +35,9 @@ const DESKTOP = { width: 1280, height: 860, isMobile: false, hasTouch: false };
 // moves to the card's Wi-Fi address after the save. Measured on this branch;
 // the link is not part of this change. Way in 2 keeps the full list.
 const WORDING = [...FALSE_FAILURE_WORDING, 'could not', 'failed'];
-const WORDING_WAY1 = WORDING.filter(phrase => phrase !== 'not connected');
+// Way in 1 once allowed "not connected": a blank card's first save waited 45 s
+// for a restart that never came (BlankCardFirstInstall.jsx). Fixed 2026-11-24.
+const WORDING_WAY1 = WORDING;
 
 async function linkConnected(page: Page) {
   return page.evaluate(async () => {

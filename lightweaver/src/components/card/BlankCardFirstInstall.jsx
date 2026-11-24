@@ -73,7 +73,7 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
         const fromBootId = link.validatedBootId || link.readiness?.bootId || '';
         noteCardRestartPlanned();
         try {
-          await pushConfigToCard(prepared.runtimePackage, {
+          const pushed = await pushConfigToCard(prepared.runtimePackage, {
             host: cleanHost,
             transport: transport || link.transport,
             autoDiscover: false,
@@ -82,7 +82,14 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
             allowLayoutChange: true,
             factoryBlank: true,
           });
-          setState({ status: 'pending', message: 'Restarting the card…' });
+          // A blank card's first save restarts the card only when the reply
+          // says so (reboot: 'if-needed'), the same rule CardPushControl
+          // follows. Waiting for a restart that never came held the card link
+          // on "restarting" for the full 45 s and then flashed "Not connected"
+          // (find-strips-combined way in 1, Fast).
+          const restarting = pushed?.rebooting === true || pushed?.requiresReboot === true;
+          if (!restarting) noteCardRestartSettled();
+          setState({ status: 'pending', message: restarting ? 'Restarting the card…' : 'Checking the card…' });
           const verification = await waitForCardDeploymentVerification(prepared, {
             // Project evidence joined with the card's status, as the ordinary
             // install reads it (CardPushControl readReadyDeploymentEvidence):
@@ -93,8 +100,8 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
               const [project, status] = await Promise.all([readCardProjectEvidence(route), readCardStatusEnvelope(route)]);
               return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
             },
-            restartWaitMs: CARD_RESTART_WAIT_MS,
-            restartFromBootId: fromBootId,
+            restartWaitMs: restarting ? CARD_RESTART_WAIT_MS : 0,
+            restartFromBootId: restarting ? fromBootId : '',
             requireReady: true,
           });
           markProjectInstalled({
