@@ -2335,6 +2335,11 @@ function writeSectionDisplayOrder(projectId, ids) {
     const saveAnywayRef = useRef(false);
     // L1: a save that would remove looks from the card stops here and asks.
     const [lookLoss, setLookLoss] = useState(null);
+    // The outcome of "Keep the card's looks", shown where the banner was. It
+    // is its own state, not `status`: changing the project's looks re-runs the
+    // screen's look effects, which clear `status`, and the confirmation
+    // vanished the moment it was set (L1, GitHub run 45270603214).
+    const [lookKeepOutcome, setLookKeepOutcome] = useState(null);
     const allowLookRemovalRef = useRef(false);
     const openCardProject = useOpenCardProject();
     // Keep the card's looks: re-read them from the card and add the ones this
@@ -2347,19 +2352,18 @@ function writeSectionDisplayOrder(projectId, ids) {
         const added = (merged.looks?.length || 0) - (standaloneController?.looks?.length || 0);
         setStandaloneController(merged);
         setLookLoss(null);
-        setStatusKind('ok');
-        setStatus(added > 0
+        setLookKeepOutcome({ kind: 'ok', text: added > 0
           ? `Kept the card's looks: ${added} added back to your project. Save to card again to send them.`
-          : 'Your project already has the card\'s looks. Save to card again.');
+          : 'Your project already has the card\'s looks. Save to card again.' });
       } catch (error) {
-        setStatusKind('err');
-        setStatus(`Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.`);
+        setLookKeepOutcome({ kind: 'err', text: `Studio could not read the card's looks (${error?.message || 'no answer'}). Nothing was changed.` });
       }
     };
     const savePreviewToCard = async () => {
       if (installPreparing) return;
       if (staleCardConflict) setStaleCardConflict(false);
       if (lookLoss) setLookLoss(null);
+      if (lookKeepOutcome) setLookKeepOutcome(null);
       setSavedAt(0);
       setInstallPreparing(true);
       // While the save checks a slow card, the footer does not call it gone.
@@ -3920,6 +3924,11 @@ function writeSectionDisplayOrder(projectId, ids) {
                       <button type="button" className="btn primary" data-testid="look-loss-keep" onClick={() => void keepCardLooks()}>Keep the card&rsquo;s looks</button>
                       <button type="button" className="btn" data-testid="look-loss-replace" onClick={() => { allowLookRemovalRef.current = true; setLookLoss(null); savePreviewToCard(); }}>Replace anyway</button>
                     </div>
+                  </div>
+                }
+                {lookKeepOutcome && !lookLoss &&
+                  <div className="lw-setup-banner" role={lookKeepOutcome.kind === 'err' ? 'alert' : 'status'} data-testid="look-loss-kept">
+                    <p>{lookKeepOutcome.text}</p>
                   </div>
                 }
                 {patternCardGate &&
