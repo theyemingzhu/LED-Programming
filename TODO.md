@@ -24,7 +24,6 @@ In order. The shipper's full log is `todo/plans/overnight-ship-2026-11-19.md` on
 - [ ] Merge Studio no-touch prompts (PR #509) after 1.2.6 is published, since only 1.2.6 cards report `capabilities.ownerNoTouch` _(band: agent-runnable)_ _(effort: quick)_
 - [ ] Fix and merge the Find my strips stack (`claude/find-strips-stack` e2aa2637, merged with main 2824 = #502 D11 + #497 D9 + #503 FS1 + FS3 v2): step3-activate is fixed (a spec race, 5/5 twice); still red, deterministic 2/2 locally: `interruption-slow-stage.spec.ts:39` steady-13s, the light test never opens after Find my strips Save on a card answering in 13 s (line 79). That spec is #502's own proof, so resume by tracing the save on that profile; then close the three single PRs _(band: agent-runnable)_ _(effort: medium)_
 - [ ] Merge the docs-only PRs #513 (crash recorder to-do) and #460 (practice card resume note) with the next batch _(band: agent-runnable)_ _(effort: quick)_
-- [ ] Pick which of the 9 proposed cuts in PR #450 (simpler journeys, 52 → 41 phone presses) to build; the PR conflicts with main and is a proposal, not code to merge _(band: you-required)_ _(effort: quick)_
 - [ ] Delete the merged or superseded branches after the queue lands: `claude/batch-l1-510`, `claude/ship-510`, `claude/overnight-durability-v2`, `-v3-*`, `codex/lightweaver-isolation-delivery-20261105` _(band: agent-runnable)_ _(effort: quick)_
 
 ## Follow-ups
