@@ -17,7 +17,7 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 Only these wait on you. Everything else below an agent can do.
 
-- [ ] Say yes or no to crashing your card on purpose about four times with a throwaway test build, to prove the crash recorder actually records a crash. Without it 1.2.7 ships with that part untested on a real card _(band: you-required)_ _(effort: quick)_
+_Nothing right now. Adrian approved the deliberate crash test on 2026-11-24 ("Yes, run the crash test"); the bench session is running it._
 
 ## Shipping queue (open PRs, re-sorted 2026-11-24 by the ship coordinator)
 
