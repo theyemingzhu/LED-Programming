@@ -1,7 +1,8 @@
 name: Tests
 
-# One exact merged-source gate. Pull-request updates are proved locally instead
-# of spending the shared Actions allowance on every intermediate commit. A
+# One exact merged-source gate. Pull-request updates are proved before merge by
+# branch-tests.yml, which copies the non-firmware lanes below; keep the two in
+# step (scripts/production-job-consistency.test.mjs fails when they drift). A
 # repository-owned classifier selects bounded lanes. GitHub's workflow result
 # already fails when any selected lane fails, so no runner-only aggregate job
 # is needed.

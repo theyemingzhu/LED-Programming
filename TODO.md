@@ -23,7 +23,6 @@ In order. The shipper's full log is `todo/plans/overnight-ship-2026-11-19.md` on
 - [ ] Fix and merge the lost-looks fix L1 (PR #512, head 9ebf0dd4), the live owner data loss: `save-keeps-card-looks` still never shows "Kept the card's looks" after Keep, likely hidden by the fix-3 notice suppression _(band: agent-runnable)_ _(effort: medium)_
 - [ ] Merge Studio no-touch prompts (PR #509) after 1.2.6 is published, since only 1.2.6 cards report `capabilities.ownerNoTouch` _(band: agent-runnable)_ _(effort: quick)_
 - [ ] Merge the docs-only PRs #513 (crash recorder to-do) and #460 (practice card resume note) with the next batch _(band: agent-runnable)_ _(effort: quick)_
-- [ ] Decide on PR #465 (run every PR's tests on GitHub): its browser smoke is red and it now conflicts with the smoke split _(band: agent-runnable)_ _(effort: medium)_
 - [ ] Pick which of the 9 proposed cuts in PR #450 (simpler journeys, 52 → 41 phone presses) to build; the PR conflicts with main and is a proposal, not code to merge _(band: you-required)_ _(effort: quick)_
 - [ ] Delete the merged or superseded branches after the queue lands: `claude/batch-l1-510`, `claude/ship-510`, `claude/overnight-durability-v2`, `-v3-*`, `codex/lightweaver-isolation-delivery-20261105` _(band: agent-runnable)_ _(effort: quick)_
 
