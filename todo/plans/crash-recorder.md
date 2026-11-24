@@ -1,6 +1,6 @@
 # Crash recorder: a crash that explains itself
 
-> **Superseded 2026-11-24.** The recorder that ships is PR #522 (branch `claude/crash-recorder`, released in 1.2.7). It reports a `crash` object and `GET /api/crash-log`, not the `lastCrash` field below, and the `crash-recorder-codec` patch and Studio parser described here were dropped. Its design and bench steps are in the shared note `crash-recorder.md`. This page is kept for the problem statement and the reasoning.
+> **Updated 2026-11-24.** The firmware that ships is PR #522 (branch `claude/crash-recorder`, released in 1.2.7), not the `crash-recorder-codec` patch below, which was dropped. It reports `lastCrash` on /api/status in the shape below, read by `lightweaver/src/lib/cardCrashReport.js`, and also serves the last three records on `GET /api/crash-log`. Bench steps are in the shared note `crash-recorder.md`.
 
 ## What is wrong today
 
