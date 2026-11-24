@@ -366,7 +366,7 @@ export default function PatternLabExport({
           <p>Verified recording media is kept in this browser for card installation. If its source or artwork changes, record it again before installing.</p>
           <ul className="plab-recordings-list">{sequenceAssets.map(asset => <li key={asset.id}>
             <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames<RecordedSequenceChoice asset={asset} allowRebake /></span>{' '}
-            <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>{asset.source?.kind === 'expression-scene' ? 'Edit scene' : 'Edit in Lab'}</button>
+            <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>{asset.source?.kind === 'expression-scene' ? 'Edit scene' : asset.source?.kind === 'placed-look' ? 'Edit in Layout' : 'Edit in Lab'}</button>
           </li>)}</ul>
         </section>}
       </div>

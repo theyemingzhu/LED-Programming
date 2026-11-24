@@ -1633,6 +1633,15 @@ export default function PatternLabScreen({
     const projectId = project.projectId;
     const priorDraft = draft;
     try {
+      // A placed look opens back on the Layout artwork, linked to this
+      // recording so "Save changes" updates it.
+      if (asset?.source?.kind === 'placed-look') {
+        const { setPlacedLookPreview } = await import('../components/layout/canvas/mirrorEcho.js');
+        const { normalizePlacedLook } = await import('../lib/placedLook.js');
+        setPlacedLookPreview(normalizePlacedLook(asset.source.payload), { savedAs: { id: asset.id, label: asset.label } });
+        window.location.hash = '#screen=layout';
+        return;
+      }
       if (asset?.source?.kind === 'expression-scene') {
         const reopened = await resolveFlowRecordingScene(asset, projectRef.current.expressionScenes);
         if (request !== openSequenceRequestRef.current || latestProjectIdRef.current !== projectId) return;

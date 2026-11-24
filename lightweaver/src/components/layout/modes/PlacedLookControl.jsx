@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   PLACED_LOOK_MAX_BYTES,
   PLACED_LOOK_PALETTES,
-  bakePlacedLook,
   estimatePlacedLookBake,
   normalizePlacedLook,
   placedLookOnCentre,
 } from '../../../lib/placedLook.js';
 import { stripsBoundsCentre } from '../../../lib/mirrorPartners.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
-import { setPlacedLookPreview, usePlacedLookPreview, useSymmetryFocus } from '../canvas/mirrorEcho.js';
+import { setPlacedLookPreview, setPlacedLookSavedAs, usePlacedLookPreview, usePlacedLookSavedAs, useSymmetryFocus } from '../canvas/mirrorEcho.js';
+import { recordPlacedLook } from '../../../lib/placedLookRecording.js';
+import { applyRecordedSequenceAsset, createRecordedSequenceAsset } from '../../../lib/recordedSequenceAsset.js';
+import { useProject } from '../../../state/ProjectContext.jsx';
 import '../placed-look.css';
 
 const RECORD_SECONDS = 20;
@@ -20,7 +22,7 @@ const LIMIT_MB = PLACED_LOOK_MAX_BYTES / (1024 * 1024);
 const sameColours = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // What recording the look came to, in plain words. Nothing is sent anywhere.
-function recordLook(look, strips, compiledWiring, symmetry) {
+function checkLook(look, compiledWiring, symmetry) {
   if (!compiledWiring?.ok) {
     return { state: 'blocked', text: 'Finish the wiring in Wire first: a recording follows the order the lights are wired in.' };
   }
@@ -34,16 +36,20 @@ function recordLook(look, strips, compiledWiring, symmetry) {
         text: `A ${seconds(estimate.seconds)} second loop for these ${lights} would be ${megabytes(estimate.totalBytes)} MB, over the ${LIMIT_MB} MB a look can be. A faster look loops sooner and takes less room.`,
       };
     }
-    const bake = bakePlacedLook(look, strips, compiledWiring, options);
-    const length = bake.frameCount === 1
+    const length = estimate.frameCount === 1
       ? `This look does not move, so one picture is enough for these ${lights}`
-      : `Recorded a ${seconds(bake.seconds)} second loop for these ${lights}`;
-    return {
-      state: 'done', bake, bytes: bake.byteLength,
-      text: `${length}: ${megabytes(bake.byteLength)} MB. That fits: a look can be up to ${LIMIT_MB} MB. It has not gone to the card, and it is kept only while Studio stays open.`,
-    };
+      : `A ${seconds(estimate.seconds)} second loop for these ${lights}`;
+    return { state: 'fits', length };
   } catch (error) {
     return { state: 'blocked', text: error?.message || 'This look could not be recorded.' };
+  }
+}
+
+function nextLookName(assets = []) {
+  const used = new Set((assets || []).map(asset => asset?.label));
+  for (let index = 1; ; index += 1) {
+    const name = `Placed look ${index}`;
+    if (!used.has(name)) return name;
   }
 }
 
@@ -63,17 +69,21 @@ function Dial({ id, label, min, max, step = 1, value, onChange }) {
 export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compiledWiring = null, artworkCentre = null }) {
   const look = usePlacedLookPreview();
   const symmetryFocus = useSymmetryFocus();
+  const { standaloneController, setStandaloneController } = useProject();
   const [recording, setRecording] = useState(null);
   const recordedFor = useRef(null);
+  // The recording this try-out was last saved as (or opened from): saving
+  // again updates it.
+  const savedAs = usePlacedLookSavedAs();
   const shown = useMemo(() => strips.filter(strip => !hidden[strip.id]), [strips, hidden]);
   const set = patch => setPlacedLookPreview(normalizePlacedLook({ ...look, ...patch }));
   // A recording is of one exact look: any change makes it out of date.
   useEffect(() => {
-    if (recording?.state === 'done' && recordedFor.current !== look) {
-      setRecording(look ? { state: 'stale', text: 'Changed since the last recording. Record again to bring it up to date.' } : null);
+    if (recording?.state === 'saved' && recordedFor.current !== look) {
+      setRecording(look ? { state: 'stale', text: `Changed since you saved “${savedAs?.label}”. Save again to update it.` } : null);
     }
     if (!look && recording) setRecording(null);
-  }, [look, recording]);
+  }, [look, recording, savedAs]);
   const centre = () => {
     if (symmetryFocus?.centre) return symmetryFocus.centre;
     if (symmetry) {
@@ -84,6 +94,31 @@ export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compil
     return stripsBoundsCentre(shown);
   };
   const sideCount = symmetry?.sides?.length || 0;
+  const save = async () => {
+    recordedFor.current = look;
+    const checked = checkLook(look, compiledWiring, symmetry);
+    if (checked.state !== 'fits') { setRecording(checked); return; }
+    setRecording({ state: 'saving', text: 'Recording and saving this look…' });
+    try {
+      const controller = standaloneController || {};
+      const replacing = savedAs
+        && (controller.sequenceAssets || []).some(asset => asset?.id === savedAs.id) ? savedAs : null;
+      const label = replacing?.label || nextLookName(controller.sequenceAssets);
+      const bakeResult = await recordPlacedLook({ look, strips, compiledWiring, symmetry });
+      const result = await createRecordedSequenceAsset({
+        kind: 'placed-look', bakeResult, controller, label, replaceId: replacing?.id || '',
+      });
+      setStandaloneController(await applyRecordedSequenceAsset(controller, result));
+      setPlacedLookSavedAs({ id: result.asset.id, label: result.asset.label });
+      if (recordedFor.current !== look) return;
+      setRecording({
+        state: 'saved', bytes: result.asset.byteLength,
+        text: `${replacing ? 'Updated' : 'Saved as'} “${result.asset.label}” in this project's recordings: ${checked.length.charAt(0).toLowerCase()}${checked.length.slice(1)}, ${megabytes(result.asset.byteLength)} MB. To play it on the card, add it to the Playlist.`,
+      });
+    } catch (error) {
+      setRecording({ state: 'blocked', text: error?.message || 'This look could not be saved.' });
+    }
+  };
   return (
     <section className="la-placed" data-testid="layout-placed-look" aria-label="Placed look">
       <span className="la-symmetry-k" id="layout-placed-look-label">Placed look</span>
@@ -99,7 +134,7 @@ export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compil
       {look && (
         <div className="la-placed-body">
           <p className="la-symmetry-note" data-testid="placed-look-session-note">
-            Drag the frame on the artwork to move it, or a corner to size it. This is a try-out: it is not saved with the project yet.
+            Drag the frame on the artwork to move it, or a corner to size it. It is a try-out until you save it as a look.
           </p>
           <div className="la-placed-field">
             <span className="la-symmetry-k" id="placed-look-mode-label">This look moves as</span>
@@ -152,13 +187,11 @@ export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compil
           </div>
           <div className="la-placed-record">
             <button type="button" className="btn" data-testid="placed-look-record"
-                    onClick={() => {
-                      recordedFor.current = look;
-                      setRecording(recordLook(look, strips, compiledWiring, symmetry));
-                    }}>Record this look</button>
+                    disabled={recording?.state === 'saving'}
+                    onClick={() => { void save(); }}>{savedAs ? 'Save changes' : 'Save as a look'}</button>
             <p className="la-symmetry-note la-placed-record-note" role="status" data-testid="placed-look-record-note"
                data-state={recording?.state || 'idle'} data-bytes={recording?.bytes ?? undefined}>
-              {recording?.text || 'The card cannot work this out itself, so Studio records it once as a loop. Recording here only measures it; nothing is sent to the card.'}
+              {recording?.text || 'The card cannot work this out itself, so Studio records it once as a loop and keeps it with the project. Nothing is sent to the card until you add it to the Playlist.'}
             </p>
           </div>
         </div>
