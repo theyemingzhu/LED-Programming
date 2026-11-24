@@ -1,0 +1,297 @@
+name: Branch tests
+
+# Before-merge proof for every pull request, on GitHub's own machines. This
+# repository is public, so standard GitHub-hosted runners cost nothing here,
+# and the heavy browser lanes no longer have to run on a developer laptop
+# where several agents testing at once overload it and produce false failures.
+#
+# The job bodies below are copies of the same lanes in test.yml (the merged-
+# source gate). scripts/production-job-consistency.test.mjs fails if a copy
+# drifts. Firmware compile and artifact lanes stay after merge only.
+#
+# The name must never be "Tests": deploy-site.yml and build-firmware.yml start
+# from a completed "Tests" run, and a pull-request run must never deploy.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'lightweaver/**'
+      - 'led-art-mapper/**'
+      - 'packages/installer-core/**'
+      - 'firmware/**'
+      - 'release/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+# Only the newest push of a pull request is worth testing.
+concurrency:
+  group: branch-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      source: ${{ steps.lanes.outputs.source }}
+      browser: ${{ steps.lanes.outputs.browser }}
+      cloud: ${{ steps.lanes.outputs.cloud }}
+      production: ${{ steps.lanes.outputs.production }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Select exact changed-path lanes
+        id: lanes
+        env:
+          CI_ACTOR: ${{ github.actor }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$CI_ACTOR" = "github-actions[bot]" ] \
+            && [ "$(git log -1 --format=%s "$CI_HEAD_SHA")" = "CI: publish signed Lightweaver firmware release" ]; then
+            export CI_GENERATED_RELEASE=true
+          fi
+          # Studio-only changes whose card-embedded bundle provably did not
+          # change skip the firmware lane (and its VERSION-bump demand). The
+          # check is fail-closed: anything short of a byte-level match prints
+          # "false" and classification behaves exactly as before.
+          CI_CARD_BUNDLE_UNCHANGED="$(node scripts/ci-card-bundle-check.mjs --print)"
+          export CI_CARD_BUNDLE_UNCHANGED
+          node scripts/ci-changed-lanes.mjs
+
+  source:
+    needs: classify
+    if: needs.classify.outputs.source == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            lightweaver/package-lock.json
+            led-art-mapper/app/package-lock.json
+      - name: Install pinned source dependencies
+        run: |
+          npm ci --prefix lightweaver
+          node lightweaver/scripts/ensure-rollup-native.mjs
+          npm ci --prefix led-art-mapper/app
+          npx --prefix lightweaver playwright install --with-deps chromium
+      - name: Apply D1 migrations to isolated local CI state
+        working-directory: lightweaver
+        run: npm exec -- wrangler d1 migrations apply PROJECTS_DB --config wrangler.local.toml --local --persist-to .wrangler/ci-state
+      - name: Run bounded source and build gate
+        working-directory: lightweaver
+        run: npm run ci:source-build
+
+  browser:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-24.04
+    # The smoke set grew past 30 min on GitHub runners (27.0, 28.6, then
+    # two cancels at 30:00 on f0feaa9f). Raised to 45 on 2026-11-22.
+    timeout-minutes: 45
+    name: browser smoke
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history: the build number is the total commit count, and a
+          # shallow clone would silently publish "build 1".
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - name: Run zone-identity and card-section node specs
+        working-directory: lightweaver
+        run: npm run ci:pr-lane-node-specs
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run critical-workflow browser smoke
+        working-directory: lightweaver
+        run: npm run ci:browser-smoke
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser_journeys:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-24.04
+    # Split from browser on 2026-11-24: one job hit the 45-min cap (45:15 on
+    # run 45290952413). The journey chunk now runs beside it in parallel.
+    timeout-minutes: 45
+    name: browser smoke (journeys)
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history: the build number is the total commit count, and a
+          # shallow clone would silently publish "build 1".
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run journey browser smoke
+        working-directory: lightweaver
+        run: npm run ci:browser-smoke-journeys
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser_windowless:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    name: windowless browser
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run windowless production preview
+        working-directory: lightweaver
+        run: npm run test:windowless:browser
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser_firmware_update:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    name: preserving firmware update browser
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run preserving firmware update
+        working-directory: lightweaver
+        run: npm run test:firmware-update:browser
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  cloud:
+    needs: classify
+    if: needs.classify.outputs.cloud == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history: the build number is the total commit count, and a
+          # shallow clone would silently publish "build 1".
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - run: npm run ci:cloud
+        working-directory: lightweaver
+
+  production:
+    needs: classify
+    if: needs.classify.outputs.production == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history: the build number is the total commit count, and a
+          # shallow clone would silently publish "build 1".
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - run: npm run ci:production
+        working-directory: lightweaver

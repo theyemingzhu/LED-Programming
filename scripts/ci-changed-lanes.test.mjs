@@ -389,6 +389,14 @@ test('site publishing control changes retain all validation without minting firm
   assert.equal(firmwareBundleOnly([...paths, '.github/workflows/build-firmware.yml']), false);
 });
 
+test('before-merge workflow changes retain all checks without requiring firmware signing', () => {
+  const workflow = '.github/workflows/branch-tests.yml';
+  assert.deepEqual(classifyChangedPaths([workflow]), allLanes);
+  assert.equal(firmwareBundleOnly([workflow]), true);
+  assert.equal(firmwareBundleOnly([workflow, '.github/workflows/test.yml']), true);
+  assert.equal(firmwareBundleOnly([workflow, 'firmware/lightweaver-controller/VERSION']), false);
+});
+
 test('exhaustive workflow changes retain all checks without requiring firmware signing', () => {
   const workflow = '.github/workflows/exhaustive.yml';
   const paths = [workflow, 'lightweaver/tests/layout-selected-strip-editor.spec.ts'];
