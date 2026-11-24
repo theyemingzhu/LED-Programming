@@ -71,3 +71,33 @@ export function describeCardCrash(report) {
   const hours = (crash.uptimeMs / 3600000).toFixed(2);
   return `The card ${what} while ${doing}, after ${hours} hours running. It has done this ${crash.sequence} time${crash.sequence === 1 ? '' : 's'}.`;
 }
+
+// The Health row's line: the plain sentence for a recorded crash, a short
+// admission for a record Studio cannot read, nothing otherwise.
+export function cardCrashLine(report) {
+  if (report?.state === 'recorded') return describeCardCrash(report);
+  if (report?.state === 'unreadable') return 'The card reports a crash record Studio cannot read.';
+  return '';
+}
+
+// What "Copy crash details" puts on the clipboard: enough for support to
+// decode the trace addresses against the firmware.elf of the named build.
+export function formatCardCrashDetails(report, { cardId = '', firmwareVersion = '', buildNumber = null } = {}) {
+  if (report?.state !== 'recorded') return '';
+  const { crash } = report;
+  const build = Number.isInteger(buildNumber) && buildNumber > 0 ? String(buildNumber) : 'unknown';
+  return [
+    'Lightweaver card crash record',
+    describeCardCrash(report),
+    `Card: ${cardId || 'unknown'}`,
+    `Firmware: ${firmwareVersion || 'unknown'} (build ${build})`,
+    `Crash number: ${crash.sequence}`,
+    `Reset reason: ${crash.resetReason} (${crash.reason})`,
+    `Doing: ${crash.phase}`,
+    `Task: ${crash.task || 'unknown'}`,
+    `Uptime: ${crash.uptimeMs} ms`,
+    `Free memory: ${crash.freeHeap} bytes (lowest ${crash.minFreeHeap})`,
+    `Program address: ${crash.pc}`,
+    `Backtrace: ${crash.hasBacktrace ? crash.backtrace.join(' ') : 'none recorded'}`,
+  ].join('\n');
+}

@@ -370,6 +370,10 @@ function statusBody(state: CardSimulator['state']) {
     ok: true,
     errorCode: 0,
     resetReason: 3,
+    // Opt-in (state.lastCrash), like symmetrySides: firmware 1.2.7+ reports
+    // the newest crash record here (null = never crashed); fixtures that
+    // predate it keep today's shape.
+    ...((state as { lastCrash?: unknown }).lastCrash !== undefined ? { lastCrash: (state as { lastCrash?: unknown }).lastCrash } : {}),
     projectId: state.projectId,
     projectRevision: state.projectRevision,
     projectFingerprint: state.projectFingerprint,
