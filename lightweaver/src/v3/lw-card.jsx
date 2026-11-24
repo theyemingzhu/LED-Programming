@@ -409,6 +409,21 @@ function CardHomePanels({
     case 'setup-required':
       presentation = presentations.blank();
       break;
+    // Studio's own light test (FS1, FS3): the card is running or restarting
+    // into the tested wiring. Neither is "not connected".
+    case 'wiring-test':
+      presentation = {
+        tone: 'connecting',
+        redundant: true,
+        message: 'Testing lights. Use the final setup controls above to confirm or restore them.',
+      };
+      break;
+    case 'wiring-test-restart':
+      presentation = {
+        tone: 'connecting',
+        message: 'The card is restarting for the light test. This takes about 15 seconds.',
+      };
+      break;
     case 'confirming':
       presentation = presentations.checkingEvidence();
       break;

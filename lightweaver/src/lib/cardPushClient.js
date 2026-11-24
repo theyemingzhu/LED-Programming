@@ -171,6 +171,11 @@ export function cardConfigServerErrorMessage(status) {
 // (todo/plans/false-failures.md, F-C1). Was 3 s per try, which failed every
 // try against a card answering in 3.4 s.
 export const CARD_READ_RETRY = Object.freeze({ tries: 3, intervalMs: 1000, timeoutMs: 6000 });
+// A card settling after the restart that follows a Find my strips Save answers
+// in ~13–14 s about half the time (D11, real card). A save to such a card
+// passes this as `readTimeoutMs`, and every read inside the save honours it.
+export const CARD_SLOW_READ_MS = 15000;
+const saveReadMs = (options = {}) => Number(options.readTimeoutMs) || CARD_READ_RETRY.timeoutMs;
 
 export function isCardSilenceError(error) {
   if (!error) return false;
@@ -517,7 +522,7 @@ async function cardNeedsConfigReboot(host, runtimePackage, options = {}) {
 }
 
 async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
-  const timeoutMs = Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs);
+  const timeoutMs = Math.min(options.timeoutMs || 6000, saveReadMs(options));
   const transport = selectedTransport(options);
   let unresolvedName = false;
   const readOnce = () => (transport === 'bridge'
@@ -606,9 +611,9 @@ function normalizeConfigPushError(host, err, transport = '') {
 // success; throws CardPushError on failure with a typed reason.
 async function readCardLooksForGuard(host, { useBridge, options }) {
   if (typeof options.readCardPatternsImpl === 'function') return options.readCardPatternsImpl({ host });
-  if (useBridge) return bridgeRequest('patterns', {}, { host, timeoutMs: Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs) }, options);
+  if (useBridge) return bridgeRequest('patterns', {}, { host, timeoutMs: Math.min(options.timeoutMs || 6000, saveReadMs(options)) }, options);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CARD_READ_RETRY.timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), saveReadMs(options));
   try {
     const response = await (options.fetchImpl || globalThis.fetch)(`${cardHostToUrl(host)}/api/patterns`, { cache: 'no-store', signal: ctrl.signal });
     return response.ok ? await response.json() : null;
@@ -660,7 +665,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
       // the save is refused as "Nothing was sent".
       exactIdentity = await withCardReadRetry(() => guardDirectCardMutation(host, {
         fetchImpl: options.fetchImpl,
-        timeoutMs: Math.min(options.timeoutMs || 6000, CARD_READ_RETRY.timeoutMs),
+        timeoutMs: Math.min(options.timeoutMs || 6000, saveReadMs(options)),
       }), {
         tries: options.readTries ?? CARD_READ_RETRY.tries,
         intervalMs: options.readRetryMs ?? CARD_READ_RETRY.intervalMs,

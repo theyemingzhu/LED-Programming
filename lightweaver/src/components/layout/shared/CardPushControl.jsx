@@ -15,6 +15,7 @@ import {
   cardConfigStructuralWiringChangedFromInfo,
   withCardReadRetry,
   CARD_READ_RETRY,
+  CARD_SLOW_READ_MS,
 } from '../../../lib/cardPushClient.js';
 import {
   prepareCardDeployment,
@@ -44,6 +45,7 @@ import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperatio
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
 import { clearCardProject } from '../../../lib/cardClearProject.js';
 import { BENCH_PROJECT_ID } from '../../../lib/benchConfig.js';
+import { setLightTestActivity } from '../../../lib/lightTestActivity.js';
 import { mergeCardLooksIntoController, readCardLooksController } from '../../../lib/lookLossGuard.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
@@ -292,6 +294,20 @@ export function CardPushControl({
     setCardHostname(cleanHost);
     setPushHost(getCardHostname());
     let attempt = retryAttempt;
+    // The Save after Find my strips meets a card settling after the restart
+    // that follows it: the real card answers in ~13–14 s about half the time
+    // (D11). At 6 s a read every reply missed, so the save stopped before
+    // sending ("did not return independent firmware and project evidence").
+    // While the card holds the temporary setup every read in this save waits
+    // 15 s; any other save keeps the 6 s reads (F-C1).
+    const slowCard = retryAttempt?.readMs === CARD_SLOW_READ_MS || (() => {
+      const readiness = getCardLinkState().readiness || {};
+      return readiness.provisionalSetup === true || String(readiness.projectId || readiness.piece?.id || '') === BENCH_PROJECT_ID;
+    })();
+    const readMs = slowCard ? CARD_SLOW_READ_MS : CARD_READ_RETRY.timeoutMs;
+    const onSlowRetry = () => setPushStatus(slowCard
+      ? 'Checking the card: it is answering slowly. Studio is still waiting for it.'
+      : 'Checking card…');
     setWiringTestState('idle');
     setWiringCandidate(null);
     setCandidateConflict(null);
@@ -324,10 +340,10 @@ export function CardPushControl({
           // A busy card answers in ~3.4 s and can go quiet 4–12 s: each read
           // gets 6 s and the set is asked up to three times (F-C1).
           [before, status, wiringStatus] = await withCardReadRetry(() => Promise.all([
-            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }),
-          ]), { onRetry: () => setPushStatus('Checking card…') });
+            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport, timeoutMs: readMs }),
+          ]), { onRetry: onSlowRetry });
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
           if (!LOCAL_BRIDGE_RECOVERY_REASONS.has(preflightError?.reason)) throw preflightError;
@@ -402,6 +418,7 @@ export function CardPushControl({
           handoffOnly,
           alreadyCurrent,
           replaceProjectIntent,
+          readMs,
         };
       }
       assertCurrentAttempt(attempt);
@@ -432,9 +449,9 @@ export function CardPushControl({
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
           {
-            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
-            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
-            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs })),
+            readFirmwareInfo: () => withCardReadRetry(() => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
+            readStatus: () => withCardReadRetry(() => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
+            readWiringStatus: () => withCardReadRetry(() => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }), { onRetry: onSlowRetry }),
             lastSeen: (readProjectLifecycle?.() || projectLifecycle)?.installation || null,
             saveAnyway: saveAnywayRef.current,
             config: async () => {
@@ -460,7 +477,13 @@ export function CardPushControl({
               }
               configPushAttempted = true;
               bootBeforeSave = getCardLinkState().validatedBootId || getCardLinkState().readiness?.bootId || '';
+              // A card settling after its restart answers in up to ~10 s
+              // (Real profile, save-trace-NOSAVE.json). The 6 s default gave up
+              // on the write itself, so Studio never learned it was staged
+              // (D11). This one write gets 15 s.
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
+                timeoutMs: 15000,
+                readTimeoutMs: readMs,
                 allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
                 allowLookRemoval: allowLookRemovalRef.current === true,
                 mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
@@ -490,11 +513,29 @@ export function CardPushControl({
         // stop at once and go to the ordinary read-back, without replacing its
         // "Verifying…" line. A card that answers with no candidate yet may
         // still be storing a late write, so it is asked once more, 2 s later.
-        for (let look = 0; look < 5; look += 1) {
+        //
+        // A change the card must STAGE (requiresPhysicalTest) is the exception:
+        // staging restarts nothing, so a look with no answer is a slow card —
+        // the real card answers in ~14 s about half the time right after the
+        // restart that follows a Find my strips Save. Taking that silence for
+        // "nothing staged" read back the temporary setup and reported
+        // read-back-mismatch with no light test (interruption test D11,
+        // todo/plans/practice-card-interruptions.md). Keep asking until the
+        // restart limit and say so; a card that answers twice with no
+        // candidate still goes to the read-back, so a true mismatch is still one.
+        const stagingExpected = attempt.prepared?.changes?.requiresPhysicalTest === true;
+        const lookDeadline = Date.now() + CARD_RESTART_WAIT_MS;
+        let answeredLooks = 0;
+        for (let look = 0; stagingExpected ? Date.now() < lookDeadline : look < 5; look += 1) {
           if (look > 0) await new Promise(resolve => setTimeout(resolve, 2000));
-          const staged = await getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_READ_RETRY.timeoutMs }).catch(() => null);
-          if (!staged) break;
-          if (!staged.hasCandidate) { if (look >= 1) break; continue; }
+          const staged = await getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs }).catch(() => null);
+          if (!staged) {
+            if (!stagingExpected) break;
+            setPushStatus('Checking the card: it is answering slowly. Studio is waiting to see the staged change before the light test.');
+            continue;
+          }
+          answeredLooks += 1;
+          if (!staged.hasCandidate) { if (answeredLooks >= 2) break; continue; }
           const action = classifyCardDeploymentResume(attempt.prepared, staged);
           if (action && action !== 'stage-new') deploymentStart = { action, status: staged, response: null };
           break;
@@ -536,9 +577,24 @@ export function CardPushControl({
       if (response?.state === 'staged' && response.activationId) {
         let candidateEvidence;
         try {
-          candidateEvidence = await readCardWiringCandidateEvidence(response.activationId, {
-            host: attempt.host, transport: getCardLinkState().transport,
-          });
+          // A card settling after its restart answers in seconds, and one
+          // timed-out read of the staged candidate ended the save with no
+          // light test (D11). Unanswered reads are asked again until the
+          // restart limit, saying so; any other failure stops at once.
+          const readDeadline = Date.now() + CARD_RESTART_WAIT_MS;
+          for (;;) {
+            try {
+              candidateEvidence = await readCardWiringCandidateEvidence(response.activationId, {
+                host: attempt.host, transport: getCardLinkState().transport, timeoutMs: readMs,
+              });
+              break;
+            } catch (readError) {
+              const unanswered = ['timeout', 'network'].includes(readError?.reason) || readError?.name === 'AbortError';
+              if (!unanswered || Date.now() >= readDeadline) throw readError;
+              setPushStatus('Checking the card: it is answering slowly. Studio is reading the staged change before the light test.');
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+          }
         } catch (error) {
           failedAttemptRef.current = { ...attempt, awaitingCandidateReadback: true };
           throw new CardPushError('candidate-readback', `Wiring was staged, but Studio could not verify its exact identity (${error?.message || 'readback unavailable'}). Retry only reads this candidate.`, error);
@@ -726,12 +782,17 @@ export function CardPushControl({
     return withCardWriteOwnership('activate-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('activate-wiring', async () => {
     setWiringTestState('starting');
     setPushStatus('Restarting the card with the test wiring…');
+    // FS3: Card Home reads the card's silence during this restart as the
+    // light test, not a lost card. Wording only; the card link is untouched.
+    setLightTestActivity('starting');
     try {
       assertCurrentAttempt(wiringCandidate.attempt);
       const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
         host: wiringCandidate.attempt.host,
         transport: getCardLinkState().transport,
-        timeoutMs: 18000,
+        // The card restarts into the candidate (~14 s on lw-b0fe81f61b44) and
+        // may then take ~5 s per reply (D9). Same allowance as the read-back.
+        timeoutMs: 45000,
       });
       setWiringCandidate(current => current ? {
         ...current,
@@ -739,8 +800,10 @@ export function CardPushControl({
         expiryChecks: 0,
       } : current);
       setWiringTestState('testing');
+      setLightTestActivity('testing');
       setPushStatus('Testing the new wiring. The card will restore the working setup automatically if you do not confirm it.');
     } catch (error) {
+      setLightTestActivity('');
       setWiringTestState('failed');
       setPushStatus(error.message || 'The test wiring did not start. The working setup remains safe.');
     }
@@ -753,6 +816,7 @@ export function CardPushControl({
     await withCardWriteOwnership('finish-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('finish-wiring', async () => {
     if (!wiringCandidate) return;
     setWiringTestState(visible ? 'confirming' : 'rolling-back');
+    setLightTestActivity('finishing');
     try {
       if (visible) {
         assertCurrentAttempt(wiringCandidate.attempt);
@@ -787,6 +851,8 @@ export function CardPushControl({
     } catch (error) {
       setWiringTestState('failed');
       setPushStatus(error.message || 'The card could not finish the wiring test. It will roll back automatically when the timer ends.');
+    } finally {
+      setLightTestActivity('');
     }
     }));
     if (!confirmedAttempt) return;
@@ -867,6 +933,8 @@ export function CardPushControl({
   // Nothing about the protection moves: the card still holds its last working
   // setup, puts it back on its own if nobody confirms, and the confirm stays a
   // deliberate press beside "No, restore working setup".
+  // A control that goes away mid light test leaves no signal behind (FS3).
+  useEffect(() => () => setLightTestActivity(''), []);
   const testAfterStageRef = useRef('');
   useEffect(() => {
     if (wiringTestState !== 'staged' || !wiringCandidate?.activationId) return;

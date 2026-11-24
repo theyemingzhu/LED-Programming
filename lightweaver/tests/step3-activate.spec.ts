@@ -62,9 +62,11 @@ async function moveCardToProject(page: Page, card: CardSimulator) {
   const start = page.getByTestId('wiring-test-start');
   const confirm = page.getByTestId('wiring-test-confirm');
   await expect(start.or(confirm).first(), 'the light test must be reachable after the card staged the wiring').toBeVisible({ timeout: 60000 });
-  if (await start.isVisible().catch(() => false)) {
-    await start.click();
-  } else {
+  // "Start light test" can show for a moment before the self-started test
+  // replaces it with the confirm, so a click on it may find nothing to press.
+  const pressedStart = await start.isVisible().catch(() => false)
+    && await start.click({ timeout: 5000 }).then(() => true, () => false);
+  if (!pressedStart) {
     // Self-started: the card, not the screen, proves the test is running.
     expect(card.requests.some(r => r.method === 'POST' && r.path === '/api/wiring/activate'),
       'the activation was sent before the confirm showed').toBe(true);
