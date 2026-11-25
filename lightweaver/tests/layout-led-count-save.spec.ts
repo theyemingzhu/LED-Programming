@@ -7,7 +7,7 @@ const PROJECT_ID = 'led-count-piece';
 const FINGERPRINT = 'c'.repeat(64);
 const BUILD_ID = 'a'.repeat(40);
 const START_COUNT = 8;
-const NEXT_COUNT = 5;
+const NEXT_COUNT = 3500;
 
 function readyStatus(pixels: number, extra = {}) {
   return {
@@ -102,13 +102,14 @@ async function dispatchCardLink(page: any, events: Record<string, unknown>[]) {
   }, events);
 }
 
-async function mockCard(page: any, card: { pixels: number; configPosts: any[]; wiringPosts: any[]; projectRevision?: number; projectFingerprint?: string }) {
+async function mockCard(page: any, card: { pixels: number; maxPixels?: number; configPosts: any[]; wiringPosts: any[]; projectRevision?: number; projectFingerprint?: string }) {
   await page.unroute('http://lightweaver.local/**').catch(() => {});
   await page.route('http://lightweaver.local/**', async route => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     const posted = card.configPosts.at(-1);
     const status = readyStatus(card.pixels, {
+      ...(card.maxPixels ? { limits: { pixels: card.maxPixels } } : {}),
       projectRevision: posted?.projectRevision ?? card.projectRevision ?? 0,
       projectFingerprint: posted?.projectFingerprint ?? card.projectFingerprint ?? FINGERPRINT,
     });
@@ -177,8 +178,30 @@ test('typed LED count resizes the strip at reel density, disconnected footer sta
   await expect(page.getByTestId('card-link-status')).not.toContainText('Save to card');
 });
 
-test('connected length drift shows Save to card and click writes length only', async ({ page }) => {
-  const card = { pixels: START_COUNT, configPosts: [] as any[], wiringPosts: [] as any[], projectRevision: 0, projectFingerprint: FINGERPRINT };
+test('Wiring keeps a strip count above 3,000 when the project is reopened', async ({ page }) => {
+  await page.route('http://lightweaver.local/**', route => route.abort());
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+
+  const strip = page.locator('[data-strip-id]').first();
+  const changePin = strip.getByRole('button', { name: /^Change pin for / });
+  const count = strip.getByRole('spinbutton', { name: / LED count$/ });
+  await changePin.click();
+  await count.fill('3500');
+  await count.press('Enter');
+  await expect(count).toHaveValue('3500', { timeout: 4000 });
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    return project?.layout?.strips?.[0]?.pixelCount;
+  })).toBe(3500);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await changePin.click();
+  await expect(count).toHaveValue('3500');
+});
+
+test('a typed count honors the card limit and saves a longer strip without rewiring', async ({ page }) => {
+  const card = { pixels: START_COUNT, maxPixels: NEXT_COUNT, configPosts: [] as any[], wiringPosts: [] as any[], projectRevision: 0, projectFingerprint: FINGERPRINT };
   await mockCard(page, card);
   await page.addInitScript(({ project, cardId, buildId }) => {
     localStorage.clear();
@@ -226,8 +249,19 @@ test('connected length drift shows Save to card and click writes length only', a
   const strip = page.locator('[data-strip-id]').first();
   if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
 
-  await strip.getByRole('spinbutton', { name: / LED count$/ }).fill(String(NEXT_COUNT));
-  await strip.getByRole('spinbutton', { name: / LED count$/ }).blur();
+  const count = strip.getByRole('spinbutton', { name: / LED count$/ });
+  const footer = page.getByTestId('card-link-status');
+  await count.fill(String(NEXT_COUNT + 1));
+  await count.press('Enter');
+  await expect(footer).toHaveAccessibleName('Save to card');
+  await footer.click();
+  await expect(page.getByTestId('led-count-save-error')).toContainText('The card supports up to 3500.');
+  await expect(count).toHaveValue(String(NEXT_COUNT + 1));
+  expect(card.configPosts).toHaveLength(0);
+  expect(card.wiringPosts).toHaveLength(0);
+
+  await count.fill(String(NEXT_COUNT));
+  await count.press('Enter');
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(NEXT_COUNT);
   await expect.poll(async () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
@@ -240,7 +274,6 @@ test('connected length drift shows Save to card and click writes length only', a
   await page.waitForTimeout(1200);
   expect(card.configPosts).toHaveLength(0);
 
-  const footer = page.getByTestId('card-link-status');
   await expect(footer).toContainText('Save to card');
   await expect(footer).toHaveAttribute('data-lifecycle-state', 'length-mismatch');
   await expect(footer).toHaveAttribute('data-needs-save', 'true');

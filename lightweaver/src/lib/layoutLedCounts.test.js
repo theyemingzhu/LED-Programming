@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 
 import {
   allocateLedCountsByLength,
@@ -27,9 +28,10 @@ test('rejects totals that cannot give every active strip at least one LED', () =
 });
 
 test('rejects totals beyond the per-strip addressable limit', () => {
-  assert.deepEqual(allocateLedCountsByLength(strips, 9001), {
+  const maximum = strips.length * CARD_HARDWARE_CONTRACT.maxPixels;
+  assert.deepEqual(allocateLedCountsByLength(strips, maximum + 1), {
     ok: false,
-    error: 'Enter no more than 9,000 LEDs for 3 strips.',
+    error: `Enter no more than ${maximum.toLocaleString('en-US')} LEDs for 3 strips.`,
   });
 });
 
