@@ -49,7 +49,7 @@ import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js'
 import { groupOutputPins, moveStripRunsInOutputOrder, stripMoveTarget } from '../../../lib/wiringModel.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
-import { activeBoardGpios } from '../../../lib/gpioAssignments.js';
+import { activeBoardGpios, assignWiringRunToPin } from '../../../lib/gpioAssignments.js';
 import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
 import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
 import { connectedPartDisplayName, displayStripName } from '../../../lib/stripLabels.js';
@@ -59,7 +59,9 @@ import { REAL_PATTERNS } from '../../../v3/v3-data.js';
 import { I as StudioIcons } from '../../../v3/lw-shared.jsx';
 import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
 import { StripCountControl } from '../StripCountControl.jsx';
-import { describeCardPinPlace } from '../../../lib/cardPinout.js';
+import { describeCardPinPlace, formatGpio } from '../../../lib/cardPinout.js';
+import { STRIP_DISCOVERY_ROUTE } from '../../../lib/cardAction.js';
+import { useWiringCard } from './useWiringCard.js';
 import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
 import '../symmetry-by-eye.css';
@@ -148,15 +150,19 @@ function SelectedDataRoute({ stripId, compiledWiring, groupPin }) {
 // "More pins" so the common choice is one tap and the long list stays legal.
 function GpioOptions({ choices = [] }) {
   const byPin = new Map(choices.map(choice => [choice.pin, choice]));
-  const { connector, more } = groupOutputPins(choices.map(choice => choice.pin));
+  const { connector, more } = groupOutputPins(choices.filter(choice => !choice.reason).map(choice => choice.pin));
+  const unavailable = choices.filter(choice => choice.reason).map(choice => choice.pin);
   const option = pin => {
     const choice = byPin.get(pin);
-    return <option key={pin} value={pin} disabled={choice?.disabled}>GPIO {pin}</option>;
+    return <option key={pin} value={pin} disabled={Boolean(choice?.reason)}>
+      {formatGpio(pin)}{(choice?.reason || choice?.note) && ` · ${choice.reason || choice.note}`}
+    </option>;
   };
   return (
     <>
       {connector.map(option)}
       {more.length > 0 && <optgroup label="More pins">{more.map(option)}</optgroup>}
+      {unavailable.length > 0 && <optgroup label="Unavailable">{unavailable.map(option)}</optgroup>}
     </>
   );
 }
@@ -330,6 +336,14 @@ export function DrawModePanel({
   const [addGpio, setAddGpio] = useState(16);
   const [pendingAddGpio, setPendingAddGpio] = useState(null);
   const [gpioError, setGpioError] = useState('');
+  const pinEditor = useRef(null);
+  const [pinEditStripId, setPinEditStripId] = useState('');
+  useEffect(() => {
+    if (pinEditStripId && panelStripId === pinEditStripId) {
+      pinEditor.current?.focus();
+      setPinEditStripId('');
+    }
+  }, [panelStripId, pinEditStripId]);
   const [totalLedDraft, setTotalLedDraft] = useState(String(totalLeds));
   const [totalLedError, setTotalLedError] = useState('');
   const [droppedStripIds, setDroppedStripIds] = useState([]);
@@ -509,7 +523,7 @@ export function DrawModePanel({
       return;
     }
     const stripId = addPrimitiveStrip(key, clampLedCount(addLedCount), addDensity, addLengthM);
-    setPendingAddGpio({ stripId, pin: addGpio });
+    if (Number.isInteger(newStripPin)) setPendingAddGpio({ stripId, pin: newStripPin });
   };
 
   const addShapeTiles = [
@@ -841,8 +855,43 @@ export function DrawModePanel({
     return `out${number}`;
   };
 
+  const wiringCard = useWiringCard();
+  const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
+  const boardPins = new Map();
+  const headerPositions = new Map();
+  wiringCard.profile?.groups.forEach(group => group.pins.forEach((pin, index) => {
+    if (!Number.isInteger(pin.gpio)) return;
+    boardPins.set(pin.gpio, pin);
+    if (group.kind === 'header') headerPositions.set(pin.gpio, `${group.name} pin ${group.start + index * group.step}`);
+  }));
+  const pinPlace = pin => headerPositions.get(pin) || (wiringCard.cardId ? formatGpio(pin) : describeCardPinPlace(pin));
+  const outputLimitReason = `Limit of ${wiringCard.maxOutputs} outputs`;
+  const unavailabilityForPin = pin => {
+    if (!wiringCard.supportedPins.includes(pin)) return 'Unavailable in card firmware';
+    if (controlPins.has(pin)) return 'Used by a control';
+    if (!wiringCard.availablePins.includes(pin)) {
+      const boardPin = boardPins.get(pin);
+      return boardPin?.installation || boardPin?.detail || 'Unavailable on this board';
+    }
+    return '';
+  };
+
+  const choicesForOutputs = (currentPin, canCreateOutput) => [...new Set([
+    ...CARD_HARDWARE_CAPABILITIES.supportedOutputPins,
+    ...(Number.isInteger(currentPin) ? [currentPin] : []),
+  ])].map(pin => {
+    const inUse = wiring.outputs.some(output => output.pin === pin);
+    const reason = unavailabilityForPin(pin) || (!inUse && !canCreateOutput ? outputLimitReason : '');
+    return { pin, reason, note: pin !== currentPin && inUse ? 'Share this output' : headerPositions.get(pin) };
+  });
+
   const assignStripGpio = (stripId, pin) => {
     const selectedPin = Number(pin);
+    const unavailable = unavailabilityForPin(selectedPin);
+    if (unavailable) {
+      setGpioError(`${formatGpio(selectedPin)} · ${unavailable}`);
+      return;
+    }
     const result = updateWiring(draft => {
       // A direct Draw-mode assignment is an intentional edit to the physical
       // plan. Reopen the plan first, so selecting a GPIO always applies and
@@ -854,24 +903,13 @@ export function DrawModePanel({
       }
       ensureRunsForAllStrips(draft);
       const run = draft.runs.find(item => item.type === 'strip' && item.source?.stripId === stripId);
-      const source = draft.outputs.find(output => output.runIds.includes(run?.id));
-      const target = draft.outputs.find(output => output.pin === selectedPin);
-      if (!run || !source || source === target) return;
-
-      if (target) {
-        source.runIds = source.runIds.filter(runId => runId !== run.id);
-        target.runIds.push(run.id);
-        if (!source.runIds.length && draft.outputs.length > 1) draft.outputs = draft.outputs.filter(output => output.id !== source.id);
-        return;
-      }
-
-      if (source.runIds.length === 1) {
-        source.pin = selectedPin;
-        return;
-      }
-      if (draft.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs) throw new Error(`This card supports up to ${CARD_HARDWARE_CAPABILITIES.maxOutputs} GPIO outputs.`);
-      source.runIds = source.runIds.filter(runId => runId !== run.id);
-      draft.outputs.push({ id: nextOutputId(draft.outputs), name: `Output ${draft.outputs.length + 1}`, pin: selectedPin, runIds: [run.id] });
+      assignWiringRunToPin(draft, {
+        runId: run?.id,
+        pin: selectedPin,
+        controls: standaloneController?.controls,
+        supportedOutputPins: wiringCard.availablePins,
+        maxOutputs: wiringCard.maxOutputs,
+      });
     }, { changeKind: 'gpio' });
     if (result.ok) {
       setGpioError('');
@@ -884,19 +922,29 @@ export function DrawModePanel({
 
   const assignFamilyGpio = (family, pin) => {
     const selectedPin = Number(pin);
+    const unavailable = unavailabilityForPin(selectedPin);
+    if (unavailable) {
+      setConnectedError(`${formatGpio(selectedPin)} · ${unavailable}`);
+      return;
+    }
     const memberIds = new Set(family.memberIds);
     const result = updateWiring(draft => {
       ensureRunsForAllStrips(draft);
       const memberRuns = draft.runs.filter(run => run.type === 'strip' && memberIds.has(run.source?.stripId));
       if (memberRuns.length !== memberIds.size) throw new Error('Each section needs one complete wiring run before assigning the parent GPIO.');
       const runIds = new Set(memberRuns.map(run => run.id));
+      const source = draft.outputs.find(output => output.runIds.length === runIds.size && output.runIds.every(runId => runIds.has(runId)));
+      if (source && !draft.outputs.some(output => output.pin === selectedPin)) {
+        source.pin = selectedPin;
+        return;
+      }
       draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !runIds.has(runId)); });
       // Remove vacated ports before counting capacity. A parent move from
       // GPIO 16 to 17 must not leave an empty GPIO 16 consuming a card output.
       draft.outputs = draft.outputs.filter(output => output.runIds.length || output.pin === selectedPin);
       let target = draft.outputs.find(output => output.pin === selectedPin);
       if (!target) {
-        if (draft.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs) throw new Error(`This card supports up to ${CARD_HARDWARE_CAPABILITIES.maxOutputs} GPIO outputs.`);
+        if (draft.outputs.length >= wiringCard.maxOutputs) throw new Error(`This card supports up to ${wiringCard.maxOutputs} GPIO outputs.`);
         target = { id: nextOutputId(draft.outputs), name: `Output ${draft.outputs.length + 1}`, pin: selectedPin, runIds: [] };
         draft.outputs.push(target);
       }
@@ -942,21 +990,19 @@ export function DrawModePanel({
 
   const gpioChoicesForStrip = stripId => {
     const output = outputForStrip(stripId);
-    const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
-    const canCreateOutput = output?.runIds.length <= 1 || wiring.outputs.length < CARD_HARDWARE_CAPABILITIES.maxOutputs;
-    return CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => ({
-      pin,
-      disabled: controlPins.has(pin) || (pin !== output?.pin && !wiring.outputs.some(item => item.pin === pin) && !canCreateOutput),
-    }));
+    const canCreateOutput = output?.runIds.length <= 1 || wiring.outputs.length < wiringCard.maxOutputs;
+    return choicesForOutputs(output?.pin, canCreateOutput);
   };
-  const addGpioChoices = () => {
-    const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
-    const canCreateOutput = wiring.outputs.length < CARD_HARDWARE_CAPABILITIES.maxOutputs;
-    return CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => ({
-      pin,
-      disabled: controlPins.has(pin) || (!wiring.outputs.some(output => output.pin === pin) && !canCreateOutput),
-    }));
+  const gpioChoicesForFamily = family => {
+    const members = new Set(family.memberIds);
+    const memberRuns = new Set(wiring.runs.filter(run => run.type === 'strip' && members.has(run.source?.stripId)).map(run => run.id));
+    const outputsLeft = wiring.outputs.filter(output => output.runIds.some(runId => !memberRuns.has(runId))).length;
+    const pins = new Set(family.memberIds.map(id => outputForStrip(id)?.pin));
+    return choicesForOutputs(pins.size === 1 ? [...pins][0] : null, outputsLeft < wiringCard.maxOutputs);
   };
+  const newStripChoices = choicesForOutputs(addGpio, wiring.outputs.length < wiringCard.maxOutputs);
+  const newStripPin = (newStripChoices.find(choice => choice.pin === addGpio && !choice.reason)
+    || newStripChoices.find(choice => !choice.reason))?.pin;
 
   useEffect(() => {
     if (!pendingAddGpio || !strips.some(strip => strip.id === pendingAddGpio.stripId)) return;
@@ -1500,8 +1546,9 @@ export function DrawModePanel({
             <div className="row la-strip-output-row la-add-strip-output-row">
               <div className="la-gpio-wrap">
                 <select className="la-gpio-select" aria-label="New strip GPIO output"
-                        value={addGpio} onChange={event => setAddGpio(Number(event.target.value))}>
-                  <GpioOptions choices={addGpioChoices()} />
+                        value={newStripPin ?? ''} onChange={event => setAddGpio(Number(event.target.value))}>
+                  {newStripPin === undefined && <option value="">No available pin</option>}
+                  <GpioOptions choices={newStripChoices} />
                 </select>
               </div>
               <div className="la-strip-density" data-testid="add-strip-density-control"
@@ -1621,7 +1668,7 @@ export function DrawModePanel({
                            setSideDragActive(false);
                          } : undefined}>
                   {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
-                    <span title={describeCardPinPlace(output.pin)} data-tooltip={describeCardPinPlace(output.pin)}>GPIO {output.pin}</span>
+                    <span title={pinPlace(output.pin)} data-tooltip={pinPlace(output.pin)}>GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>}
                   {sideView && <div className="la-side-head">
@@ -1691,6 +1738,13 @@ export function DrawModePanel({
                 const routePins = wiring.outputs.filter(candidate => candidate.runIds.some(runId =>
                   wiring.runs.some(candidateRun => candidateRun.id === runId && candidateRun.type === 'strip' && candidateRun.source?.stripId === s.id)))
                   .map(candidate => candidate.pin);
+                const stripPin = outputForStrip(s.id)?.pin ?? 16;
+                const stripPinChoices = isOpen ? gpioChoicesForStrip(s.id) : [];
+                const pinEditLocked = Boolean(connectedFamily && (wiring.locked || !connectedStatus.ok));
+                const unavailableStripPin = unavailabilityForPin(stripPin);
+                const pinChoiceProblem = unavailableStripPin ? `${formatGpio(stripPin)} · ${unavailableStripPin}`
+                  : (isOpen && !stripPinChoices.some(choice => choice.pin !== stripPin && !choice.reason)
+                    ? 'No other pin is available.' : '');
                 // Keep the typed draft verbatim so clearing, decimals and
                 // out-of-range values remain visible until the owner fixes them.
                 // The default is 4 — the task brief's example (41 → 11,10,10,10).
@@ -1797,7 +1851,7 @@ export function DrawModePanel({
                             disabled={wiring.locked}
                             onChange={event => assignFamilyGpio(connectedFamily, Number(event.target.value))}>
                           <option value="" disabled>Mixed outputs</option>
-                          <GpioOptions choices={gpioChoicesForStrip(s.id)} />
+                          <GpioOptions choices={gpioChoicesForFamily(connectedFamily)} />
                         </select>
                       </label>
                     </div>
@@ -1868,21 +1922,21 @@ export function DrawModePanel({
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
                                     className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0, color: s.color }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
-                      {/* Visibility belongs on the row, like any layers list —
-                          hide a strip without opening it first. */}
-                      <button className={`la-strip-row-eye${hidden[s.id] ? ' is-hidden' : ''}`}
-                              aria-label={hidden[s.id] ? `Show ${s.name}` : `Hide ${s.name}`}
-                              data-caption={hidden[s.id] ? 'Show this strip on the canvas' : 'Hide this strip on the canvas'}
+                      <button type="button" className="la-strip-pin-button"
+                              aria-label={`Change pin for ${partName}`}
+                              title={`Change pin for ${partName}`}
+                              data-testid={sideView ? `strip-wire-${s.id}` : undefined}
                               onClick={event => {
                                 event.stopPropagation();
-                                setHidden(h => ({ ...h, [s.id]: !h[s.id] }));
+                                if (patternPicker) closePatternPicker(false);
+                                setGpioError('');
+                                selectStrip(s.id);
+                                setPanelStripId(s.id);
+                                setPinEditStripId(s.id);
                               }}>
-                        {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
+                        <span>{formatGpio(routePins.length ? routePins.join(' + ') : stripPin)}</span>
+                        <ChevronDownIcon/>
                       </button>
-                      {/* Sides replace the data-wire headings, so each row names its own wire. */}
-                      {(sideView || (routePins.length > 1 && (!isOpen || !compiledWiring?.ok))) && <span className="la-strip-routes" data-testid={sideView ? `strip-wire-${s.id}` : undefined}>
-                        GPIO {routePins.length ? routePins.join(' + ') : (outputForStrip(s.id)?.pin ?? 16)}
-                      </span>}
                       {stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
                       {stripTargets.map(target => {
                         const patternId = target.look?.patternId || 'aurora';
@@ -1914,6 +1968,16 @@ export function DrawModePanel({
                             : stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
+                      {/* Keep the visibility action on the row's outside edge. */}
+                      <button className={`la-strip-row-eye${hidden[s.id] ? ' is-hidden' : ''}`}
+                              aria-label={hidden[s.id] ? `Show ${s.name}` : `Hide ${s.name}`}
+                              data-caption={hidden[s.id] ? 'Show this strip on the canvas' : 'Hide this strip on the canvas'}
+                              onClick={event => {
+                                event.stopPropagation();
+                                setHidden(h => ({ ...h, [s.id]: !h[s.id] }));
+                              }}>
+                        {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
+                      </button>
                     </div>
                     {patternPicker?.stripId === s.id && (() => {
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
@@ -1947,6 +2011,25 @@ export function DrawModePanel({
                                 } else setStripLedCount(s.id, count);
                               }}/>
                           </div>
+                        </div>
+                        <div className="la-strip-wiring-tools" role="group" aria-label={`Wiring for ${partName}`}>
+                          <label className="la-strip-pin-field">
+                            <span>{isSplit ? 'First run pin' : 'Change pin'}</span>
+                            <span className="la-gpio-wrap">
+                              <select ref={pinEditor} className="la-gpio-select"
+                                      aria-label={connectedFamily ? `${partName} GPIO override` : 'GPIO output'}
+                                      aria-describedby={pinEditLocked || pinChoiceProblem ? `strip-pin-help-${s.id}` : undefined}
+                                      value={stripPin} disabled={pinEditLocked}
+                                      onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
+                                <GpioOptions choices={stripPinChoices} />
+                              </select>
+                            </span>
+                          </label>
+                          <a className="btn la-strip-count-action" href={`#${STRIP_DISCOVERY_ROUTE}`}>Count LEDs</a>
+                          {(pinEditLocked || pinChoiceProblem) && <p className="la-strip-pin-help" id={`strip-pin-help-${s.id}`}>
+                            {pinEditLocked ? (wiring.locked ? 'Unlock wiring in Test & Install to change this part.' : 'Fix or detach the sections to change this pin.') : pinChoiceProblem}
+                          </p>}
+                          {gpioError && <p className="la-gpio-error" role="alert">{gpioError}</p>}
                         </div>
                         {/* The keyboard route for what dragging does: which side
                             this strip plays with, and its place in that side. */}
@@ -2027,7 +2110,6 @@ export function DrawModePanel({
                           </div>;
                         })}
                         {connectedFamily && (() => {
-                          const memberPin = outputForStrip(s.id)?.pin ?? 16;
                           return <section className="lw-connected-editor-frame">
                             {!connectedStatus.ok && <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
                               <span>{connectedStatus.error}</span>
@@ -2048,13 +2130,6 @@ export function DrawModePanel({
                                          }
                                        }}
                                        onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
-                              </label>
-                              <label><span>This part GPIO</span>
-                                <select aria-label={`${partName} GPIO override`} value={memberPin}
-                                        disabled={wiring.locked}
-                                        onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
-                                  <GpioOptions choices={gpioChoicesForStrip(s.id)} />
-                                </select>
                               </label>
                             </div>}
                             {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
@@ -2115,13 +2190,6 @@ export function DrawModePanel({
                           </div>
                         </div>
                         <div className="la-strip-connection">
-                          <div className="la-gpio-wrap">
-                            <select className="la-gpio-select" aria-label="GPIO output"
-                                    value={outputForStrip(s.id)?.pin ?? 16}
-                                    onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
-                              <GpioOptions choices={gpioChoicesForStrip(s.id)} />
-                            </select>
-                          </div>
                           {run && <button className="btn" aria-label={`Reverse data direction of ${s.name}`}
                                   title={isSplit
                                     ? 'Strip is split into multiple runs — set direction per run in Advanced wiring'
@@ -2406,7 +2474,6 @@ export function DrawModePanel({
                             </section>
                           );
                         })()}
-                        {gpioError && <div className="la-gpio-error" role="alert">{gpioError}</div>}
                         {usbLedConnected && (
                           <div className="hint" style={{ color: s.pixelCount > usbLedMaxPixels ? 'var(--accent)' : 'var(--text-faint)' }}>
                             USB direct cap {usbLedMaxPixels} LEDs.

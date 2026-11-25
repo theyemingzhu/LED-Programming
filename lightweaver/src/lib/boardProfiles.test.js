@@ -53,9 +53,10 @@ test('board selection requires a reported revision or a current exact-card confi
   assert.equal(resolveBoardMatch(REFERENCE_BOARDS, evidence, { ...remembered, current: false }).profile, null);
 
   const exact = boardEvidence({ ...envelope, boardProfile: { id: revised.id, revision: revised.revision } });
-  const reported = resolveBoardMatch(REFERENCE_BOARDS, exact, remembered);
+  const reported = resolveBoardMatch(REFERENCE_BOARDS, exact);
   assert.equal(reported.status, 'reported');
   assert.equal(reported.profile, revised);
+  assert.equal(resolveBoardMatch(REFERENCE_BOARDS, exact, remembered).profile, original);
   const unknown = boardEvidence({ ...envelope, boardProfile: { id: revised.id, revision: revised.revision + 1 } });
   assert.equal(resolveBoardMatch(REFERENCE_BOARDS, unknown, remembered).reason, 'reported-profile-unavailable');
   assert.equal(resolveBoardMatch(REFERENCE_BOARDS, unknown, remembered).profile, null);
@@ -73,6 +74,18 @@ test('USB evidence from another card is ignored and conflicting readings prevent
     status: 'review', reason: 'hardware-readings-conflict', profile: null, candidates: [],
   });
   assert.equal(boardEvidence({ boardProfile: { id: revised.id, revision: revised.revision } }).reported, null);
+});
+
+test('a saved correction follows its exact card even when firmware reports a reference board', () => {
+  const custom = validateBoardProfile({ ...draftBoard(revised), revision: 1, name: 'My board revision' });
+  const library = rememberBoard(storeBoardProfile({ profiles: [], confirmations: {} }, custom, 0), cardId, custom);
+  const confirmed = rememberedBoard(library, cardId);
+  const profiles = [...REFERENCE_BOARDS, custom];
+  const reference = { cardId, chipName: 'ESP32-S3', boardProfile: { id: revised.id, revision: revised.revision } };
+
+  assert.equal(resolveBoardMatch(profiles, boardEvidence(reference), confirmed).profile, custom);
+  assert.equal(resolveBoardMatch(profiles, boardEvidence({ ...reference, cardId: 'lw-aabbccddee00' }), confirmed).profile, revised);
+  assert.equal(resolveBoardMatch(profiles, boardEvidence(reference), { ...confirmed, current: false }).profile, revised);
 });
 
 test('portable profiles validate, keep references immutable and never overwrite a conflicting import', () => {

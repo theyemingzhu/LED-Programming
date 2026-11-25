@@ -7,7 +7,7 @@ import { selectBoardLedPins } from '../../lib/boardLedPins.js';
 import { formatGpio } from '../../lib/cardPinout.js';
 import { usbHardwareEvidenceForCard } from '../../lib/usbInspection.js';
 import {
-  BOARD_CATALOG, BOARD_VENDOR_TOOL, BOARD_PROFILE_STORAGE, BOARD_PROFILE_FILE_LIMIT,
+  BOARD_CATALOG, BOARD_VENDOR_TOOL, BOARD_PROFILE_STORAGE, BOARD_PROFILE_FILE_LIMIT, BOARD_LIBRARY_CHANGED,
   BOARD_LIMITS, PIN_ROLES, REFERENCE_BOARDS, boardEvidence, boardEvidenceConflicts,
   boardTitle, draftBoard, exportBoardProfile, importBoardProfile, isReferenceBoard,
   newBoardGroup, newBoardPin, readBoardLibrary, rememberBoard, rememberedBoard,
@@ -18,7 +18,7 @@ import '../../styles/lw-board-manager.css';
 
 const EMPTY_LIBRARY = { profiles: [], confirmations: {} };
 const BASIC_FIELDS = [
-  ['name', 'Board name', 100], ['manufacturer', 'Manufacturer', 80],
+  ['manufacturer', 'Manufacturer', 80],
   ['pcbRevision', 'PCB revision', 48], ['supplier', 'Supplier or listing', 100],
   ['chip', 'Chip', 80], ['module', 'Module marking', 80], ['orientation', 'Map orientation', 180],
 ];
@@ -30,6 +30,18 @@ function defaultInstallationRole(profile, pin) {
   return profile.id.startsWith('espressif-devkitc-1-') ? CURRENT_SD[pin.gpio] : undefined;
 }
 
+function copyBoardDraft(source) {
+  const next = draftBoard(source);
+  if (source && isReferenceBoard(source.id)) {
+    next.groups = source.groups.map(group => ({
+      ...group, pins: group.pins.map(pin => ({
+        ...pin, installation: pin.installation || defaultInstallationRole(source, pin) || '',
+      })),
+    }));
+  }
+  return next;
+}
+
 function initialLibrary() {
   try { return { library: readBoardLibrary(window.localStorage), storageError: '' }; }
   catch { return { library: EMPTY_LIBRARY, storageError: 'Studio could not read the board library in this browser.' }; }
@@ -38,31 +50,39 @@ function initialLibrary() {
 function useBoardLibrary() {
   const [state, setState] = useState(initialLibrary);
   useEffect(() => {
+    const refreshLibrary = () => setState(initialLibrary());
     const refresh = event => {
-      if (event.key === BOARD_PROFILE_STORAGE || event.key === null) setState(initialLibrary());
+      if (event.key === BOARD_PROFILE_STORAGE || event.key === null) refreshLibrary();
     };
     window.addEventListener('storage', refresh);
-    return () => window.removeEventListener('storage', refresh);
+    window.addEventListener(BOARD_LIBRARY_CHANGED, refreshLibrary);
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener(BOARD_LIBRARY_CHANGED, refreshLibrary);
+    };
   }, []);
-  return [state, update => {
-    const library = updateBoardLibrary(window.localStorage, update);
-    setState({ library, storageError: '' });
-    return library;
-  }];
+  return [state, update => updateBoardLibrary(window.localStorage, update)];
 }
 
-export function BoardManagerEntry({ cardId, onOpen }) {
+export function BoardManagerEntry({ cardId, onOpen, onConnect }) {
   const [{ library }] = useBoardLibrary();
   const choice = rememberedBoard(library, cardId);
   return (
     <div className="lw-board-entry">
-      <div>
+      <div className="lw-board-entry-copy">
         <strong>{choice?.current ? boardTitle(choice.profile) : 'Which board are you using?'}</strong>
         <span>{choice?.current ? 'Saved for this card'
           : choice ? 'The saved profile revision changed. Confirm the current version.'
             : 'Find your board and see where to plug in the LEDs.'}</span>
       </div>
-      <button type="button" className="btn" onClick={onOpen}>Board Manager</button>
+      <div className="lw-board-actions">
+        {onConnect && /^lw-[a-f\d]{12}$/.test(cardId || '') && (
+          <button type="button" className="btn primary" onClick={onConnect}>
+            {choice?.current ? 'Check board and pins' : 'Choose board'}
+          </button>
+        )}
+        <button type="button" className="btn" onClick={onOpen}>Board Manager</button>
+      </div>
     </div>
   );
 }
@@ -139,7 +159,7 @@ function describePinAt(profile, position) {
   return `${group.name || 'New group'} pin ${pinNumber(group, position.pin)} (${label})`;
 }
 
-function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onSwapPreview, ledPins, assignments }) {
+function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onChooseSwap, onSwapPreview, ledPins, assignments }) {
   const [swapSource, setSwapSource] = useState(null);
   const [dragTarget, setDragTarget] = useState(null);
   const gesture = useRef(null);
@@ -165,7 +185,7 @@ function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onSwapPrevie
   };
   const selectPosition = position => {
     if (swapSource) {
-      if (!samePosition(position, swapSource)) onSwap(swapSource, position);
+      if (!samePosition(position, swapSource)) onChooseSwap(swapSource, position);
       clearSwap();
     } else {
       onSelect(position.group, position.pin);
@@ -175,7 +195,6 @@ function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onSwapPrevie
     <div className="lw-board-map-set" onKeyDown={event => {
       if (event.key === 'Escape' && swapSource) clearSwap();
     }}>
-      {onSwap && <p className="lw-board-muted">Select a numbered position to edit its pin. Drag the handle onto another pin, or tap the handle and then the destination. A swap exchanges the two pin records. Connector positions keep their numbers.</p>}
       {['header', 'onboard'].map(kind => {
         const groups = indexed.filter(({ group }) => group.kind === kind);
         if (!groups.length) return null;
@@ -275,7 +294,7 @@ function pinProtection(profile, pin) {
   return '';
 }
 
-function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemoveGroup, onChangePin, onMovePin, onTransferPin, onRemovePin, ledPins, assignments }) {
+function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemoveGroup, onChangePin, onOpenMove, onRemovePin, ledPins, assignments }) {
   const group = profile.groups[selection.group];
   const pin = group?.pins[selection.pin];
   if (!onChangePin && !pin) return <p className="lw-board-muted">Select a position to inspect its wiring and LED output status.</p>;
@@ -289,8 +308,8 @@ function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemo
       <div className="lw-board-inspector">
         <h3>{pinHeading} · {pin.label}</h3>
         <dl className="lw-board-facts">
-          <div><dt>Board role</dt><dd>{pin.detail || PIN_ROLES[pin.role]}</dd></div>
-          {pin.gpio !== null && <div><dt>Chip pin number</dt><dd>{pin.gpio}</dd></div>}
+          {pin.gpio !== null && <div><dt>Pin number</dt><dd>{pin.gpio}</dd></div>}
+          <div><dt>What it does</dt><dd>{pin.detail || PIN_ROLES[pin.role]}</dd></div>
           {pin.installation && <div><dt>Lightweaver assignment note</dt><dd>{pin.installation}</dd></div>}
           {installation && <div><dt>Lightweaver target default</dt><dd>{installation}</dd></div>}
           <div><dt>LED output</dt><dd>{usage ? `In use for ${usage}.` : targetPin
@@ -334,13 +353,13 @@ function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemo
       {pin && <>
         <h3>{pinHeading}</h3>
         <div className="lw-board-fields">
-          <label>Pin label<input value={pin.label} maxLength={48} onChange={event => onChangePin({ label: event.target.value })} /></label>
-          <label>Chip pin number<input type="number" min="0" max="255" value={pin.gpio ?? ''} onChange={event => onChangePin({ gpio: event.target.value })} /></label>
-          <label>Board role
+          <label>Pin number<input type="number" min="0" max="255" value={pin.gpio ?? ''} onChange={event => onChangePin({ gpio: event.target.value })} /></label>
+          <label>What it does
             <select value={pin.role} onChange={event => onChangePin({ role: event.target.value })}>
               {Object.entries(PIN_ROLES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
+          <label>Pin label<input value={pin.label} maxLength={48} onChange={event => onChangePin({ label: event.target.value })} /></label>
           <label>Board signal or note<input value={pin.detail} maxLength={160} onChange={event => onChangePin({ detail: event.target.value })} /></label>
           <label>Installation function
             <select value={INSTALLATION_FUNCTIONS.includes(pin.installation) ? pin.installation : ''}
@@ -354,23 +373,71 @@ function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemo
           </label>
         </div>
         {pinProtection(profile, pin) && <p className="lw-board-muted">{pinProtection(profile, pin)}</p>}
-        {profile.groups.length > 1 && (
-          <label className="lw-board-transfer">Move to another group
-            <select value="" onChange={event => onTransferPin(Number(event.target.value))}>
-              <option value="" disabled>Choose a destination</option>
-              {profile.groups.map((entry, index) => index !== selection.group && (
-                <option key={index} value={index} disabled={entry.pins.length >= BOARD_LIMITS.pins}>{entry.name || 'New group'}</option>
-              ))}
-            </select>
-          </label>
-        )}
         <div className="lw-board-actions">
-          <button type="button" className="btn" disabled={selection.pin === 0} onClick={() => onMovePin(-1)}>Move up</button>
-          <button type="button" className="btn" disabled={selection.pin === group.pins.length - 1} onClick={() => onMovePin(1)}>Move down</button>
+          <button type="button" className="btn" onClick={onOpenMove}>Move or swap pin</button>
           <button type="button" className="btn" onClick={() => onSelectGroup(selection.group)}>Edit group</button>
           <button type="button" className="btn" onClick={onRemovePin}>Remove pin</button>
         </div>
       </>}
+    </div>
+  );
+}
+
+function PinMove({ profile, source, initialTarget, onApply }) {
+  const [operation, setOperation] = useState(initialTarget ? 'swap' : 'move');
+  const [destination, setDestination] = useState(initialTarget ? `${initialTarget.group}:${initialTarget.pin}` : '');
+  const choiceRef = useRef(null);
+  useEffect(() => { choiceRef.current?.focus({ preventScroll: true }); }, []);
+  const [groupIndex, pinIndex] = destination.split(':').map(Number);
+  const targetGroup = destination ? profile.groups[groupIndex] : null;
+  const target = targetGroup ? { group: groupIndex, pin: pinIndex } : null;
+  const resultIndex = target && source.group === target.group && source.pin < pinIndex && operation === 'move' ? pinIndex - 1 : pinIndex;
+  const valid = target && !samePosition(source, { group: groupIndex, pin: resultIndex });
+  return (
+    <div className="lw-board-inspector">
+      <div className="lw-board-fields">
+        <label>Action
+          <select ref={choiceRef} value={operation} onChange={event => { setOperation(event.target.value); setDestination(''); }}>
+            <option value="move">Move pin</option>
+            <option value="swap">Swap two pins</option>
+          </select>
+        </label>
+        <label>{operation === 'move' ? 'Move to' : 'Swap with'}
+          <select value={destination} onChange={event => setDestination(event.target.value)}>
+            <option value="">Choose a position</option>
+            {profile.groups.map((group, index) => {
+              const positions = group.pins.map((_, pin) => ({ group: index, pin }));
+              if (operation === 'move' && (index === source.group || group.pins.length < BOARD_LIMITS.pins)) {
+                positions.push({ group: index, pin: group.pins.length });
+              }
+              return (
+                <optgroup label={group.name || 'New group'} key={index}>
+                  {positions.filter(position => !samePosition(source, position)
+                    && (operation === 'swap' || index !== source.group || position.pin !== source.pin + 1)).map(position => {
+                    const atEnd = position.pin === group.pins.length;
+                    const name = describePinAt(profile, position);
+                    return <option key={position.pin} value={`${index}:${position.pin}`}
+                      disabled={operation === 'move' && index !== source.group && group.pins.length >= BOARD_LIMITS.pins}>
+                      {atEnd ? `End of ${group.name || 'new group'}` : operation === 'move' ? `Before ${name}` : name}
+                    </option>;
+                  })}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
+      </div>
+      <dl className="lw-board-facts lw-board-move-preview" aria-live="polite">
+        <div><dt>From</dt><dd>{describePinAt(profile, source)}</dd></div>
+        <div><dt>New position</dt><dd>{valid ? operation === 'swap' ? describePinAt(profile, target)
+          : `${targetGroup.name || 'New group'} pin ${pinNumber(targetGroup, resultIndex)}` : 'Choose a position'}</dd></div>
+      </dl>
+      <p className="lw-board-muted">{operation === 'swap' ? 'The two pins exchange positions.' : 'Pins after the move may change position numbers.'}</p>
+      <div className="lw-board-actions">
+        <button type="button" className="btn primary" disabled={!valid} onClick={() => onApply(operation, source, target, resultIndex)}>
+          {operation === 'swap' ? 'Apply swap' : 'Apply move'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -451,20 +518,26 @@ function BoardLedSummary({ pins, assignments, current, maxOutputs }) {
   );
 }
 
-export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCenter }) {
+export function BoardManager({
+  connected, cardLink, cardHost, onOpenConnectionCenter,
+  initialProfileId, copyOnEntry = false, expectedCardId, onBoardUsed, onCancelEdit,
+}) {
   const [{ library, storageError }, updateLibrary] = useBoardLibrary();
   const profiles = [...REFERENCE_BOARDS, ...library.profiles];
   const liveCardId = connected ? cardLink?.card?.id || '' : '';
   const choice = rememberedBoard(library, liveCardId);
-  const [selectedId, setSelectedId] = useState(() => choice?.profile.id || REFERENCE_BOARDS[1].id);
-  const [draft, setDraft] = useState(null);
+  const [selectedId, setSelectedId] = useState(() => initialProfileId || choice?.profile.id || REFERENCE_BOARDS[1].id);
+  const [draft, setDraft] = useState(() => copyOnEntry ? copyBoardDraft(profiles.find(item => item.id === initialProfileId)) : null);
+  const boundCardId = useRef(expectedCardId || liveCardId);
+  const [pinMove, setPinMove] = useState(null);
   const [selection, setSelection] = useState({ group: 0, pin: -1 });
   const [notice, setNotice] = useState(null);
   const [swapPreview, setSwapPreview] = useState(null);
-  const [lastSwap, setLastSwap] = useState('');
+  const [lastPositionChange, setLastPositionChange] = useState(null);
   const [cardRead, setCardRead] = useState(null);
   const fileInput = useRef(null);
   const inspectorRef = useRef(null);
+  const detailsRef = useRef(null);
   const readSequence = useRef(0);
   const selectionSequence = useRef(0);
   const { host, transport } = cardConnectionOptionsFor(cardLink, cardHost);
@@ -477,18 +550,20 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
       lastKey.current = cardKey;
       readSequence.current++;
       setCardRead(null);
-      if (choice?.profile.id) {
+      if (!initialProfileId && choice?.profile.id) {
         setSelectedId(choice.profile.id);
         setSelection({ group: 0, pin: -1 });
       }
     }
-  }, [cardKey, choice?.profile.id]);
+  }, [cardKey, choice?.profile.id, initialProfileId]);
 
   const profile = draft || profiles.find(item => item.id === selectedId) || REFERENCE_BOARDS[1];
   const reference = isReferenceBoard(profile.id);
   const baseline = profile.id.startsWith('espressif-devkitc-1-');
   const liveRead = cardRead?.key === cardKey ? cardRead : null;
   const evidence = liveRead?.evidence || null;
+  const checkingGuidedCard = copyOnEntry && Boolean(host && liveCardId && liveCardId === boundCardId.current
+    && !evidence && !liveRead?.error);
   const match = resolveBoardMatch(profiles, evidence, choice);
   const confirmed = choice?.current && choice.profile.id === profile.id;
   const exact = match.status === 'reported' && match.profile?.id === profile.id;
@@ -502,24 +577,17 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
     setSelection({ group: 0, pin: -1 });
     setNotice(null);
     setSwapPreview(null);
-    setLastSwap('');
+    setLastPositionChange(null);
   };
   const selectPin = (group, pin) => {
+    setPinMove(null);
     setSelection({ group, pin });
     const inspector = inspectorRef.current;
     if (inspector && !inspector.open) inspector.showModal();
   };
   const begin = source => {
-    const next = draftBoard(source);
-    if (source && isReferenceBoard(source.id)) {
-      next.groups = source.groups.map(group => ({
-        ...group, pins: group.pins.map(pin => ({
-          ...pin, installation: pin.installation || defaultInstallationRole(source, pin) || '',
-        })),
-      }));
-    }
     selectionSequence.current++;
-    setDraft(next);
+    setDraft(copyBoardDraft(source));
     if (!source) setSelection({ group: 0, pin: -1 });
     setNotice(null);
   };
@@ -532,10 +600,21 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
       const saved = validateBoardProfile({
         ...draft, revision: draft.revision + 1, sources: draft.sources.map(source => source.trim()).filter(Boolean),
       });
-      updateLibrary(state => storeBoardProfile(state, saved, draft.revision));
+      if (copyOnEntry) {
+        if (!boundCardId.current || boundCardId.current !== liveCardId || evidence?.cardId !== liveCardId) {
+          throw new Error('Connect to the same card and read it before saving this board.');
+        }
+        if (boardEvidenceConflicts(evidence, saved)) {
+          throw new Error('The chip or memory does not match this card. Check Board details.');
+        }
+        updateLibrary(state => rememberBoard(storeBoardProfile(state, saved, draft.revision), liveCardId, saved));
+      } else {
+        updateLibrary(state => storeBoardProfile(state, saved, draft.revision));
+      }
       choose(saved.id);
       setDraft(null);
       setNotice({ text: `Saved in this browser · profile revision ${saved.revision}.` });
+      if (copyOnEntry) onBoardUsed?.(saved, liveCardId);
     } catch (error) { setNotice({ error: true, text: error.message }); }
   };
   const importFile = async event => {
@@ -559,7 +638,7 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const readCard = useCallback(async () => {
-    if (!liveCardId || !host) return;
+    if (!liveCardId || !host || (copyOnEntry && boundCardId.current !== liveCardId)) return;
     const request = ++readSequence.current;
     const selection = selectionSequence.current;
     setCardRead({ key: cardKey, checking: true });
@@ -572,7 +651,7 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
       }
       const latestLibrary = initialLibrary().library;
       const result = resolveBoardMatch([...REFERENCE_BOARDS, ...latestLibrary.profiles], next, rememberedBoard(latestLibrary, liveCardId));
-      if (result.profile && selectionSequence.current === selection) {
+      if (!initialProfileId && result.profile && selectionSequence.current === selection) {
         setSelectedId(result.profile.id);
         setSelection({ group: 0, pin: -1 });
       }
@@ -587,7 +666,7 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
         setCardRead({ key: cardKey, error: error.message });
       }
     }
-  }, [cardKey, host, transport, liveCardId]);
+  }, [cardKey, host, transport, liveCardId, initialProfileId, copyOnEntry]);
   useEffect(() => {
     void readCard();
     return () => { readSequence.current++; };
@@ -614,13 +693,30 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
       }),
     })) });
     setSelection(target);
-    setLastSwap(`${describePinAt(profile, source)} ↔ ${describePinAt(profile, target)}`);
+    setLastPositionChange({ action: 'Swapped', positions: `${describePinAt(profile, source)} ↔ ${describePinAt(profile, target)}` });
   };
+  const applyPinMove = (operation, source, target, resultIndex) => {
+    if (operation === 'swap') {
+      swapPins(source, target);
+    } else {
+      const groups = profile.groups.map(entry => ({ ...entry, pins: [...entry.pins] }));
+      const [pin] = groups[source.group].pins.splice(source.pin, 1);
+      groups[target.group].pins.splice(resultIndex, 0, pin);
+      changeDraft({ groups });
+      setSelection({ group: target.group, pin: resultIndex });
+      const destination = describePinAt({ groups }, { group: target.group, pin: resultIndex });
+      setLastPositionChange({ action: 'Moved', positions: `${describePinAt(profile, source)} → ${destination}` });
+    }
+    setPinMove(null);
+  };
+  const saveLabel = copyOnEntry ? 'Save and use this board' : 'Save profile';
   const swapSource = describePinAt(profile, swapPreview?.source);
   const swapTarget = describePinAt(profile, swapPreview?.target);
   const swapAction = swapTarget ? 'Release to swap'
-    : swapSource ? 'Choose the second pin' : lastSwap ? 'Swapped · Save profile to keep the change' : 'Changes are saved to this browser';
-  const swapPositions = swapTarget ? `${swapSource} ↔ ${swapTarget}` : swapSource || lastSwap;
+    : swapSource ? 'Choose the second pin'
+      : lastPositionChange ? `${lastPositionChange.action} · ${saveLabel} to keep the change`
+        : checkingGuidedCard ? 'Checking card…' : 'Tap a pin to edit · Drag a handle to swap';
+  const swapPositions = swapTarget ? `${swapSource} ↔ ${swapTarget}` : swapSource || lastPositionChange?.positions;
 
   return (
     <div className={`lw-board-manager${draft ? ' lw-board-editing' : ''}`}>
@@ -648,11 +744,20 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
           <p className="lw-board-help">Different pin labels? Copy the closest board and edit its map.</p>
         </>}
         {draft && <>
+          <label>Board name
+            <input value={profile.name} maxLength={100} onChange={event => changeDraft({ name: event.target.value })} />
+          </label>
           <div className="lw-board-actions">
-            <button type="button" className="btn primary" onClick={save}>Save profile</button>
-            <button type="button" className="btn" onClick={() => { setDraft(null); choose(selectedId); }}>Cancel edit</button>
-            {notice?.error && <span role="alert">{notice.text}</span>}
+            <button type="button" className="btn primary" disabled={checkingGuidedCard} onClick={save}>{saveLabel}</button>
+            <button type="button" className="btn" onClick={() => {
+              if (onCancelEdit) onCancelEdit();
+              else { setDraft(null); choose(selectedId); }
+            }}>Cancel edit</button>
           </div>
+          {notice?.error && <span className="lw-board-edit-message" role="alert">{notice.text}</span>}
+          {copyOnEntry && liveRead?.error && <p className="lw-board-edit-message" role="alert">
+            Could not read this card. <button type="button" className="btn" onClick={readCard}>Read again</button>
+          </p>}
           <div className="lw-board-swap-feedback" role="status" title={swapPositions}>
             <strong>{swapAction}</strong>
             <span>{swapPositions}</span>
@@ -661,32 +766,43 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
       </div>
       {notice && !draft && <p className="lw-board-notice" role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
       <div className="lw-board-workspace">
-        <div className="lw-board-sidebar">
-          <section className="lw-board-panel" aria-label="Profile details">
-            <h2>{draft ? (draft.revision ? 'Edit board profile' : 'New board profile') : boardTitle(profile)}</h2>
-            {!draft && <p>{reference ? 'Read-only Espressif reference' : 'Saved in this browser'} · profile revision {profile.revision}</p>}
-            {reference && baseline && profile.pcbRevision === 'v1.0' && (
-              <p>Combines the v1.0 PCB schematic with the N16R8 module pin restrictions. Verify both markings on the board.</p>
-            )}
-            <BoardDetails profile={profile} onChange={draft ? changeDraft : null} />
-          </section>
-
-        </div>
         <section className="lw-board-panel lw-board-wiring" aria-label="Board pin map">
           <div className="lw-board-title-row">
             <h2>Board pin map</h2>
-            {draft && <button type="button" className="btn" disabled={profile.groups.length >= BOARD_LIMITS.groups}
-              onClick={() => {
-                changeDraft({ groups: [...profile.groups, newBoardGroup()] });
-                selectPin(profile.groups.length, -1);
-              }}>Add pin group</button>}
+            <div className="lw-board-actions">
+              <button type="button" className="btn" onClick={() => detailsRef.current.showModal()}>Board details</button>
+              {draft && <button type="button" className="btn" disabled={profile.groups.length >= BOARD_LIMITS.groups}
+                onClick={() => {
+                  changeDraft({ groups: [...profile.groups, newBoardGroup()] });
+                  selectPin(profile.groups.length, -1);
+                }}>Add pin group</button>}
+            </div>
           </div>
           {!draft && <BoardLedSummary pins={ledPins} assignments={assignments} current={confirmed} maxOutputs={liveRead?.maxOutputs} />}
           {!draft && <p>Tap a pin to see what it does.</p>}
-          {profile.orientation && <p>{profile.orientation}</p>}
+          <dialog className="lw-board-pin-dialog" ref={detailsRef} aria-labelledby="lw-board-details-dialog-title">
+            <div className="lw-board-dialog-header">
+              <h3 id="lw-board-details-dialog-title">Board details</h3>
+              <button type="button" className="btn" onClick={() => detailsRef.current.close()}>Done</button>
+            </div>
+            <div className="lw-board-inspector">
+              {!draft && <>
+                <h3>{boardTitle(profile)}</h3>
+                <p>{reference ? 'Espressif reference' : 'Saved in this browser'} · profile revision {profile.revision}</p>
+                {reference && baseline && profile.pcbRevision === 'v1.0' && (
+                  <p>Check the v1.0 PCB and N16R8 module markings on the board.</p>
+                )}
+                {profile.orientation && <p>{profile.orientation}</p>}
+              </>}
+              <BoardDetails profile={profile} onChange={draft ? changeDraft : null} />
+            </div>
+          </dialog>
           <div className="lw-board-drawing">
             <BoardMap key={draft ? 'edit' : 'read'} profile={profile} selection={selection} onSelect={selectPin} onSwap={draft ? swapPins : null}
-              onSwapPreview={draft ? setSwapPreview : null} ledPins={ledPins} assignments={assignments}
+              onChooseSwap={(source, target) => {
+                selectPin(source.group, source.pin);
+                setPinMove({ source, target });
+              }} onSwapPreview={draft ? setSwapPreview : null} ledPins={ledPins} assignments={assignments}
               onAddPin={draft ? index => {
                 const pins = profile.groups[index].pins;
                 updateGroup(index, { pins: [...pins, newBoardPin()] });
@@ -695,38 +811,28 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
           </div>
           <dialog className="lw-board-pin-dialog" ref={inspectorRef} aria-labelledby="lw-board-pin-dialog-title">
             <div className="lw-board-dialog-header">
-              <h3 id="lw-board-pin-dialog-title">{draft ? (group?.pins[selection.pin] ? 'Edit pin' : 'Edit pin group') : 'Pin details'}</h3>
-              <button type="button" className="btn" onClick={() => inspectorRef.current.close()}>Done</button>
+              <h3 id="lw-board-pin-dialog-title">{pinMove ? 'Move or swap pin' : draft
+                ? (group?.pins[selection.pin] ? 'Edit pin' : 'Edit pin group') : 'Pin details'}</h3>
+              <button type="button" className="btn" onClick={() => {
+                if (pinMove) setPinMove(null);
+                else inspectorRef.current.close();
+              }}>{pinMove ? 'Back to pin' : 'Done'}</button>
             </div>
-            <PinInspector profile={profile} selection={selection} ledPins={ledPins} assignments={assignments}
-            onSelectGroup={index => setSelection({ group: index, pin: -1 })}
-            onChangeGroup={patch => updateGroup(selection.group, patch)}
-            onRemoveGroup={() => {
-              changeDraft({ groups: profile.groups.filter((_, index) => index !== selection.group) });
-              setSelection({ group: 0, pin: -1 });
-            }}
-            onChangePin={draft ? patch => updatePins(group.pins.map((pin, index) => index === selection.pin ? { ...pin, ...patch } : pin)) : null}
-            onMovePin={step => {
-              const pins = [...group.pins];
-              const next = selection.pin + step;
-              [pins[selection.pin], pins[next]] = [pins[next], pins[selection.pin]];
-              updatePins(pins);
-              setSelection({ group: selection.group, pin: next });
-            }}
-            onTransferPin={target => {
-              const moved = group.pins[selection.pin];
-              const destination = profile.groups[target];
-              changeDraft({ groups: profile.groups.map((entry, index) => {
-                if (index === target) return { ...entry, pins: [...entry.pins, moved] };
-                if (index === selection.group) return { ...entry, pins: entry.pins.filter((_, position) => position !== selection.pin) };
-                return entry;
-              }) });
-              setSelection({ group: target, pin: destination.pins.length });
-            }}
-            onRemovePin={() => {
-              updatePins(group.pins.filter((_, index) => index !== selection.pin));
-              setSelection({ group: selection.group, pin: Math.min(selection.pin, group.pins.length - 2) });
-            }} />
+            {pinMove
+              ? <PinMove profile={profile} source={pinMove.source} initialTarget={pinMove.target} onApply={applyPinMove} />
+              : <PinInspector profile={profile} selection={selection} ledPins={ledPins} assignments={assignments}
+                onSelectGroup={index => setSelection({ group: index, pin: -1 })}
+                onChangeGroup={patch => updateGroup(selection.group, patch)}
+                onRemoveGroup={() => {
+                  changeDraft({ groups: profile.groups.filter((_, index) => index !== selection.group) });
+                  setSelection({ group: 0, pin: -1 });
+                }}
+                onChangePin={draft ? patch => updatePins(group.pins.map((pin, index) => index === selection.pin ? { ...pin, ...patch } : pin)) : null}
+                onOpenMove={() => setPinMove({ source: selection })}
+                onRemovePin={() => {
+                  updatePins(group.pins.filter((_, index) => index !== selection.pin));
+                  setSelection({ group: selection.group, pin: Math.min(selection.pin, group.pins.length - 2) });
+                }} />}
             {!draft && <div className="lw-board-actions">
               <button type="button" className="btn primary" onClick={() => {
                 if (reference) begin(profile);
@@ -734,10 +840,6 @@ export function BoardManager({ connected, cardLink, cardHost, onOpenConnectionCe
               }}>{reference ? 'Copy this board' : 'Edit pin'}</button>
             </div>}
           </dialog>
-          <div className="lw-board-installation">
-            <h3>Lightweaver installation</h3>
-            <p>Save the board map here. Set or move LED outputs in Wiring.</p>
-          </div>
         </section>
       </div>
       <p className="lw-board-muted lw-board-provenance">

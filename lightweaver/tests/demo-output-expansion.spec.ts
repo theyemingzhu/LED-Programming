@@ -4,6 +4,7 @@ import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
 import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
 import { makeDefaultWiring } from '../src/lib/wiringModel.js';
 import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
+import { DEFAULT_CARD_CONTROLS } from '../src/lib/cardRuntimeContract.js';
 import {
   CARD_HOSTS, createCardSimulator, DEMO_FIVE_OUTPUTS, DEMO_OUTPUT_TOPOLOGY,
   type CardSimulator, type SimulatedOutput,
@@ -78,7 +79,8 @@ async function startLightTest(page: Page) {
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
 }
 
-test('the demo card installs a fifth output and restores its exact topology after a rejected rewire', async ({ page }) => {
+test('the demo card saves a board correction, installs a fifth output, and restores a rejected rewire', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const project = makeDemoProject();
   const { config } = prepareCardDeployment({
     projectId: project.id, projectName: project.name, projectRevision: 0,
@@ -97,6 +99,11 @@ test('the demo card installs a fifth output and restores its exact topology afte
     cardId: CARD_ID, outputTopology: DEMO_OUTPUT_TOPOLOGY, initialOutputs: config.led.outputs,
     initialWiring: { revision: config.wiringRevision, digest: config.wiringDigest },
   });
+  Object.assign(card.state, { firmwareControls: {
+    ...DEFAULT_CARD_CONTROLS,
+    encoder: { ...DEFAULT_CARD_CONTROLS.encoder, effectiveAlternatePress: DEFAULT_CARD_CONTROLS.encoder.alternatePress },
+    brightnessAnalog: DEFAULT_CARD_CONTROLS.brightness,
+  } });
 
   await connectDemoCard(page, card);
   await page.addInitScript(({ identity, savedProject, host }) => {
@@ -104,9 +111,6 @@ test('the demo card installs a fifth output and restores its exact topology afte
     localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
     localStorage.setItem('lw_chip_card_host', host);
     localStorage.setItem('lw_card_host', host);
-    localStorage.setItem('lw-board-profiles-v1', JSON.stringify({
-      profiles: [], confirmations: { [identity.id]: { id: 'espressif-devkitc-1-n16r8-v1.0', revision: 1 } },
-    }));
     if (!localStorage.getItem('lw_autosave_v3')) {
       localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
     }
@@ -121,13 +125,28 @@ test('the demo card installs a fifth output and restores its exact topology afte
     version: 1, outputPins: [...DEMO_OUTPUT_TOPOLOGY.outputPins], sequenceVersion: 2, experimental: true,
   });
   expect(startStatus.outputs).toHaveLength(4);
+
+  await page.getByRole('button', { name: 'Card', exact: true }).click();
+  await page.getByRole('button', { name: 'Choose board', exact: true }).click();
+  const boardSetup = page.getByTestId('connect-board-setup');
+  await boardSetup.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.0', exact: true }).click();
+  await boardSetup.getByRole('button', { name: 'Use this board' }).click();
+  await expect(boardSetup.getByText('Free for LEDs')).toBeVisible();
+  await expect(page.getByText('Check board and pins', { exact: true })).toHaveCount(1);
+  await boardSetup.getByRole('button', { name: 'Map looks wrong' }).click();
+  await page.getByLabel('Board name').fill('Demo board correction');
+  await page.getByRole('button', { name: 'Save and use this board' }).click();
+  await expect(boardSetup.getByRole('heading', { name: /Demo board correction/ })).toBeVisible();
+  await boardSetup.getByRole('button', { name: 'Set up lights' }).click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
+
   await page.getByTestId('layout-specs-trigger').click();
   const tools = page.getByTestId('advanced-installation-tools');
   if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
     await tools.locator(':scope > summary').click();
   }
   const map = page.getByTestId('wire-pin-map');
-  await expect(map).toContainText('ESP32-S3-DevKitC-1 N16R8 v1.0');
+  await expect(map).toContainText('Demo board correction');
   await expect(map.locator('[data-pin="48"]')).toContainText('Onboard RGB');
   await expect(map.locator('[data-pin="38"]')).not.toContainText('Onboard RGB');
   await expect(map.locator('[data-pin="12"]')).toContainText('microSD SCK');

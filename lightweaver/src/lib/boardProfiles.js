@@ -3,6 +3,7 @@ import { CARD_HEADER_ROWS, formatGpio } from './cardPinout.js';
 export const BOARD_CATALOG = 'https://docs.espressif.com/projects/esp-board-manager/en/latest/references/boards/index.html';
 export const BOARD_VENDOR_TOOL = 'https://docs.espressif.com/projects/esp-adf/en/latest/tools/esp-board-manager-tool.html';
 export const BOARD_PROFILE_STORAGE = 'lw-board-profiles-v1';
+export const BOARD_LIBRARY_CHANGED = 'lw-board-library-changed';
 export const BOARD_PROFILE_FILE_LIMIT = 256 * 1024;
 export const PIN_ROLES = Object.freeze({
   unknown: 'Unresolved', gpio: 'General-purpose pin', power: 'Power', ground: 'Ground', reset: 'Reset',
@@ -239,6 +240,7 @@ export function readBoardLibrary(storage) {
 export function updateBoardLibrary(storage, update) {
   const state = update(readBoardLibrary(storage));
   storage.setItem(BOARD_PROFILE_STORAGE, JSON.stringify(state));
+  globalThis.window?.dispatchEvent(new Event(BOARD_LIBRARY_CHANGED));
   return state;
 }
 
@@ -322,12 +324,17 @@ export function resolveBoardMatch(profiles, evidence, remembered) {
   if (evidence.readingsConflict) {
     return { status: 'review', reason: 'hardware-readings-conflict', profile: null, candidates };
   }
+  const confirmed = candidates.find(candidate => candidate.confirmed);
   const reported = candidates.find(candidate => candidate.reported);
+  // The owner can identify a different compatible PCB running the same
+  // reference firmware. Keep that choice scoped to this exact physical card.
+  if (confirmed && (reported || confirmed.profile.id.startsWith('local-'))) {
+    return { status: 'remembered', profile: confirmed.profile, candidates };
+  }
   if (reported) return { status: 'reported', profile: reported.profile, candidates };
   if (evidence.reported) {
     return { status: 'review', reason: 'reported-profile-unavailable', profile: null, candidates };
   }
-  const confirmed = candidates.find(candidate => candidate.confirmed);
   if (confirmed) return { status: 'remembered', profile: confirmed.profile, candidates };
   if (!candidates.length) return { status: 'no-match', profile: null, candidates };
   if (!evidence.chip && evidence.flashMb === null && evidence.psramMb === null) {

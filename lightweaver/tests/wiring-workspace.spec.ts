@@ -170,7 +170,7 @@ async function switchMode(page: any, mode: 'draw' | 'wire') {
 // Split strips list one row per run, so scope to the first matching row.
 async function expandDrawStrip(page: any, name: string) {
   const strip = page.locator('[data-strip-id]').filter({ hasText: name }).first();
-  if (!await strip.locator('.la-strip-detail').first().isVisible()) await strip.locator('.la-strip-row').first().click();
+  if (!await strip.locator('.la-strip-detail').first().isVisible()) await strip.locator('.la-strip-row .layer-name').first().click();
   await expect(strip.locator('.la-strip-detail').first()).toBeVisible();
   return strip;
 }
@@ -293,7 +293,7 @@ test('Test & Install owns neither wire count nor ordering and keeps specialist t
 
 test('Advanced mapping inserts and removes a zero-address cable jump without changing Wire order', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
-  await page.locator('[data-strip-id="default-outer-circle"] .la-strip-row').click();
+  await page.locator('[data-strip-id="default-outer-circle"] .la-strip-row .layer-name').click();
   await switchMode(page, 'wire');
   await openCustomMapping(page);
 
@@ -326,7 +326,7 @@ test('Advanced mapping inserts and removes a zero-address cable jump without cha
 
   await switchMode(page, 'draw');
   await page.getByRole('button', { name: 'Back to inspector' }).click();
-  await page.locator('[data-strip-id="default-inner-circle"] .la-strip-row').click();
+  await page.locator('[data-strip-id="default-inner-circle"] .la-strip-row .layer-name').click();
   await switchMode(page, 'wire');
   await openCustomMapping(page);
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeDisabled();
@@ -513,6 +513,50 @@ test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ 
   await expect(encoderA.locator('option[value="17"]')).toHaveAttribute('disabled', '');
   await encoderA.selectOption('10');
   await expect(encoderA).toHaveValue('10');
+});
+
+test('a phone strip row changes a pin and a 600 LED count in place', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedDefaultCircles(page, { mode: 'draw' });
+  const inner = page.locator('[data-strip-id]').filter({ hasText: 'Inner circle' }).first();
+  const changePin = inner.getByRole('button', { name: 'Change pin for Inner circle' });
+  await expect(changePin).toContainText('GPIO 16');
+  await changePin.click();
+  const pin = inner.getByLabel('GPIO output', { exact: true });
+  await expect(pin).toBeFocused();
+  await pin.selectOption('17');
+  await expect(changePin).toContainText('GPIO 17');
+  const before = await saveProject(page);
+  const output = before.layout.wiring.outputs.find((item: any) => item.pin === 17);
+  expect(output.runIds).toHaveLength(1);
+
+  const count = inner.getByRole('spinbutton', { name: 'Inner circle LED count' });
+  await count.fill('600');
+  await count.press('Enter');
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.layout?.strips.find((strip: { name: string }) => strip.name === 'Inner circle')?.pixelCount;
+  })).toBe(600);
+  const afterCount = await saveProject(page);
+  await pin.selectOption('18');
+  await expect(changePin).toContainText('GPIO 18');
+  await expect(count).toHaveValue('600');
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.layout?.wiring.outputs.some((item: { pin: number }) => item.pin === 18);
+  })).toBe(true);
+  const after = await saveProject(page);
+  expect(after.layout.wiring.outputs.find((item: any) => item.pin === 18)).toEqual({ ...output, pin: 18 });
+  const countedStrip = afterCount.layout.strips.find((strip: any) => strip.name === 'Inner circle');
+  const editedStrip = after.layout.strips.find((strip: any) => strip.name === 'Inner circle');
+  expect(editedStrip).toEqual(countedStrip);
+  expect(after.layout.patchBoard.patches.map((patch: any) => [patch.id, patch.patternId]))
+    .toEqual(before.layout.patchBoard.patches.map((patch: any) => [patch.id, patch.patternId]));
+
+  const recount = inner.getByRole('link', { name: 'Count LEDs' });
+  await expect(recount).toHaveAttribute('href', '#screen=discovery');
+  await recount.click();
+  await expect(page).toHaveURL(/screen=discovery/);
 });
 
 test('changing logical sections never changes the derived physical data-wire count', async ({ page }) => {

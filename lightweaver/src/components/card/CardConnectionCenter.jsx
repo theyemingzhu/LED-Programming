@@ -11,6 +11,7 @@ import {
   readStoredCardHostHistory,
   writeStoredCardHost,
 } from '../../lib/cardConnection.js';
+import { confirmedBoardProfile } from '../../lib/boardLedPins.js';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
 import { directConnectHeading, directConnectVerdictCopy } from '../../lib/cardLifecycle.js';
 import { locateReachableCard } from '../../lib/cardFind.js';
@@ -32,6 +33,7 @@ import { getActiveUsbInspection, releaseActiveUsbInspection } from '../../lib/us
 import { findPairedCardUsbAddress } from '../../lib/cardUsbReconnect.js';
 import { usbWifiErrorMessage } from '../../lib/usbWifiProvisioning.js';
 import { BridgeResumePanel } from './BridgeResumePanel.jsx';
+import { ConnectedBoardSetup } from './ConnectedBoardSetup.jsx';
 
 function platformCapabilities() {
   if (typeof window === 'undefined') return detectPlatformCapabilities();
@@ -50,6 +52,7 @@ function goToInstall() {
 }
 
 const SETUP_HOST = '192.168.4.1';
+const exactCardId = /^lw-[a-f\d]{12}$/;
 
 export function CardConnectionCenter({
   open,
@@ -62,6 +65,8 @@ export function CardConnectionCenter({
   lifecycle = null,
   onClose,
   onOpenSetup,
+  onOpenBoardManager,
+  onSetUpLights,
   onConnectCard = connectCardLink,
   onLaunchBridge,
   bridgeResult,
@@ -371,12 +376,11 @@ export function CardConnectionCenter({
     setTakeoverHost(result.ok ? '' : result.takeoverHost);
     setFailure(result.ok ? '' : result.message);
     setPairingBusy(false);
-    // Pairing was the whole reason this panel opened. Staying open afterwards
-    // left a second, differently-worded next step ("Continue on Card Home")
-    // beside the one the screen behind it had already moved on to — two
-    // instructions for one moment, which is what made the flow feel like it
-    // was happening in several places at once.
-    if (result.ok) closeAndRestore();
+    // Pairing leaves this panel open when the exact card still needs a board.
+    const pairedCardId = link.discoveredCard?.id || link.card?.id || '';
+    if (result.ok && (!onOpenBoardManager || !exactCardId.test(pairedCardId) || confirmedBoardProfile(pairedCardId))) {
+      closeAndRestore();
+    }
   };
 
   const takeOverConnection = async () => {
@@ -529,15 +533,35 @@ export function CardConnectionCenter({
     && (firmwareNoteQuestion
       || (!firstRunConnect && !directAttempt?.connected && !directBusy && !failedDirectRecovery && !sameWifiFailure));
 
+  const isConnected = link.state === 'connected-direct' || link.state === 'connected-bridge';
+  const boardCardId = link.card?.id;
+  const showBoardSetup = onOpenBoardManager && onSetUpLights && isConnected
+    && exactCardId.test(boardCardId || '')
+    && (!link.expectedCard?.id || link.expectedCard.id === boardCardId)
+    && (!link.readiness?.cardId || link.readiness.cardId === boardCardId)
+    && isLocalCardHost(link.host) && !usbInspection && !bridgeResult
+    && !incompatibleFirmware && !firmwareNoteQuestion && !directBusy
+    && (action.id === 'ready-local-card' || directAttempt?.connected || link.cardBlank
+      || (link.acknowledgedAt && link.readiness?.commandReady === true));
+  const boardBootId = link.readiness?.bootId;
+  const boardBuildId = link.readiness?.buildId;
+  const boardCheck = showBoardSetup && (
+    <ConnectedBoardSetup key={JSON.stringify([boardCardId, link.host, link.transport, boardBootId, boardBuildId])}
+      cardId={boardCardId} host={link.host} transport={link.transport} bootId={boardBootId}
+      buildId={boardBuildId} onOpenBoardManager={onOpenBoardManager} onSetUpLights={onSetUpLights} />
+  );
+
+  const postConnectButtonClass = showBoardSetup ? 'btn' : 'btn primary';
+
   const renderPrimaryAction = () => {
     // Lifecycle-owned verdicts have exactly one rendering: the route-out
     // button. There is no case below that can offer a remedy for them.
     if (routeOut) {
-      return <button type="button" className="btn primary" onClick={followRouteOut}>{routeOut.label}</button>;
+      return <button type="button" className={postConnectButtonClass} onClick={followRouteOut}>{routeOut.label}</button>;
     }
     switch (action.id) {
       case 'ready-local-card':
-        return <button type="button" className="btn primary" onClick={closeAndRestore}>Done</button>;
+        return <button type="button" className={postConnectButtonClass} onClick={closeAndRestore}>Done</button>;
       case 'pair-local-card':
         return <button type="button" className="btn primary" onClick={useDiscoveredCard} disabled={pairingBusy}>{pairingBusy ? 'Connecting…' : 'Connect'}</button>;
       case 'relearn-current-card':
@@ -658,6 +682,8 @@ export function CardConnectionCenter({
         </div>
       )}
 
+      {boardCheck}
+
       {showDirectConnect && (
         <div className="card-windowless-connect" data-testid="windowless-card-connect">
           <h3>{firstRunConnect
@@ -693,8 +719,8 @@ export function CardConnectionCenter({
               </>
             ) : directAttempt?.connected ? (
               safeControlsReady
-                ? <button type="button" className="btn primary" onClick={closeAndRestore}>Done</button>
-                : <button type="button" className="btn primary" onClick={onOpenSetup}>Continue in Setup</button>
+                ? <button type="button" className={postConnectButtonClass} onClick={closeAndRestore}>Done</button>
+                : <button type="button" className={postConnectButtonClass} onClick={onOpenSetup}>Continue in Setup</button>
             ) : (
               <button type="button" className="btn primary" onClick={() => connect()} disabled={directBusy}>
                 {directBusy ? 'Connecting…' : directAttempt ? 'Try again' : 'Connect this card'}

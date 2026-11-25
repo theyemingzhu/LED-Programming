@@ -1,11 +1,8 @@
 import { formatGpio } from '../../../lib/cardPinout.js';
-import { confirmedBoardProfile, selectBoardLedPins } from '../../../lib/boardLedPins.js';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { getCardLinkState, subscribeCardLink } from '../../../lib/cardLink.js';
-import { classifyCardReadiness } from '../../../lib/cardReadiness.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
-import { normalizeCardLedType, readCardOutputCapabilities } from '../../../lib/cardHardwareContract.js';
+import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
@@ -18,6 +15,7 @@ import { describeCardCapacity } from '../../../lib/designCapacity.js';
 import { STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../../lib/cardAction.js';
 import { estimatePowerBudget } from '../../../lib/controllerProfiles.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../../lib/powerSupplySettings.js';
+import { useWiringCard } from './useWiringCard.js';
 import '../../../styles/lw-wire.css';
 
 const nextRunId = (runs, prefix) => {
@@ -99,19 +97,9 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
     draft.outputs[0].runIds.push(id);
   }, { changeKind: 'route' });
 
-  const cardLink = useSyncExternalStore(subscribeCardLink, getCardLinkState, getCardLinkState);
-  const observedCard = cardLink.readiness || cardLink.card;
-  const cardReadinessState = cardLink.readiness
-    ? classifyCardReadiness(cardLink.readiness, { expectedCard: cardLink.expectedCard }).state
-    : (cardLink.cardBlank === true ? 'blank' : '');
-  const hasLiveCard = Boolean(observedCard && ['connected', 'blank'].includes(cardReadinessState));
-  const outputCapacity = useMemo(() => readCardOutputCapabilities(observedCard), [observedCard]);
-  const liveCardId = hasLiveCard ? (cardLink.readiness?.cardId || cardLink.card?.id) : '';
-  const availableOutputPins = selectBoardLedPins({
-    profile: confirmedBoardProfile(liveCardId),
-    firmwarePins: (hasLiveCard && outputCapacity.outputPins) || CARD_HARDWARE_CAPABILITIES.supportedOutputPins,
-  });
-  const tooManyOutputs = hasLiveCard && wiring.outputs.length > outputCapacity.maxOutputs;
+  const { availablePins: availableOutputPins, cardId: liveCardId,
+    capacity: outputCapacity, maxOutputs, state: cardReadinessState } = useWiringCard();
+  const tooManyOutputs = outputCapacity && wiring.outputs.length > maxOutputs;
   // Both supported strips send 24 bits at 800 kbit/s. This lower bound
   // assumes all four ESP32-S3 transmitters are busy when needed.
   const longestOutput = Math.max(0, ...compiledWiring.outputs.map(output => output.count));
@@ -184,24 +172,21 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
     return { output, canAddCable: Boolean(followingRun && !hasImmediateCable) };
   }, [selectedRun, wiring.outputs, runsById]);
   const selectedRunOutput = selectedRunPlacement?.output;
-  const runPinChoices = useMemo(() => {
-    const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
-    return CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => ({
-      pin,
-      disabled: controlPins.has(pin) || (pin !== selectedRunOutput?.pin
-        && !wiring.outputs.some(output => output.pin === pin)
-        && selectedRunOutput?.runIds.length > 1
-        && wiring.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs),
-    }));
-  }, [standaloneController?.controls, selectedRunOutput, wiring.outputs]);
+  const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
+  const canAddRunOutput = wiring.outputs.length < maxOutputs || selectedRunOutput?.runIds.length <= 1;
+  const runPinChoices = CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => ({
+    pin,
+    disabled: pin !== selectedRunOutput?.pin && (!availableOutputPins.includes(pin) || controlPins.has(pin)
+      || (!canAddRunOutput && !wiring.outputs.some(output => output.pin === pin))),
+  }));
   const changeSelectedRunPin = pin => {
     if (!selectedRun) return;
     return mutate(draft => assignWiringRunToPin(draft, {
       runId: selectedRun.id,
       pin,
       controls: standaloneController?.controls,
-      supportedOutputPins: CARD_HARDWARE_CAPABILITIES.supportedOutputPins,
-      maxOutputs: CARD_HARDWARE_CAPABILITIES.maxOutputs,
+      supportedOutputPins: availableOutputPins,
+      maxOutputs,
     }), { changeKind: 'gpio' });
   };
   const runName = run => run?.type === 'strip'
@@ -389,7 +374,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
             </div>
           )}
           <p className="wire-capacity-line" data-testid="wire-output-capacity">
-            {wiring.outputs.length} LED {wiring.outputs.length === 1 ? 'output' : 'outputs'} · {hasLiveCard ? 'Card supports' : 'Design supports'} up to {hasLiveCard ? outputCapacity.maxOutputs : CARD_HARDWARE_CAPABILITIES.maxOutputs}
+            {wiring.outputs.length} LED {wiring.outputs.length === 1 ? 'output' : 'outputs'} · {outputCapacity ? 'Card supports' : 'Design supports'} up to {maxOutputs}
           </p>
           {minimumFrameDataMs > 0 && <p className="wire-capacity-line">
             {compiledWiring.totalPixels.toLocaleString()} LEDs · {minimumFrameDataMs.toFixed(1)} ms minimum data time per frame
@@ -408,8 +393,8 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
           {remappedOutput && selectedOutput?.id === remappedOutput.id && selectedOutput.pin === remappedOutput.to && (
             <p className="wire-capacity-line" role="status">{selectedOutput.name} moved from {formatGpio(remappedOutput.from)} to {formatGpio(remappedOutput.to)} in the design.</p>
           )}
-          <CardPinMap testId="wire-pin-map" cardId={liveCardId} outputCapabilities={hasLiveCard ? outputCapacity : null} outputs={wiring.outputs} controls={standaloneController?.controls} availablePins={availableOutputPins} lit={wiring.outputs.map((output, index) => ({ pin: output.pin, tag: String(index + 1), name: `Port ${index + 1}` }))}/>
-          <WireDiscovery outputs={wiring.outputs} controls={standaloneController?.controls} cardHost={cardHost} cardId={liveCardId} outputCapabilities={hasLiveCard ? outputCapacity : null} disabled={wiring.locked} onPinConfirmed={changeOutputPin}/>
+          <CardPinMap testId="wire-pin-map" cardId={liveCardId} outputCapabilities={outputCapacity} outputs={wiring.outputs} controls={standaloneController?.controls} availablePins={availableOutputPins} lit={wiring.outputs.map((output, index) => ({ pin: output.pin, tag: String(index + 1), name: `Port ${index + 1}` }))}/>
+          <WireDiscovery outputs={wiring.outputs} controls={standaloneController?.controls} cardHost={cardHost} cardId={liveCardId} outputCapabilities={outputCapacity} disabled={wiring.locked} onPinConfirmed={changeOutputPin}/>
           {compiledWiring.sendReady && <button className="btn lw-open-assembly" title="Show or hide the assembly map used to build the verified LED wiring." data-tooltip="Show or hide the assembly map used to build the verified LED wiring." onClick={() => setShowAssembly(value => !value)}>{showAssembly ? 'Hide assembly map' : 'Open assembly map'}</button>}
           {showAssembly && compiledWiring.sendReady && <WiringAssemblyMap wiring={wiring} compiled={compiledWiring} strips={strips} physicalScale={Number(pxPerMm) > 0 ? { pxPerMm: Number(pxPerMm) } : null} onClose={() => setShowAssembly(false)}/>}
           <details className="lww-custom-mapping">

@@ -6,7 +6,7 @@
     "src/components/card/CardInstallAction.jsx": 5,
     "src/components/card/StripDiscoveryPanel.jsx": 8,
     "src/components/layout/hooks/useLayoutStrips.js": 1,
-    "src/components/layout/modes/DrawModePanel.jsx": 15,
+    "src/components/layout/modes/DrawModePanel.jsx": 13,
     "src/components/layout/modes/WirePlanTools.jsx": 3,
     "src/components/layout/wire/WireBuildSheet.jsx": 1,
     "src/components/layout/wire/WireDiscovery.jsx": 7,

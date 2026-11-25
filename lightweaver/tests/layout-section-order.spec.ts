@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// Drag ordering keeps physical wire order persistent. The GPIO picker lists
-// connector pins first and folds the other legal pins under "More pins".
+// Drag ordering keeps physical wire order persistent. The pin picker lists
+// ready connector pins first and marks unavailable choices separately.
 
 test.use({ viewport: { width: 390, height: 844 } });
 
@@ -75,7 +75,7 @@ test('section drag events reorder the wire and persist after reload', async ({ p
   expect(overflow).toBe(false);
 });
 
-test('the GPIO picker lists the connector pins first and folds the rest under More pins', async ({ page }) => {
+test('the GPIO picker lists ready connector pins first and explains blocked pins', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
@@ -83,7 +83,10 @@ test('the GPIO picker lists the connector pins first and folds the rest under Mo
   const firstFour = await select.locator(':scope > option').evaluateAll((nodes: HTMLOptionElement[]) => nodes.map(node => node.value));
   expect(firstFour).toEqual(['16', '17', '18', '21']);
   const folded = select.locator('optgroup[label="More pins"] option');
-  await expect(folded).toHaveCount(12);
+  await expect(folded).toHaveCount(8);
+  const blocked = select.locator('optgroup[label="Unavailable"] option');
+  await expect(blocked).toHaveCount(4);
+  await expect(blocked.first()).toContainText('Used by a control');
   await expect(select.locator('optgroup[label="More pins"] option[value="39"]')).toHaveCount(1);
   // Picking a connector pin still moves the strip to that output.
   await select.selectOption('17');
@@ -102,7 +105,7 @@ test('one divided section can move to GPIO 17 while the other sections stay on G
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  await page.locator('.la-strip-row').nth(1).click();
+  await page.locator('.la-strip-row .layer-name').nth(1).click();
   await page.getByLabel('Part 2 GPIO override').selectOption('17');
 
   await expect(page.getByTestId('gpio-group-17').locator('.la-strip-row')).toHaveCount(1);

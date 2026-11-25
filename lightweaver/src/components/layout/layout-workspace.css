@@ -79,6 +79,61 @@
   border: 0; border-radius: 0;
   background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 24px 1px no-repeat;
 }
+.la .la-strip-pin-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent-hi);
+  font: 11px var(--font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.la .la-strip-pin-button:hover { background: var(--bg-elev-2); }
+.la .la-strip-pin-button:focus-visible { outline: 2px solid var(--accent); }
+.la .la-strip-pin-button svg { width: 12px; height: 12px; }
+.la .la-strip-wiring-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding-bottom: 4px;
+}
+.la .la-strip-pin-field {
+  display: flex;
+  flex: 1 1 160px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-mid);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.la .la-strip-pin-field .la-gpio-wrap { flex: 1 1 auto; min-width: 0; }
+.la .la-strip-pin-field .la-gpio-select { min-width: 0; width: 100%; min-height: 32px; }
+.la .la-strip-count-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.la .la-strip-pin-help, .la .la-strip-wiring-tools .la-gpio-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 11px;
+}
+.la .la-strip-wiring-tools .la-gpio-error { color: var(--accent-hi); }
+@media (pointer: coarse) {
+  .la .la-strip-wiring-tools :is(.la-gpio-select, .la-strip-count-action) { min-height: var(--lw-tap, 44px); }
+}
 .la .la-strip-toolbar .la-total-led-field {
   min-height: 32px;
   gap: 2px;

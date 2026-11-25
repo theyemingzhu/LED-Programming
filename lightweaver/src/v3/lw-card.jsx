@@ -970,7 +970,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, boardSetupEntry, onReturnToBoardSetup, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -1123,7 +1123,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           )}
         </div>
       )}
-      <BoardManagerEntry cardId={connected ? cardLink?.card?.id : ''} onOpen={() => onOpenSection('boards')} />
+      <BoardManagerEntry
+        cardId={['connected-direct', 'connected-bridge'].includes(cardLink?.state) ? cardLink.card?.id : ''}
+        onOpen={() => onOpenSection('boards')}
+        onConnect={onOpenConnectionCenter}
+      />
       <SetupScreen
         {...cardProps}
         startOwnsPrimary={showPublicWorkerStart}
@@ -1224,7 +1228,17 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       onCommissioningComplete={() => onOpenSection('overview')}
     />
   );
-  else if (route.section === 'boards') content = <BoardManager {...cardProps} onOpenConnectionCenter={onOpenConnectionCenter} />;
+  else if (route.section === 'boards') content = (
+    <BoardManager
+      {...cardProps}
+      {...boardSetupEntry}
+      connected={connected || Boolean(boardSetupEntry && cardLink?.cardBlank &&
+        ['connected-direct', 'connected-bridge'].includes(cardLink?.state))}
+      onOpenConnectionCenter={onOpenConnectionCenter}
+      onBoardUsed={boardSetupEntry ? onReturnToBoardSetup : undefined}
+      onCancelEdit={boardSetupEntry ? onReturnToBoardSetup : undefined}
+    />
+  );
   else if (route.section === 'workshop') content = <ProductionScreen embedded cardHost={cardHost} cardLink={cardLink} onConnectCard={onConnectCard} />;
   else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
@@ -1256,7 +1270,9 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
               <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Hardware</button>
             )}
             {route.section === 'boards' && (
-              <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Card</button>
+              <button type="button" className="btn" onClick={boardSetupEntry ? onReturnToBoardSetup : () => onOpenSection('overview')}>
+                {boardSetupEntry ? 'Back to Connect' : 'Back to Card'}
+              </button>
             )}
           </header>
           {content}
