@@ -183,12 +183,12 @@ function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onChooseSwap
     const [group, pin] = row.dataset.boardPin.split(':').map(Number);
     return { group, pin };
   };
-  const selectPosition = position => {
+  const selectPosition = (position, trigger) => {
     if (swapSource) {
-      if (!samePosition(position, swapSource)) onChooseSwap(swapSource, position);
+      if (!samePosition(position, swapSource)) onChooseSwap(swapSource, position, trigger);
       clearSwap();
     } else {
-      onSelect(position.group, position.pin);
+      onSelect(position.group, position.pin, trigger);
     }
   };
   return (
@@ -208,8 +208,9 @@ function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onChooseSwap
             data-paired={paired || undefined} key={kind} aria-label={kind === 'header' ? 'Connector map' : 'Onboard wiring'}
             style={paired ? { '--lw-board-contact-rows': contactRows, '--lw-board-connector-rows': contactRows + (onAddPin ? 2 : 1) } : undefined}>
             {devkitDrawing && <BoardDrawing chip={profile.chip} antenna />}
-            {groups.map(({ group, index: groupIndex }) => (
-              <section key={groupIndex} className="lw-board-connector" aria-label={group.name || 'New group'}>
+            {groups.map(({ group, index: groupIndex }, groupPosition) => (
+              <section key={groupIndex} className="lw-board-connector" aria-label={group.name || 'New group'}
+                data-board-side={devkitDrawing ? (groupPosition === 0 ? 'left' : 'right') : undefined}>
                 <h3>{group.name || 'New group'}</h3>
                 <ol>
                   {group.pins.map((pin, index) => {
@@ -223,18 +224,25 @@ function BoardMap({ profile, selection, onSelect, onAddPin, onSwap, onChooseSwap
                     const ledPin = ledPins?.includes(pin.gpio);
                     const ledLabel = ledPin && !liveRole && !installation ? 'LED data' : '';
                     const usage = liveRole || (installation && `Lightweaver ${installation}`) || ledLabel;
+                    const boardRole = pin.detail || (pin.role !== 'gpio' ? PIN_ROLES[pin.role] : '');
+                    const caption = liveRole || installation || boardRole || ledLabel;
                     return (
                       <li key={index} value={number} data-board-pin={`${groupIndex}:${index}`}
                         data-swap-source={source || undefined} data-swap-target={samePosition(dragTarget, position) || undefined}>
-                        <button type="button" className="lw-board-contact" aria-pressed={selected} onClick={() => selectPosition(position)}
+                        {devkitDrawing && <span className="lw-board-socket" aria-hidden="true" />}
+                        <button type="button" className="lw-board-contact" aria-pressed={selected}
+                          onClick={event => selectPosition(position, event.currentTarget)}
                           aria-label={`${label} · ${pin.detail || PIN_ROLES[pin.role]}${usage ? ` · ${usage}` : ''}`}>
                           {kind === 'header' && <span className="lw-board-position">{number}</span>}
-                          <span className={`lw-board-pad lw-board-pad-${pin.role}${ledPin ? ' lw-board-pad-capable' : ''}`} aria-hidden="true" />
-                          <strong>{pin.label || 'New pin'}</strong>
-                          {(pin.role !== 'gpio' || pin.detail) && <span className="lw-board-pin-role">{pin.detail || PIN_ROLES[pin.role]}</span>}
-                          {usage && <span className={ledLabel ? 'lw-board-pin-available' : 'lw-board-pin-installation'}>{usage}</span>}
+                          {!devkitDrawing && <span className={`lw-board-pad lw-board-pad-${pin.role}${ledPin ? ' lw-board-pad-capable' : ''}`} aria-hidden="true" />}
+                          <span className="lw-board-contact-copy">
+                            <strong>{pin.label || 'New pin'}</strong>
+                            {caption && <span className={installation || liveRole || caption === ledLabel
+                              ? 'lw-board-pin-installation' : 'lw-board-pin-role'} title={caption}>{caption}</span>}
+                          </span>
                         </button>
                         {onSwap && <button type="button" className="lw-board-swap" aria-label={`Swap ${label}`} aria-pressed={source}
+                          title={`Drag to swap ${label}`}
                           onPointerDown={event => {
                             if (!event.isPrimary || event.button !== 0) return;
                             skipClick.current = false;
@@ -294,12 +302,35 @@ function pinProtection(profile, pin) {
   return '';
 }
 
+function PinAssignmentEditor({ installation, onChange }) {
+  const [chooseCustom, setChooseCustom] = useState(false);
+  const custom = chooseCustom || (installation && !INSTALLATION_FUNCTIONS.includes(installation));
+  return (
+    <>
+      <label>Installation function
+        <select value={custom ? 'custom' : installation} onChange={event => {
+          const value = event.target.value;
+          setChooseCustom(value === 'custom');
+          onChange({ installation: value === 'custom' ? '' : value });
+        }}>
+          <option value="">None</option>
+          {INSTALLATION_FUNCTIONS.map(role => <option key={role}>{role}</option>)}
+          <option value="custom">Custom label…</option>
+        </select>
+      </label>
+      {custom && <label className="lw-board-wide">Lightweaver assignment note
+        <input value={installation} maxLength={100} onChange={event => onChange({ installation: event.target.value })} />
+      </label>}
+    </>
+  );
+}
+
 function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemoveGroup, onChangePin, onOpenMove, onRemovePin, ledPins, assignments }) {
   const group = profile.groups[selection.group];
   const pin = group?.pins[selection.pin];
   if (!onChangePin && !pin) return <p className="lw-board-muted">Select a position to inspect its wiring and LED output status.</p>;
 
-  const pinHeading = pin && `${group.name || 'New group'} ${pinNumber(group, selection.pin)}`;
+  const pinHeading = pin && `${group.name || 'New group'} pin ${pinNumber(group, selection.pin)}`;
   if (!onChangePin) {
     const targetPin = ledPins.includes(pin.gpio);
     const usage = assignments?.get(pin.gpio);
@@ -351,26 +382,17 @@ function PinInspector({ profile, selection, onSelectGroup, onChangeGroup, onRemo
         </div>
       )}
       {pin && <>
-        <h3>{pinHeading}</h3>
+        <h3>{pinHeading} · {pin.label || 'New pin'}</h3>
         <div className="lw-board-fields">
+          <label>Pin label<input value={pin.label} maxLength={48} onChange={event => onChangePin({ label: event.target.value })} /></label>
           <label>Pin number<input type="number" min="0" max="255" value={pin.gpio ?? ''} onChange={event => onChangePin({ gpio: event.target.value })} /></label>
           <label>What it does
             <select value={pin.role} onChange={event => onChangePin({ role: event.target.value })}>
-              {Object.entries(PIN_ROLES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {Object.entries(PIN_ROLES).map(([key, label]) => <option key={key} value={key}>{key === 'gpio' ? 'General purpose' : label}</option>)}
             </select>
           </label>
-          <label>Pin label<input value={pin.label} maxLength={48} onChange={event => onChangePin({ label: event.target.value })} /></label>
-          <label>Board signal or note<input value={pin.detail} maxLength={160} onChange={event => onChangePin({ detail: event.target.value })} /></label>
-          <label>Installation function
-            <select value={INSTALLATION_FUNCTIONS.includes(pin.installation) ? pin.installation : ''}
-              onChange={event => onChangePin({ installation: event.target.value })}>
-              <option value="">Choose a function</option>
-              {INSTALLATION_FUNCTIONS.map(role => <option key={role}>{role}</option>)}
-            </select>
-          </label>
-          <label>Lightweaver assignment note
-            <input value={pin.installation} maxLength={100} onChange={event => onChangePin({ installation: event.target.value })} />
-          </label>
+          <PinAssignmentEditor key={`${selection.group}:${selection.pin}`} installation={pin.installation} onChange={onChangePin} />
+          <label className="lw-board-wide">Board signal or note<input value={pin.detail} maxLength={160} onChange={event => onChangePin({ detail: event.target.value })} /></label>
         </div>
         {pinProtection(profile, pin) && <p className="lw-board-muted">{pinProtection(profile, pin)}</p>}
         <div className="lw-board-actions">
@@ -537,6 +559,8 @@ export function BoardManager({
   const [cardRead, setCardRead] = useState(null);
   const fileInput = useRef(null);
   const inspectorRef = useRef(null);
+  const inspectorTrigger = useRef(null);
+  const inspectorDone = useRef(null);
   const detailsRef = useRef(null);
   const readSequence = useRef(0);
   const selectionSequence = useRef(0);
@@ -579,11 +603,15 @@ export function BoardManager({
     setSwapPreview(null);
     setLastPositionChange(null);
   };
-  const selectPin = (group, pin) => {
+  const selectPin = (group, pin, trigger = document.activeElement) => {
     setPinMove(null);
     setSelection({ group, pin });
     const inspector = inspectorRef.current;
-    if (inspector && !inspector.open) inspector.showModal();
+    if (inspector && !inspector.open) {
+      inspectorTrigger.current = trigger;
+      inspector.showModal();
+      inspectorDone.current?.focus({ preventScroll: true });
+    }
   };
   const begin = source => {
     selectionSequence.current++;
@@ -725,6 +753,9 @@ export function BoardManager({
         openProfile={choose} confirmProfile={confirmProfile} onConnect={onOpenConnectionCenter} />}
       {!draft && liveRead?.error && <p role="alert">Could not read the board. Check the connection and try again.</p>}
       {storageError && <p role="alert">{storageError}</p>}
+      {draft && <label className="lw-board-draft-name">Board name
+        <input value={profile.name} maxLength={100} onChange={event => changeDraft({ name: event.target.value })} />
+      </label>}
       <div className={`lw-board-toolbar${draft ? ' lw-board-toolbar-editing' : ''}`}>
         {!draft && <>
           <label>Board profile
@@ -744,9 +775,6 @@ export function BoardManager({
           <p className="lw-board-help">Different pin labels? Copy the closest board and edit its map.</p>
         </>}
         {draft && <>
-          <label>Board name
-            <input value={profile.name} maxLength={100} onChange={event => changeDraft({ name: event.target.value })} />
-          </label>
           <div className="lw-board-actions">
             <button type="button" className="btn primary" disabled={checkingGuidedCard} onClick={save}>{saveLabel}</button>
             <button type="button" className="btn" onClick={() => {
@@ -799,8 +827,8 @@ export function BoardManager({
           </dialog>
           <div className="lw-board-drawing">
             <BoardMap key={draft ? 'edit' : 'read'} profile={profile} selection={selection} onSelect={selectPin} onSwap={draft ? swapPins : null}
-              onChooseSwap={(source, target) => {
-                selectPin(source.group, source.pin);
+              onChooseSwap={(source, target, trigger) => {
+                selectPin(source.group, source.pin, trigger);
                 setPinMove({ source, target });
               }} onSwapPreview={draft ? setSwapPreview : null} ledPins={ledPins} assignments={assignments}
               onAddPin={draft ? index => {
@@ -809,11 +837,12 @@ export function BoardManager({
                 selectPin(index, pins.length);
               } : null} />
           </div>
-          <dialog className="lw-board-pin-dialog" ref={inspectorRef} aria-labelledby="lw-board-pin-dialog-title">
+          <dialog className="lw-board-pin-dialog" ref={inspectorRef} aria-labelledby="lw-board-pin-dialog-title"
+            onClose={() => inspectorTrigger.current?.focus({ preventScroll: true })}>
             <div className="lw-board-dialog-header">
               <h3 id="lw-board-pin-dialog-title">{pinMove ? 'Move or swap pin' : draft
                 ? (group?.pins[selection.pin] ? 'Edit pin' : 'Edit pin group') : 'Pin details'}</h3>
-              <button type="button" className="btn" onClick={() => {
+              <button type="button" className="btn" ref={inspectorDone} onClick={() => {
                 if (pinMove) setPinMove(null);
                 else inspectorRef.current.close();
               }}>{pinMove ? 'Back to pin' : 'Done'}</button>

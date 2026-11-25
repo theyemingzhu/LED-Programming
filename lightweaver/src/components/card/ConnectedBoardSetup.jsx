@@ -4,7 +4,7 @@ import {
   rememberBoard, resolveBoardMatch, updateBoardLibrary,
 } from '../../lib/boardProfiles.js';
 import { selectBoardLedPins } from '../../lib/boardLedPins.js';
-import { readCardOutputCapabilities } from '../../lib/cardHardwareContract.js';
+import { CARD_HARDWARE_CONTRACT, readCardOutputCapabilities } from '../../lib/cardHardwareContract.js';
 import { formatGpio } from '../../lib/cardPinout.js';
 import { readCardFirmwareInfoEnvelope } from '../../lib/cardPushClient.js';
 import { usbHardwareEvidenceForCard } from '../../lib/usbInspection.js';
@@ -160,7 +160,7 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
 
   if (board) {
     const { maxOutputs, outputPins } = readCardOutputCapabilities(info);
-    const pins = liveLedPins(board, info, outputPins);
+    const pins = liveLedPins(board, info, outputPins ?? CARD_HARDWARE_CONTRACT.outputPins);
     return (
       <section className="connected-board-setup" data-testid="connect-board-setup" aria-label="Board and LED pins">
         <h3 ref={boardHeading} tabIndex={-1}>{boardTitle(board)}</h3>
@@ -169,7 +169,8 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
           {pins.shared.length > 0 && <div><dt>Shared with board functions</dt><dd>{pins.shared.map(formatGpio).join(', ')}</dd></div>}
           {pins.wired.length > 0 && <div><dt>LEDs already set up</dt><dd>{pins.wired.map(formatGpio).join(', ')}</dd></div>}
           {pins.check.length > 0 && <div><dt>Check these LED pins</dt><dd>{pins.check.map(formatGpio).join(', ')}</dd></div>}
-        </dl> : <p>The card did not report which LED pins are free.</p>}
+        </dl> : <p>The card did not report its LED and control wiring.</p>}
+        {pins && !outputPins && <p>Pin choices use the standard Lightweaver list for this firmware.</p>}
         <p>This card supports up to {maxOutputs} LED outputs.</p>
         <div className="card-connection-actions">
           <button type="button" className="btn primary" onClick={onSetUpLights}>Set up lights</button>

@@ -80,6 +80,17 @@ test('a firmware reply from a different card stays unconfirmed', async ({ page }
   expect(await page.evaluate(() => localStorage.getItem('lw-board-profiles-v1'))).toBeNull();
 });
 
+test('current signed firmware without a pin list uses standard pins and excludes live controls', async ({ page }) => {
+  const legacy = { ...status, capabilities: {}, limits: { outputs: 4 } };
+  const board = await connectCard(page, legacy);
+  await board.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.1' }).click();
+  await board.getByRole('button', { name: 'Use this board' }).click();
+  await expect(board.getByText('Free for LEDs').locator('..')).toContainText('GPIO 17');
+  await expect(board.getByText('Free for LEDs').locator('..')).not.toContainText('GPIO 16');
+  await expect(board.getByText('LEDs already set up').locator('..')).toContainText('GPIO 15');
+  await expect(board.getByText('This card supports up to 4 LED outputs.')).toBeVisible();
+});
+
 test('a blank card with an exact reported revision continues straight to finding strips', async ({ page }) => {
   const blank = {
     ...status, runtimePhase: 'factory', source: 'defaults', knownGoodProject: false,

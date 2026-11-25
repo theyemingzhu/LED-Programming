@@ -72,11 +72,30 @@ for (const width of [1280, 390]) {
     const paired = await Promise.all(['J1', 'J3'].map(group =>
       page.getByRole('button', { name: new RegExp(`^${group} 10:`) }).boundingBox()));
     expect(Math.abs(paired[0]!.y - paired[1]!.y)).toBeLessThan(1);
-    await page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver microSD CS/ }).click();
+    for (const side of ['left', 'right']) {
+      const row = page.locator(`[data-board-side="${side}"] li`).nth(9);
+      const [contact, grip, pad] = await Promise.all([
+        row.locator('.lw-board-contact').boundingBox(), row.locator('.lw-board-swap').boundingBox(),
+        row.locator('.lw-board-socket').boundingBox(),
+      ]);
+      const center = grip!.y + grip!.height / 2;
+      expect(Math.abs(center - (pad!.y + pad!.height / 2))).toBeLessThan(1);
+      expect(side === 'left'
+        ? contact!.x < grip!.x && grip!.x < pad!.x
+        : pad!.x < grip!.x && grip!.x < contact!.x).toBe(true);
+    }
+    const storagePin = page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver microSD CS/ });
+    await storagePin.evaluate(el => el.scrollIntoView({ block: 'center' }));
+    const storageTop = (await storagePin.boundingBox())!.y;
+    await storagePin.click();
     await expect(page.getByLabel('Installation function')).toHaveValue('microSD CS');
+    expect(Math.abs((await storagePin.boundingBox())!.y - storageTop)).toBeLessThan(2);
+    await expect(page.getByLabel('Lightweaver assignment note')).toHaveCount(0);
     await page.getByLabel('Installation function').selectOption('LED data');
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver LED data/ })).toBeVisible();
+    const updatedPin = page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver LED data/ });
+    await expect(updatedPin).toBeVisible();
+    expect(Math.abs((await updatedPin.boundingBox())!.y - storageTop)).toBeLessThan(2);
     await page.getByRole('button', { name: 'Cancel edit' }).click();
     await expect(page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver microSD CS/ })).toBeVisible();
     await page.getByRole('button', { name: 'Start blank' }).click();
@@ -98,6 +117,7 @@ for (const width of [1280, 390]) {
     await page.getByLabel('Pin label').fill('DATA');
     await page.getByLabel('Pin number', { exact: true }).fill('16');
     await page.getByRole('combobox', { name: 'What it does' }).selectOption('gpio');
+    await page.getByLabel('Installation function').selectOption('custom');
     await page.getByLabel('Lightweaver assignment note').fill('Planned strip data');
     await page.getByRole('button', { name: 'Done' }).click();
     await dragPin(page, page.getByRole('button', { name: 'Swap J1 2: DATA', exact: true }),
