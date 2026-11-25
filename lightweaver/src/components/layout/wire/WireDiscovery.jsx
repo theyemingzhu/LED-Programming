@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { CARD_HARDWARE_CONTRACT } from '../../../lib/cardHardwareContract.js';
+import { confirmedBoardProfile, selectBoardLedPins } from '../../../lib/boardLedPins.js';
 import { discoverCardWiring } from '../../../lib/cardWiringSafety.js';
 import { CardPinMap } from '../../card/CardPinMap.jsx';
 
-export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled = false }) {
+export function WireDiscovery({ outputs = [], controls, cardHost, cardId, outputCapabilities, onPinConfirmed, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [outputId, setOutputId] = useState(outputs[0]?.id || '');
   const [batch, setBatch] = useState(0);
@@ -10,6 +12,9 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
   const [status, setStatus] = useState('');
   const [confirmedPin, setConfirmedPin] = useState(null);
   const [loading, setLoading] = useState(false);
+  const profile = confirmedBoardProfile(cardId);
+  const firmwarePins = outputCapabilities?.outputPins ?? CARD_HARDWARE_CONTRACT.outputPins;
+  const profileLimitsScan = profile && selectBoardLedPins({ profile, firmwarePins }).length !== firmwarePins.length;
   const discoveryActiveRef = useRef(false);
   const stopPromiseRef = useRef(null);
 
@@ -53,7 +58,8 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
     setStatus('Saving that port and returning to the working lights…');
     try {
       await stopCardDiscovery();
-      onPinConfirmed?.(outputId, assignment.pin);
+      const result = onPinConfirmed?.(outputId, assignment.pin);
+      if (result?.ok === false) throw new Error(result.error || result.errors?.[0]?.message || 'This output could not be moved.');
       setConfirmedPin(assignment.pin);
       setStatus(`${outputs.find(output => output.id === outputId)?.name || 'LED port'} uses GPIO ${assignment.pin}. Test its LED count next.`);
       setAssignments([]);
@@ -78,6 +84,9 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
     }
   };
 
+  if (!open && profileLimitsScan) {
+    return <p className="lw-wire-discovery-status">Pick a pin from the map. This board profile reserves some pins that the test would use.</p>;
+  }
   if (!open) return <button className="btn lw-find-wire" title="Test safe card ports with colors to identify which GPIO drives this LED wire." data-tooltip="Test safe card ports with colors to identify which GPIO drives this LED wire." disabled={disabled} onClick={() => { setOpen(true); setConfirmedPin(null); void runBatch(0); }}>Find my LED wire</button>;
 
   return (
@@ -93,6 +102,11 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
       {(assignments.length > 0 || confirmedPin !== null) && (
         <CardPinMap
           testId="wire-discovery-pin-map"
+          cardId={cardId}
+          outputCapabilities={outputCapabilities}
+          availablePins={outputCapabilities?.outputPins}
+          controls={controls}
+          outputs={outputs}
           title={assignments.length ? 'Each colour, on the card' : 'Your LED wire, on the card'}
           lit={assignments.length ? assignments.map(assignment => ({ pin: assignment.pin, color: assignment.color })) : [{ pin: confirmedPin }]}
         />

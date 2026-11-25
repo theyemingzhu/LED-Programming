@@ -105,6 +105,48 @@ test('LWSEQ1 reserved header binds ordered GPIO pins and unequal output boundari
   assert.throws(() => toLwseqBytes([], { fps: 1, outputs }), /at least one complete frame/i);
 });
 
+test('LWSEQ topology v2 retains a fifth output through recording and portable restore', async () => {
+  const snapshot = source('five-outputs');
+  const pins = [15, 16, 17, 18, 21];
+  const counts = [600, 3, 4, 5, 6];
+  snapshot.strips = counts.map((pixelCount, index) => ({
+    id: `strip-${index}`,
+    pixels: Array.from({ length: pixelCount }, (_, x) => ({ x, y: index })),
+  }));
+  snapshot.wiring = { version: 1, outputs: pins.map((pin, index) => ({
+    id: `out-${index}`, name: `Output ${index + 1}`, pin, runIds: [`run-${index}`],
+  })), runs: counts.map((count, index) => ({
+    id: `run-${index}`, type: 'strip',
+    source: { stripId: `strip-${index}`, from: 0, to: count - 1 },
+    physicalDirection: 'source-forward',
+  })) };
+  snapshot.scene.steps[0].assignments[0].selection.areaIds = snapshot.strips.map(strip => `strip:${strip.id}`);
+  snapshot.compiledWiring = compileWiring({ strips: snapshot.strips, wiring: snapshot.wiring });
+  assert.equal(snapshot.compiledWiring.ok, true);
+  const baked = await bakeSceneExpressionFlow(snapshot);
+  assert.deepEqual([...baked.bytes.subarray(24, 64)], [
+    76, 87, 79, 80, 2, 5, 0, 0,
+    15, 0, 88, 2, 16, 0, 3, 0, 17, 0, 4, 0, 18, 0, 5, 0,
+    21, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  assert.equal(assertLwseqOutputTopology(baked.bytes, baked.outputs), true);
+  const wrongPin = baked.outputs.map((output, index) => index === 4 ? { ...output, pin: 47 } : output);
+  assert.throws(() => assertLwseqOutputTopology(baked.bytes, wrongPin), /GPIO pin or output boundary/);
+  const malformed = baked.bytes.slice();
+  malformed[63] = 1;
+  assert.throws(() => assertLwseqOutputTopology(malformed, baked.outputs), /GPIO pin or output boundary/);
+  const result = await createRecordedSequenceAsset({ kind: 'expression-scene', bakeResult: baked, sourceSnapshot: snapshot });
+  const controller = await applyRecordedSequenceAsset({}, result);
+  const backup = await makePortableProject({ devices: { standaloneController: controller } });
+  const restored = await importPortableProjectMedia(backup);
+  const asset = restored.devices.standaloneController.sequenceAssets[0];
+  assert.deepEqual(asset.outputs.map(output => [output.pin, output.pixels]), pins.map((pin, index) => [pin, counts[index]]));
+  assert.deepEqual(await verifyStoredSequenceAsset(asset), baked.bytes);
+  await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimeFor([asset]), {
+    project: snapshot, readEvidence: async () => ({ capabilities: { outputTopology: { sequenceVersion: 1 } } }),
+  }), /recording topology version 2/);
+});
+
 test('legacy unbound multi-output media stays portable for editing but cannot reach card upload', async () => {
   const { next } = await recorded('legacy-multi');
   const original = next.sequenceAssets[0];

@@ -21,6 +21,8 @@
 import { expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from '../../src/lib/cardCustomerControlContract.js';
+import { CARD_HARDWARE_CONTRACT } from '../../src/lib/cardHardwareContract.js';
+import { DEFAULT_CARD_CONTROLS } from '../../src/lib/cardRuntimeContract.js';
 import type { CardStateSpec, PatternEntry } from './cardStates.js';
 import { MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_BUILD_ID, cardState } from './cardStates.js';
 
@@ -48,10 +50,79 @@ export const CARD_HOSTS = ['lightweaver.local', '192.168.4.1', '192.168.18.70'];
 // menu the same way tests/strip-discovery.spec.ts's own BEACON_PORTS is.
 export const BEACON_PORTS = [15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48];
 
-type SimulatedOutput = {
+export type SimulatedOutput = {
   id: string; pin: number; pixels: number;
   segments: { id: string; count: number; direction: string }[];
 };
+
+type SimulatedOutputTopology = {
+  maxOutputs: number;
+  outputPins: readonly number[];
+  sequenceVersion: number;
+  experimental: boolean;
+};
+
+export const DEMO_OUTPUT_TOPOLOGY = {
+  maxOutputs: 8,
+  outputPins: CARD_HARDWARE_CONTRACT.outputPins,
+  sequenceVersion: 2,
+  experimental: true,
+} satisfies SimulatedOutputTopology;
+
+export const DEMO_FIVE_OUTPUTS: SimulatedOutput[] = [
+  { pin: 15, pixels: 600 },
+  { pin: 16, pixels: 101 },
+  { pin: 17, pixels: 58 },
+  { pin: 18, pixels: 42 },
+  { pin: 21, pixels: 24 },
+].map(({ pin, pixels }, index) => ({
+  id: `out${index + 1}`, pin, pixels,
+  segments: [{ id: `run-strip-${index + 1}`, count: pixels, direction: 'forward' }],
+}));
+
+function simulatedControlPins(payload: Record<string, unknown> = {}): number[] {
+  const controls = (payload.controls || {}) as Record<string, unknown>;
+  const encoder = (controls.encoder || {}) as Record<string, unknown>;
+  return [
+    ...Object.entries(DEFAULT_CARD_CONTROLS.encoder)
+      .filter(([key]) => ['a', 'b', 'press', 'alternatePress'].includes(key))
+      .map(([key, pin]) => Number(encoder[key] ?? pin)),
+    ...(['previous', 'next', 'blackout', 'brightness', 'statusLed'] as const)
+      .map(key => Number(controls[key] ?? DEFAULT_CARD_CONTROLS[key])),
+  ];
+}
+
+function validateOutputTopology(
+  topology: SimulatedOutputTopology,
+  outputs: SimulatedOutput[],
+  totalPixels: number,
+  controls = simulatedControlPins(),
+): string | null {
+  if (!outputs.length) return 'config missing outputs';
+  if (outputs.length > topology.maxOutputs) return `more than ${topology.maxOutputs} outputs are not supported`;
+  const pins = new Set<number>();
+  const ids = new Set<string>();
+  let total = 0;
+  for (const output of outputs) {
+    if (!topology.outputPins.includes(output.pin)) return `unsupported output pin ${output.pin}`;
+    if (controls.includes(output.pin)) return `output pin conflicts with controls: ${output.pin}`;
+    if (pins.has(output.pin)) return `duplicate output pin ${output.pin}`;
+    if (ids.has(output.id)) return `duplicate output id ${output.id}`;
+    if (!Number.isInteger(output.pixels) || output.pixels < 1) return 'output pixel count must be positive';
+    if (output.segments.length) {
+      if (output.segments.length > 32 || output.segments.some(segment => !Number.isInteger(segment.count)
+        || segment.count < 1 || !['forward', 'reverse'].includes(segment.direction))) return 'output segment is invalid';
+      if (output.segments.reduce((sum, segment) => sum + segment.count, 0) !== output.pixels) {
+        return 'output segments must sum to output pixels';
+      }
+    }
+    pins.add(output.pin);
+    ids.add(output.id);
+    total += output.pixels;
+  }
+  if (total > CARD_HARDWARE_CONTRACT.maxPixels) return `pixel total exceeds ${CARD_HARDWARE_CONTRACT.maxPixels}`;
+  return total === totalPixels ? null : 'output pixels must sum to total pixels';
+}
 
 function copyOutputs(outputs: SimulatedOutput[]): SimulatedOutput[] {
   return outputs.map(output => ({ ...output, segments: output.segments.map(segment => ({ ...segment })) }));
@@ -87,7 +158,11 @@ export type CardSimulator = {
     cardId: string; bootId: string; stateRevision: number;
     /** Opt-in complete output topology; legacy fixtures keep the one-output model. */
     explicitOutputs: SimulatedOutput[] | null;
+    outputTopology?: SimulatedOutputTopology;
+    installedWiringRevision?: number;
+    installedWiringDigest?: string;
     stagedOutputs?: SimulatedOutput[];
+    activationId?: string;
     stagedConfigPayload?: Record<string, unknown>;
     installedZones: Record<string, unknown>[] | null;
     installedLooks: Record<string, unknown>[] | null;
@@ -120,7 +195,7 @@ export type CardSimulator = {
    * says no, which is most of what goes wrong in a room.
    */
   refuse(path: string, refusal: { status: number; body?: unknown; times?: number }): void;
-  /** Power-cycle: a new bootId, and whatever was playing stops. */
+  /** Power-cycle. A demo card reloads its configured startup look. */
   reboot(): void;
   /** Stop answering entirely — a Wi-Fi drop, a pulled plug, a sleeping router. */
   goOffline(): void;
@@ -387,6 +462,14 @@ function statusBody(state: CardSimulator['state']) {
       // fixtures that predate it keep today's shape.
       ...((state as { symmetrySides?: boolean }).symmetrySides ? { symmetrySides: 1 } : {}),
       firmwareUpdate: { version: 1, network: true, softwareGrant: true },
+      ...(state.outputTopology && {
+        outputTopology: {
+          version: 1,
+          outputPins: [...state.outputTopology.outputPins],
+          sequenceVersion: state.outputTopology.sequenceVersion,
+          experimental: state.outputTopology.experimental,
+        },
+      }),
     },
     // F35: real firmware reports this live bit separately from the
     // capability object above — LightweaverProvisioningPolicy.h's
@@ -408,7 +491,7 @@ function statusBody(state: CardSimulator['state']) {
       // (the real card reports `rolled-back` long after it recovered).
       ...((state as { firmwareUpdateOverride?: Record<string, unknown> }).firmwareUpdateOverride || {}),
     },
-    pixelCapacity: { schemaLimit: 65535, allocatedBoot: 512 },
+    pixelCapacity: { schemaLimit: 65535, allocatedBoot: state.outputTopology ? Math.max(512, state.pixels) : 512 },
     outputInitialization: outputReadyOf(state)
       ? { ok: true, code: 'ready', message: 'configured project outputs initialized' }
       : { ok: false, code: 'no-outputs', message: 'no configured project outputs' },
@@ -416,7 +499,7 @@ function statusBody(state: CardSimulator['state']) {
       active: state.wiringTestActive === true,
       remainingMs: state.wiringTestActive ? state.wiringProbationRemainingMs : 0,
     },
-    limits: { pixels: 65535, outputs: 4, looks: 32, zones: 12, rangesPerZone: 6, configStorageBytes: 3968 },
+    limits: { pixels: 65535, outputs: state.outputTopology?.maxOutputs ?? 4, looks: 32, zones: 12, rangesPerZone: 6, configStorageBytes: 3968 },
     kaleidoscopeMappings: [],
     recipeCapabilities: {
       version: 1,
@@ -452,8 +535,8 @@ function statusBody(state: CardSimulator['state']) {
       estimatedFullWhiteMilliamps: state.pixels * 60,
       limitedFullWhiteMilliamps: 2000,
     },
-    wiringRevision: Number(activeCandidate?.wiringRevision ?? (state.pixels ? 1 : 0)),
-    wiringDigest: String(activeCandidate?.wiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
+    wiringRevision: Number(activeCandidate?.wiringRevision ?? state.installedWiringRevision ?? (state.pixels ? 1 : 0)),
+    wiringDigest: String(activeCandidate?.wiringDigest ?? state.installedWiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
     // The primary readback for "what is playing" — cardLiveControl.js reads
     // this, not /api/patterns, when confirming a blackout or a reset.
     currentPatternId: state.currentId,
@@ -552,7 +635,7 @@ function wiringStatusBody(state: CardSimulator['state']) {
     ok: true,
     state: testing ? 'testing' : staged ? 'staged' : 'known-good',
     candidateState: testing ? 'awaiting-confirmation' : staged ? 'staged' : 'none',
-    activationId: (testing || staged) ? STAGED_ACTIVATION_ID : '',
+    activationId: (testing || staged) ? state.activationId ?? STAGED_ACTIVATION_ID : '',
     ledType: String(candidateLed.type || 'WS2812B'),
     hasKnownGood: state.pixels > 0,
     hasCandidate: testing || staged,
@@ -571,10 +654,10 @@ function wiringStatusBody(state: CardSimulator['state']) {
     projectFingerprint: String(candidate?.projectFingerprint ?? state.projectFingerprint),
     productionJobId: String(candidate?.productionJobId || ''),
     productionJobDigest: String(candidate?.productionJobDigest || ''),
-    wiringRevision: Number(candidate?.wiringRevision ?? (state.pixels ? 1 : 0)),
-    wiringDigest: String(candidate?.wiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
-    currentWiringRevision: state.pixels ? 1 : 0,
-    currentWiringDigest: state.pixels ? 'd'.repeat(64) : '',
+    wiringRevision: Number(candidate?.wiringRevision ?? state.installedWiringRevision ?? (state.pixels ? 1 : 0)),
+    wiringDigest: String(candidate?.wiringDigest ?? state.installedWiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
+    currentWiringRevision: state.installedWiringRevision ?? (state.pixels ? 1 : 0),
+    currentWiringDigest: state.installedWiringDigest ?? (state.pixels ? 'd'.repeat(64) : ''),
     colorOrder: String(candidateLed.colorOrder || 'GRB'),
     maxMilliamps: Number(candidateLed.maxMilliamps ?? 2000),
     currentMaxMilliamps: 2000,
@@ -647,6 +730,8 @@ export function createCardSimulator(
      * ms before it reports `testing` (real: ~14000). Unset keeps the instant card.
      */
     restartAfterActivateMs?: number;
+    outputTopology?: SimulatedOutputTopology;
+    initialWiring?: { revision: number; digest: string };
   } = {},
 ): CardSimulator {
   const latency = options.latencyMs || CARD_LATENCY_MS;
@@ -656,8 +741,15 @@ export function createCardSimulator(
     || initialOutputs.reduce((sum, output) => sum + output.pixels, 0) !== spec.pixels)) {
     throw new Error('initialOutputs must describe every configured pixel on valid GPIOs.');
   }
+  if (options.outputTopology && initialOutputs) {
+    const error = validateOutputTopology(options.outputTopology, initialOutputs, spec.pixels);
+    if (error) throw new Error(error);
+  }
   const state = {
     ...spec,
+    outputTopology: options.outputTopology,
+    installedWiringRevision: options.initialWiring?.revision,
+    installedWiringDigest: options.initialWiring?.digest,
     pin: initialOutputs?.[0]?.pin ?? spec.pin,
     explicitOutputs: initialOutputs,
     patterns: spec.patterns.map(pattern => ({ ...pattern })),
@@ -683,6 +775,7 @@ export function createCardSimulator(
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
     stagedOutputs: undefined as SimulatedOutput[] | undefined,
+    activationId: undefined as string | undefined,
     // The FULL /api/config payload behind a staged wiring change (F4, for
     // journey-j01.spec.ts [J01]) — firmware's stageRuntimeConfigJson stages the
     // entire submitted runtime config, not just the wiring fields
@@ -710,6 +803,7 @@ export function createCardSimulator(
     preTestProjectSnapshot: undefined as {
       projectId: string; projectName: string; projectRevision: number;
       projectFingerprint: string; provisionalSetup: boolean;
+      wiringRevision?: number; wiringDigest?: string;
       patterns: PatternEntry[]; zoneIds: string[];
       installedLooks: Record<string, unknown>[] | null;
       installedZones: Record<string, unknown>[] | null;
@@ -937,6 +1031,10 @@ export function createCardSimulator(
     state.projectRevision = Number(payload.projectRevision ?? state.projectRevision);
     state.projectFingerprint = String(payload.projectFingerprint ?? state.projectFingerprint);
     state.provisionalSetup = payload.provisional === true;
+    if (state.outputTopology) {
+      state.installedWiringRevision = Number(payload.wiringRevision ?? 0);
+      state.installedWiringDigest = String(payload.wiringDigest ?? '');
+    }
     const looks = (payload.looks || payload.patterns || []) as { id?: string; label?: string }[];
     if (looks.length) {
       state.patterns = looks.map(look => ({
@@ -1004,6 +1102,8 @@ export function createCardSimulator(
     state.projectRevision = snapshot.projectRevision;
     state.projectFingerprint = snapshot.projectFingerprint;
     state.provisionalSetup = snapshot.provisionalSetup;
+    state.installedWiringRevision = snapshot.wiringRevision;
+    state.installedWiringDigest = snapshot.wiringDigest;
     state.patterns = snapshot.patterns;
     state.zoneIds = snapshot.zoneIds;
     state.installedLooks = snapshot.installedLooks;
@@ -1019,11 +1119,17 @@ export function createCardSimulator(
     state.currentIndex = snapshot.currentIndex;
   }
 
-  /**
-   * The one place a request is answered, whichever transport carried it.
-   * The bridge relays exactly these paths, so routing both through here is
-   * what stops the two transports drifting into two different cards.
-   */
+  let activationGeneration = 0;
+  function beginWiringTransaction() {
+    state.wiringTransactionOpen = true;
+    if (state.outputTopology) state.activationId = `act-demo-${++activationGeneration}`;
+  }
+
+  function validWiringOperation(payload: Record<string, unknown>, allowed: boolean) {
+    return !state.outputTopology || (allowed && payload.activationId === state.activationId);
+  }
+
+  // Direct requests and the bridge relay share this card state.
   function respond(method: string, path: string, body: unknown): { body: unknown; status: number } {
     const ok = (value: unknown) => ({ body: value, status: 200 });
     const payload = (body || {}) as Record<string, unknown>;
@@ -1160,7 +1266,11 @@ export function createCardSimulator(
         const nextPixels = Number(led.pixels ?? state.pixels);
         const outputs = configOutputs(led.outputs);
         const nextPin = Number(outputs[0]?.pin ?? state.pin);
-        state.wiringTransactionOpen = true;
+        if (state.outputTopology) {
+          const error = validateOutputTopology(state.outputTopology, outputs, nextPixels, simulatedControlPins(candidate));
+          if (error) return { body: { ok: false, error }, status: 400 };
+        }
+        beginWiringTransaction();
         state.stagedPixels = nextPixels;
         state.stagedPin = nextPin;
         // Bare candidate requests may carry only a pin; legacy cards derive
@@ -1175,6 +1285,9 @@ export function createCardSimulator(
         return ok(wiringStatusBody(state));
       }
       case '/api/wiring/activate': {
+        if (!validWiringOperation(payload, state.wiringTransactionOpen)) {
+          return { body: { ok: false, error: 'activation id does not match a staged candidate' }, status: 400 };
+        }
         // The card boots the candidate and enters probation with a new bootId,
         // exactly as the firmware does — which is what makes Studio have to
         // survive a reboot mid-install. Save what was running before, so a
@@ -1199,6 +1312,8 @@ export function createCardSimulator(
             projectRevision: state.projectRevision,
             projectFingerprint: state.projectFingerprint,
             provisionalSetup: state.provisionalSetup,
+            wiringRevision: state.installedWiringRevision,
+            wiringDigest: state.installedWiringDigest,
             patterns: state.patterns.map(pattern => ({ ...pattern })),
             zoneIds: [...state.zoneIds],
             installedLooks: state.installedLooks?.map(look => ({ ...look })) || null,
@@ -1223,7 +1338,7 @@ export function createCardSimulator(
         // goes out; everything after it meets the restart.
         if (restartAfterActivateMs) beginPlannedRestart(restartAfterActivateMs);
         return ok({
-          ok: true, state: 'testing', activationId: STAGED_ACTIVATION_ID,
+          ok: true, state: 'testing', activationId: state.activationId ?? STAGED_ACTIVATION_ID,
           rebooting: true, remainingProbationMs: WIRING_PROBATION_MS,
           nextStep: 'confirm-physical-lights',
           currentOutputs: wiringStatusBody(state).currentOutputs,
@@ -1232,6 +1347,11 @@ export function createCardSimulator(
       case '/api/wiring/confirm':
       case '/api/wiring/rollback': {
         const rollback = path.endsWith('rollback');
+        if (!validWiringOperation(payload, state.wiringTestActive || (rollback && state.wiringTransactionOpen))) {
+          return { body: { ok: false, error: 'activation id does not match an active candidate' }, status: 400 };
+        }
+        const activationId = state.activationId ?? STAGED_ACTIVATION_ID;
+        state.activationId = undefined;
         // A confirm promotes the candidate that is already running (activate
         // applied it); a rollback returns to what was running before the
         // test, exactly as the firmware's own rollback reboot does.
@@ -1255,7 +1375,7 @@ export function createCardSimulator(
         if (rollback) state.bootId = `${state.bootId}-rb`;
         return ok({
           ok: true, state: rollback ? 'rolled-back' : 'known-good',
-          activationId: STAGED_ACTIVATION_ID, rebooting: rollback,
+          activationId, rebooting: rollback,
           remainingProbationMs: 0, nextStep: rollback ? 'find-led-wire' : 'none',
           currentOutputs: wiringStatusBody(state).currentOutputs,
         });
@@ -1285,13 +1405,17 @@ export function createCardSimulator(
         const nextPixels = Number(led.pixels ?? state.pixels);
         const outputs = configOutputs(led.outputs);
         const nextPin = Number(outputs[0]?.pin ?? state.pin);
+        if (state.outputTopology) {
+          const error = validateOutputTopology(state.outputTopology, outputs, nextPixels, simulatedControlPins(payload));
+          if (error) return { body: { ok: false, error }, status: 400 };
+        }
         const wiringChanged = state.pixels > 0 && (state.explicitOutputs || outputs.length > 1
           ? outputWiringKey(outputs) !== outputWiringKey(reportedOutputs(state))
           : nextPin !== state.pin);
         const pixelCountChanged = state.pixels > 0 && nextPixels !== state.pixels;
 
         if (wiringChanged) {
-          state.wiringTransactionOpen = true;
+          beginWiringTransaction();
           state.stagedPixels = nextPixels;
           state.stagedPin = nextPin;
           if (outputs.length) state.stagedOutputs = copyOutputs(outputs);
@@ -1302,7 +1426,7 @@ export function createCardSimulator(
           state.stagedConfigPayload = payload;
           return {
             body: {
-              ok: true, state: 'staged', activationId: STAGED_ACTIVATION_ID,
+              ok: true, state: 'staged', activationId: state.activationId ?? STAGED_ACTIVATION_ID,
               message: 'wiring change staged', requiresReboot: false,
               requiresConfirmation: true,
             },
@@ -1347,11 +1471,15 @@ export function createCardSimulator(
         // A simulator that answered the same body for every method (the
         // original stub here) could not model strip discovery's port-probe
         // step at all — every pin looked lit and none looked released.
+        const controlPins = simulatedControlPins();
+        const ports = state.outputTopology
+          ? state.outputTopology.outputPins.filter(pin => !controlPins.includes(pin))
+          : BEACON_PORTS;
         if (method === 'GET') {
           return ok({
             ok: true,
             available: !hasProject(state) || state.provisionalSetup === true,
-            ports: BEACON_PORTS,
+            ports,
             pixelsPerPort: 8,
           });
         }
@@ -1360,7 +1488,7 @@ export function createCardSimulator(
           return ok({ ok: true, pinned: false });
         }
         const gpio = Number(payload.gpio);
-        if (!BEACON_PORTS.includes(gpio)) {
+        if (!ports.includes(gpio)) {
           return { body: { ok: false, error: 'this card cannot light that port right now' }, status: 409 };
         }
         state.beaconPinned = gpio;
@@ -1508,6 +1636,9 @@ export function createCardSimulator(
       state.stateRevision = 1;
       state.currentIndex = -1;
       state.currentId = 'blackout';
+      if (state.outputTopology && state.installedStartupPatternId) {
+        applyPlaylistPatternById(state.installedStartupPatternId);
+      }
     },
     setReplyDelay(ms) { stressDelayMs = ms; },
     silenceFor(ms) { silentUntil = Math.max(silentUntil, Date.now() + ms); },
@@ -1544,6 +1675,7 @@ export function createCardSimulator(
       state.wiringTransactionOpen = false;
       state.wiringTestActive = true;
       state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
+      if (state.outputTopology) state.activationId = `act-demo-${++activationGeneration}`;
       state.bootId = `${state.bootId}-act`;
     },
     expireWiringProbation() {
@@ -1552,14 +1684,18 @@ export function createCardSimulator(
       if (state.preTestPin !== undefined) state.pin = state.preTestPin;
       if (state.preTestOutputs !== undefined) state.explicitOutputs = state.preTestOutputs ? copyOutputs(state.preTestOutputs) : null;
       state.wiringTransactionOpen = false;
+      restorePreTestProjectSnapshot();
       state.wiringTestActive = false;
       state.wiringProbationRemainingMs = 0;
       state.stagedPixels = undefined;
       state.stagedPin = undefined;
       state.stagedOutputs = undefined;
+      state.stagedConfigPayload = undefined;
       state.preTestPixels = undefined;
       state.preTestPin = undefined;
       state.preTestOutputs = undefined;
+      state.preTestProjectSnapshot = undefined;
+      state.activationId = undefined;
       state.bootId = `${state.bootId}-exp`;
     },
     respondThenDrop(path, options = {}) {

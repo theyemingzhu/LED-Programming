@@ -1,4 +1,5 @@
 import { updateWiring } from './wiringModel.js';
+import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 
 export const BOARD_CONTROL_FIELDS = Object.freeze([
   { key: 'encoderA', label: 'Encoder A', path: ['encoder', 'a'], allowOff: false },
@@ -55,7 +56,7 @@ export function planBoardGpioAssignment({ outputs = [], controls = {}, target, p
 // Route one physical run, including a cut section of a single drawn strip.
 // Empty source outputs are removed so a repin never consumes a card port.
 export function routeWiringRunToPin(wiring, {
-  runId, pin, controls = {}, strips = [], supportedOutputPins = [], maxOutputs = 4,
+  runId, pin, controls = {}, strips = [], supportedOutputPins = [], maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs,
 } = {}) {
   return updateWiring(wiring, draft => assignWiringRunToPin(draft, {
     runId, pin, controls, supportedOutputPins, maxOutputs,
@@ -63,7 +64,7 @@ export function routeWiringRunToPin(wiring, {
 }
 
 export function assignWiringRunToPin(draft, {
-  runId, pin, controls = {}, supportedOutputPins = [], maxOutputs = 4,
+  runId, pin, controls = {}, supportedOutputPins = [], maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs,
 } = {}) {
   const nextPin = Number(pin);
   if (!supportedOutputPins.includes(nextPin)) throw new Error(`GPIO ${nextPin} cannot drive an LED output.`);

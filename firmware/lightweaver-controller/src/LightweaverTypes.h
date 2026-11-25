@@ -22,7 +22,13 @@
 #define LW_MAX_PIXELS 65535
 #endif
 
-constexpr uint8_t LW_MAX_OUTPUTS = 4;
+#ifndef LW_EXPERIMENTAL_MULTI_OUTPUT
+#define LW_EXPERIMENTAL_MULTI_OUTPUT 0
+#endif
+
+constexpr uint8_t LW_MAX_OUTPUTS = LW_EXPERIMENTAL_MULTI_OUTPUT
+    ? LW_CARD_HARDWARE_MAX_OUTPUTS
+    : LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT;
 constexpr uint8_t LW_MAX_OUTPUT_SEGMENTS = 32;
 constexpr uint8_t LW_MAX_LOOKS = 32;
 constexpr uint8_t LW_MAX_PATTERN_IDS = 32;
@@ -52,8 +58,9 @@ constexpr uint16_t LW_PLAYLIST_DEFAULT_FADE_MS = 1500;
 constexpr uint16_t LW_MAX_KALEIDOSCOPE_OFFSETS = 1024;
 static_assert(LW_MAX_PIXELS == LW_CARD_HARDWARE_MAX_PIXELS,
               "pixel capacity must match the generated hardware contract");
-static_assert(LW_MAX_OUTPUTS == LW_CARD_HARDWARE_MAX_OUTPUTS,
-              "output capacity must match the generated hardware contract");
+static_assert(LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT <= LW_CARD_HARDWARE_MAX_OUTPUTS &&
+                  LW_MAX_OUTPUTS <= LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT,
+              "output capacity must fit the generated hardware contract");
 static_assert(LW_MAX_ZONES == LW_CARD_HARDWARE_MAX_ZONES,
               "zone capacity must match the generated hardware contract");
 static_assert(LW_MAX_RANGES_PER_ZONE == LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE,

@@ -170,7 +170,7 @@ async function switchMode(page: any, mode: 'draw' | 'wire') {
 // Split strips list one row per run, so scope to the first matching row.
 async function expandDrawStrip(page: any, name: string) {
   const strip = page.locator('[data-strip-id]').filter({ hasText: name }).first();
-  if (!await strip.locator('.la-strip-detail').first().isVisible()) await strip.locator('.la-strip-row').first().click();
+  if (!await strip.locator('.la-strip-detail').first().isVisible()) await strip.locator('.la-strip-row .layer-name').first().click();
   await expect(strip.locator('.la-strip-detail').first()).toBeVisible();
   return strip;
 }
@@ -293,7 +293,7 @@ test('Test & Install owns neither wire count nor ordering and keeps specialist t
 
 test('Advanced mapping inserts and removes a zero-address cable jump without changing Wire order', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
-  await page.locator('[data-strip-id="default-outer-circle"] .la-strip-row').click();
+  await page.locator('[data-strip-id="default-outer-circle"] .la-strip-row .layer-name').click();
   await switchMode(page, 'wire');
   await openCustomMapping(page);
 
@@ -326,7 +326,7 @@ test('Advanced mapping inserts and removes a zero-address cable jump without cha
 
   await switchMode(page, 'draw');
   await page.getByRole('button', { name: 'Back to inspector' }).click();
-  await page.locator('[data-strip-id="default-inner-circle"] .la-strip-row').click();
+  await page.locator('[data-strip-id="default-inner-circle"] .la-strip-row .layer-name').click();
   await switchMode(page, 'wire');
   await openCustomMapping(page);
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeDisabled();
@@ -515,6 +515,50 @@ test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ 
   await expect(encoderA).toHaveValue('10');
 });
 
+test('a phone strip row changes a pin and a 600 LED count in place', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedDefaultCircles(page, { mode: 'draw' });
+  const inner = page.locator('[data-strip-id]').filter({ hasText: 'Inner circle' }).first();
+  const changePin = inner.getByRole('button', { name: 'Change pin for Inner circle' });
+  await expect(changePin).toContainText('GPIO 16');
+  await changePin.click();
+  const pin = inner.getByLabel('GPIO output', { exact: true });
+  await expect(pin).toBeFocused();
+  await pin.selectOption('17');
+  await expect(changePin).toContainText('GPIO 17');
+  const before = await saveProject(page);
+  const output = before.layout.wiring.outputs.find((item: any) => item.pin === 17);
+  expect(output.runIds).toHaveLength(1);
+
+  const count = inner.getByRole('spinbutton', { name: 'Inner circle LED count' });
+  await count.fill('600');
+  await count.press('Enter');
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.layout?.strips.find((strip: { name: string }) => strip.name === 'Inner circle')?.pixelCount;
+  })).toBe(600);
+  const afterCount = await saveProject(page);
+  await pin.selectOption('18');
+  await expect(changePin).toContainText('GPIO 18');
+  await expect(count).toHaveValue('600');
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.layout?.wiring.outputs.some((item: { pin: number }) => item.pin === 18);
+  })).toBe(true);
+  const after = await saveProject(page);
+  expect(after.layout.wiring.outputs.find((item: any) => item.pin === 18)).toEqual({ ...output, pin: 18 });
+  const countedStrip = afterCount.layout.strips.find((strip: any) => strip.name === 'Inner circle');
+  const editedStrip = after.layout.strips.find((strip: any) => strip.name === 'Inner circle');
+  expect(editedStrip).toEqual(countedStrip);
+  expect(after.layout.patchBoard.patches.map((patch: any) => [patch.id, patch.patternId]))
+    .toEqual(before.layout.patchBoard.patches.map((patch: any) => [patch.id, patch.patternId]));
+
+  const recount = inner.getByRole('link', { name: 'Count LEDs' });
+  await expect(recount).toHaveAttribute('href', '#screen=discovery');
+  await recount.click();
+  await expect(page).toHaveURL(/screen=discovery/);
+});
+
 test('changing logical sections never changes the derived physical data-wire count', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   const outer = await expandDrawStrip(page, 'Outer circle');
@@ -529,6 +573,19 @@ test('changing logical sections never changes the derived physical data-wire cou
   await inner.getByLabel('GPIO output').selectOption('17');
   await switchMode(page, 'wire');
   expect(await gpioGroupsOnWire(page)).toBe(2);
+});
+
+test('moving a whole output preserves its identity and run assignments', async ({ page }) => {
+  await seedDefaultCircles(page, { mode: 'draw' });
+  const original = await saveProject(page);
+  const originalOutput = original.layout.wiring.outputs[0];
+  await openAdvanced(page);
+  await page.getByLabel('Pin for LED output', { exact: true }).selectOption('17');
+  await expect(page.getByText('moved from GPIO 16 to GPIO 17 in the design.', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('wire-pin-map').locator('[data-pin="17"]')).toContainText('LED output');
+  const saved = await saveProject(page);
+  expect(saved.layout.wiring.outputs).toEqual([{ ...originalOutput, pin: 17 }]);
+  expect(saved.layout.patchBoard.patches).toEqual(original.layout.patchBoard.patches);
 });
 
 test('Find my LED wire maps a visible discovery color to the selected GPIO', async ({ page }) => {
@@ -562,6 +619,12 @@ test('Test & Install never scrolls horizontally at phone width', async ({ page }
   await openAdvanced(page);
   const tools = page.getByTestId('layout-wire-tools');
   const advanced = page.getByTestId('advanced-installation-tools');
+  const pinMap = page.getByTestId('wire-pin-map');
+  await expect(pinMap.locator('[data-pin="11"]')).toContainText('microSD MOSI');
+  await expect(pinMap.locator('[data-pin="20"]')).toContainText('USB D+');
+  await expect(pinMap.locator('[data-pin="35"]')).toContainText('PSRAM');
+  await expect(pinMap.locator('[data-pin="4"]')).toContainText('Encoder A');
+  expect(await pinMap.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   const power = page.getByTestId('wire-power-section');
   await power.locator('summary').click();
   await expect(page.getByLabel('Power supply amps')).toBeVisible();

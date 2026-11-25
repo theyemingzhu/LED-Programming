@@ -75,6 +75,7 @@ import { probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } f
 import {
   cardRestartedAfterUsbInspection,
   clearActiveUsbInspection,
+  recordUsbHardwareEvidence,
   registerActiveUsbInspection,
   releaseActiveUsbInspection,
   requireFreshRuntimeAfterUsbInspection,
@@ -1654,6 +1655,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           await releaseInspectedConnection(connection.loader, connection.transport);
           return;
         }
+        recordUsbHardwareEvidence(hardware);
         // ROM proves the card's MAC, but a long app0 flash scan cannot prove
         // which app actually booted. Ask the running app for its exact signed
         // identity before starting that scan. A failed/mismatched hello never

@@ -1005,11 +1005,12 @@ const standaloneOutputs = normalizeStandaloneOutputs([
   { id: 'inner', pin: 17, pixels: 180 },
   { id: '', pin: 18, pixels: -5 },
   { id: 'unused', pin: null, pixels: 0 },
-  { id: 'ignored', pin: 21, pixels: 50 },
+  { id: 'fifth', pin: 21, pixels: 50 },
 ]);
 assert.deepEqual(standaloneOutputs, [
   { id: 'outer', name: 'Outer', pin: 16, pixels: 260 },
   { id: 'inner', name: 'Inner', pin: 17, pixels: 180 },
+  { id: 'fifth', name: 'Fifth', pin: 21, pixels: 50 },
 ]);
 assert.deepEqual(deriveStandaloneOutputsFromStrips([
   { id: 'outer-zone', name: 'Outer Zone', pixels: [{}, {}, {}] },
@@ -1047,7 +1048,7 @@ const standaloneProfile = buildStandaloneProfile({
 });
 assert.equal(standaloneProfile.piece.id, 'spiral-01');
 assert.equal(standaloneProfile.runtimeMode, 'procedural');
-assert.equal(standaloneProfile.outputs.length, 2);
+assert.deepEqual(standaloneProfile.outputs, standaloneOutputs);
 assert.equal(standaloneProfile.controls.encoder.press, 0);
 assert.equal(standaloneProfile.controls.encoder.alternatePress, 6);
 assert.equal(standaloneProfile.startupLook, 'ember');

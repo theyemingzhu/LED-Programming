@@ -1,6 +1,8 @@
+import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
+
 const DEFAULT_CHAIN_ID = 'main';
 export const DEFAULT_DATA_WIRE_COUNT = 1;
-const MAX_DATA_WIRE_COUNT = 4;
+const MAX_DATA_WIRE_COUNT = CARD_HARDWARE_CONTRACT.maxOutputs;
 
 export const DEFAULT_PLAYBACK = Object.freeze({
   patternId: null,

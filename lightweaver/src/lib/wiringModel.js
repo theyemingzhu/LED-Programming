@@ -95,7 +95,7 @@ export function migrateWiring(wiring, strips = [], legacyPatchBoard = null, opti
       verified: legacyPatchBoard.physicalLocked === true,
     });
   }
-  const configuredOutputs = (options.outputs || []).filter(output => Number(output?.pixels) > 0).slice(0, 4);
+  const configuredOutputs = (options.outputs || []).filter(output => Number(output?.pixels) > 0);
   const migrationWarnings = [];
   const outputs = configuredOutputs.length
     ? configuredOutputs.map((output, index) => ({

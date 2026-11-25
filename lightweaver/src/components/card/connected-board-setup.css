@@ -1,0 +1,95 @@
+.connected-board-setup {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  min-width: 0;
+  margin-top: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.connected-board-setup :is(h3, h4, p, dl, dd) {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.connected-board-setup :is(h3, h4) {
+  color: var(--text-hi);
+}
+
+.connected-board-setup h3 {
+  font-size: 15px;
+}
+
+.connected-board-setup h4 {
+  font-size: 12px;
+}
+
+.connected-board-setup__search,
+.connected-board-setup__options,
+.connected-board-setup__pins {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.connected-board-setup__search input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-panel);
+  color: var(--text-hi);
+  padding-inline: 10px;
+  font: inherit;
+}
+
+.connected-board-setup .connected-board-setup__option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  gap: 1px;
+  text-align: left;
+  padding-block: 4px;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.connected-board-setup__option small {
+  color: var(--text-mid);
+  font-weight: 400;
+}
+
+.connected-board-setup .connected-board-setup__option[aria-pressed="true"] {
+  background: var(--bg-sel);
+  border-color: var(--accent-line);
+  color: var(--text-hi);
+  font-weight: 700;
+}
+
+.connected-board-setup__pins > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 8px;
+}
+
+.connected-board-setup__pins dt {
+  font-weight: 700;
+}
+
+.connected-board-setup__pins dd {
+  color: var(--text-hi);
+}
+
+.connected-board-setup .card-connection-actions {
+  margin-top: 4px;
+}
+
+.connected-board-setup button {
+  min-height: 44px;
+}

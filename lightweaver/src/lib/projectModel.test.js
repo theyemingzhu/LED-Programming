@@ -39,6 +39,24 @@ test('migration preserves explicit saved output count and GPIO assignments', () 
   );
 });
 
+test('a saved project keeps five explicit output assignments and its physical count', () => {
+  const saved = createDefaultProject();
+  const pins = [15, 16, 17, 18, 21];
+  saved.layout.wiring.outputs = pins.map((pin, index) => ({
+    id: `wire-${index + 1}`,
+    name: `Wire ${index + 1}`,
+    pin,
+    runIds: index === 0 ? saved.layout.wiring.outputs[0].runIds : [],
+  }));
+  saved.layout.patchBoard.dataWireCount = pins.length;
+
+  const migrated = migrateProject(jsonRoundTrip(saved));
+
+  assert.equal(migrated.layout.patchBoard.dataWireCount, pins.length);
+  assert.equal(migrated.layout.patchBoard.dataWireCountNeedsReview, false);
+  assert.deepEqual(migrated.layout.wiring.outputs, saved.layout.wiring.outputs);
+});
+
 test('saved physical outputs repair stale duplicate count metadata without requiring review', () => {
   const saved = createDefaultProject();
   const runIds = saved.layout.wiring.outputs[0].runIds;

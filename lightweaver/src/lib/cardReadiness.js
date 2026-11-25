@@ -1,3 +1,5 @@
+import { readCardOutputCapabilities } from './cardHardwareContract.js';
+
 export const CARD_READINESS_CONTRACT_VERSION = 1;
 
 function cleanText(value, maxLength) {
@@ -158,6 +160,7 @@ export function normalizeCardReadiness(raw = {}) {
     // back refused. Null when the card did not say, so a caller falls back to
     // its own contract bound instead of quietly adopting this Studio build's
     // ceiling as if the card had claimed it.
+    ...readCardOutputCapabilities(source),
     maxPixels: positiveInteger(limits.pixels),
     schemaMaxPixels: positiveInteger(pixelCapacity.schemaLimit)
       ?? positiveInteger(capacity.schemaMaxPixels)

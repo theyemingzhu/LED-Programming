@@ -531,22 +531,23 @@ function normalizeLed(led = {}) {
   const outputs = configuredOutputs.length
     ? configuredOutputs
     : [{ ...DEFAULT_CARD_LED.outputs[0], pixels: requestedPixels }];
-  const normalizedOutputs = outputs
-    .slice(0, CARD_HARDWARE_CONTRACT.maxOutputs)
-    .map((output, index) => ({
-      id: sanitizeId(output.id || `out${index + 1}`),
-      name: String(output.name || `Output ${index + 1}`),
-      pin: clampInt(output.pin, CARD_HARDWARE_CONTRACT.outputPins[index] || CARD_HARDWARE_CONTRACT.outputPins[0], 0, 48),
-      pixels: clampInt(output.pixels ?? output.pixelCount, requestedPixels, 1, CARD_HARDWARE_CAPABILITIES.maxPixels),
-      direction: ['reverse', 'mixed'].includes(output.direction) ? output.direction : 'forward',
-      segments: Array.isArray(output.segments) && output.segments.length
-        ? output.segments.map((segment, segmentIndex) => ({
-            id: sanitizeId(segment.id || `${output.id || `out${index + 1}`}-segment-${segmentIndex + 1}`),
-            count: clampInt(segment.count, 1, 1, CARD_HARDWARE_CAPABILITIES.maxPixels),
-            direction: segment.direction === 'reverse' ? 'reverse' : 'forward',
-          }))
-        : [{ id: `${sanitizeId(output.id || `out${index + 1}`)}-full`, count: clampInt(output.pixels ?? output.pixelCount, requestedPixels, 1, CARD_HARDWARE_CAPABILITIES.maxPixels), direction: output.direction === 'reverse' ? 'reverse' : 'forward' }],
-    }));
+  if (outputs.length > CARD_HARDWARE_CONTRACT.maxOutputs) {
+    throw new RangeError(`Hardware supports at most ${CARD_HARDWARE_CONTRACT.maxOutputs} outputs.`);
+  }
+  const normalizedOutputs = outputs.map((output, index) => ({
+    id: sanitizeId(output.id || `out${index + 1}`),
+    name: String(output.name || `Output ${index + 1}`),
+    pin: clampInt(output.pin, CARD_HARDWARE_CONTRACT.outputPins[index] || CARD_HARDWARE_CONTRACT.outputPins[0], 0, 48),
+    pixels: clampInt(output.pixels ?? output.pixelCount, requestedPixels, 1, CARD_HARDWARE_CAPABILITIES.maxPixels),
+    direction: ['reverse', 'mixed'].includes(output.direction) ? output.direction : 'forward',
+    segments: Array.isArray(output.segments) && output.segments.length
+      ? output.segments.map((segment, segmentIndex) => ({
+          id: sanitizeId(segment.id || `${output.id || `out${index + 1}`}-segment-${segmentIndex + 1}`),
+          count: clampInt(segment.count, 1, 1, CARD_HARDWARE_CAPABILITIES.maxPixels),
+          direction: segment.direction === 'reverse' ? 'reverse' : 'forward',
+        }))
+      : [{ id: `${sanitizeId(output.id || `out${index + 1}`)}-full`, count: clampInt(output.pixels ?? output.pixelCount, requestedPixels, 1, CARD_HARDWARE_CAPABILITIES.maxPixels), direction: output.direction === 'reverse' ? 'reverse' : 'forward' }],
+  }));
   const pixels = clampInt(
     led.pixels,
     normalizedOutputs.reduce((sum, output) => sum + output.pixels, 0),

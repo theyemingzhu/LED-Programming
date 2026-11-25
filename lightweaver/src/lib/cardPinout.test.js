@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { CARD_HEADER_ROWS, cardPinNotes, describeCardPinPlace, locateCardPin } from './cardPinout.js';
+import { CARD_HEADER_ROWS, cardPinNotes, describeCardPinPlace, describeCardPinRole, locateCardPin } from './cardPinout.js';
 import { CARD_CONNECTOR_PINS } from './wiringModel.js';
 
 const hardware = JSON.parse(readFileSync(new URL('../../../packages/lightweaver-contract/card-hardware.json', import.meta.url), 'utf8'));
@@ -37,4 +37,39 @@ test('only the board-light pins carry a note', () => {
   assert.deepEqual(cardPinNotes([16, 17, 18, 21]), []);
   assert.equal(cardPinNotes([38]).length, 1);
   assert.equal(cardPinNotes(['48']).length, 1);
+});
+
+test('pin roles distinguish board wiring, project assignments and available LED pins', () => {
+  const roles = {
+    controls: new Map([[0, 'Encoder press'], [4, 'Encoder A'], [9, 'Blackout']]),
+    outputs: new Map([[38, {}]]),
+    supportedPins: hardware.outputPins,
+    availablePins: [5, 17],
+  };
+  const role = pin => describeCardPinRole(pin, roles);
+  assert.deepEqual(role(0), { kind: 'reserved', label: 'BOOT strap · Encoder press' });
+  assert.deepEqual(role(2), { kind: 'reserved', label: 'Boot status LED' });
+  assert.deepEqual(role(4), { kind: 'reserved', label: 'Encoder A' });
+  assert.deepEqual(role(10), { kind: 'reserved', label: 'microSD CS' });
+  assert.deepEqual(role(19), { kind: 'reserved', label: 'USB D−' });
+  assert.deepEqual(role('TX'), { kind: 'reserved', label: 'UART0 TX · GPIO 43' });
+  assert.deepEqual(role(35), { kind: 'reserved', label: 'PSRAM' });
+  assert.deepEqual(role(38), { kind: 'output', label: 'LED output · RGB v1.1' });
+  assert.deepEqual(role(5), { kind: 'available', label: 'LED available' });
+  assert.deepEqual(role(16), { kind: 'reserved', label: 'LED unavailable' });
+  assert.deepEqual(role(14), { kind: 'unsupported', label: 'LED unsupported' });
+});
+
+test('a confirmed profile marks only its onboard RGB pin and displays custom reservations', () => {
+  const profile = { id: 'espressif-devkitc-1-n16r8-v1.0' };
+  const role = (pin, profilePin) => describeCardPinRole(pin, {
+    profile, profilePin, supportedPins: hardware.outputPins,
+  });
+  assert.deepEqual(role(38, { role: 'gpio' }), { kind: 'available', label: 'LED available' });
+  assert.deepEqual(role(48, { role: 'led', detail: 'Onboard RGB (shared)' }), {
+    kind: 'available', label: 'LED available · Onboard RGB (shared)',
+  });
+  assert.deepEqual(role(15, { role: 'storage', detail: 'External storage', installation: 'Card reader' }), {
+    kind: 'reserved', label: 'External storage · Card reader',
+  });
 });

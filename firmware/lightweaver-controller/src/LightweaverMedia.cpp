@@ -18,6 +18,7 @@
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverWeb.h"
 #include "LightweaverSequencePlayback.h"
+#include "LightweaverTypes.h"
 #include "LightweaverMediaStorePolicy.h"
 #include "LightweaverFirmwareBootHealth.h"
 
@@ -397,7 +398,7 @@ bool validSequenceHeader(fs::FS& fs, const String& path, size_t expectedBytes) {
   const uint32_t pixels = u32(12);
   const uint32_t frames = u32(16);
   const uint16_t fps = u16(20);
-  return u16(8) == 1 && outputs >= 1 && outputs <= 4 && pixels >= 1 && pixels <= 4096 &&
+  return u16(8) == 1 && outputs >= 1 && outputs <= LW_MAX_OUTPUTS && pixels >= 1 && pixels <= 4096 &&
       sequenceOutputTopologySyntax(header, sizeof(header)) &&
       frames >= 1 && fps >= 1 && fps <= 60 && u16(22) == 3 &&
       uint64_t(64) + uint64_t(pixels) * 3U * frames == expectedBytes;

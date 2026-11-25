@@ -5,6 +5,7 @@
 #include <SPI.h>
 
 #include "LightweaverTypes.h"
+#include "LightweaverHardwareCapabilities.h"
 #include "LightweaverColorPipeline.h"
 #include "LightweaverStorage.h"
 #include "LightweaverPatterns.h"
@@ -32,6 +33,9 @@
 #include <esp_system.h>
 #include <esp_heap_caps.h>
 #include <mbedtls/sha256.h>
+
+static_assert(LW_MAX_OUTPUTS <= LWSEQ_TOPOLOGY_V2_SLOTS,
+              "sequence topology must describe every configured output");
 
 // Task watchdog timeout. Must exceed the longest blocking call in the loop
 // task — the look-change fade (fadeOutMs + fadeInMs, ~2s default) and SD reads.
@@ -2971,6 +2975,7 @@ String runtimeFirmwareInfo() {
   doc["firmwareVersion"] = LW_FIRMWARE_VERSION;
   doc["buildId"] = LW_BUILD_ID;
   doc["buildNumber"] = LW_BUILD_NUMBER;
+  writeBoardHardwareHints(doc);
   doc["bootId"] = runtimeBootId();
   doc["uptimeMs"] = millis();
   doc["provisioningContractVersion"] = LW_PROVISIONING_CONTRACT_VERSION;
@@ -3000,6 +3005,7 @@ String runtimeFirmwareInfo() {
   doc["safeMode"] = runtimeSafeModeActive();
   doc["configSchemaVersion"] = LW_CONFIG_SCHEMA_VERSION;
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
+  writeOutputTopologyCapabilities(doc["capabilities"]["outputTopology"].to<JsonObject>());
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;

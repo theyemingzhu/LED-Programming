@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { settleEndCheck, stopRunAt } from './ux/drivers';
+import { REFERENCE_BOARDS, draftBoard } from '../src/lib/boardProfiles.js';
 import {
   CARD_LINK_DIRECT_PING_INTERVAL_MS,
   CARD_LINK_PING_INTERVAL_MS,
@@ -19,7 +20,7 @@ import {
 // reported itself as complete. Every response here is taken from
 // LightweaverWeb.cpp `handleConfigPost` and LightweaverStorage.cpp.
 
-const CARD_ID = 'lw-discovery-tests';
+const CARD_ID = 'lw-d15c0ae00001';
 const BUILD_ID = 'd'.repeat(40);
 const HOST = 'lightweaver.local';
 
@@ -680,20 +681,61 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(card.beaconRefused, 'Studio must never ask for a port the card excluded').toEqual([]);
   });
 
-  test('new firmware reports GPIO 39, while GPIO 36 and 37 remain unavailable', async ({ page }, testInfo) => {
+  test('a confirmed board map excludes its reserved pins from strip discovery', async ({ page }) => {
+    const profile = draftBoard(REFERENCE_BOARDS[0]);
+    profile.revision = 1;
+    profile.name = 'Confirmed bench board';
+    profile.groups = profile.groups.map(group => ({
+      ...group,
+      pins: group.pins.map(pin => pin.gpio === 39
+        ? { ...pin, role: 'control', detail: 'External control' }
+        : pin),
+    }));
+    await page.addInitScript(({ cardId, profile }) => {
+      localStorage.setItem('lw-board-profiles-v1', JSON.stringify({
+        profiles: [profile], confirmations: { [cardId]: { id: profile.id, revision: profile.revision } },
+      }));
+    }, { cardId: CARD_ID, profile });
     card.availableBeaconPorts = [...BEACON_PORTS, 39];
+
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    const map = page.getByTestId('discovery-pin-map');
+    await expect(map).toContainText('Confirmed bench board');
+    await expect(map.locator('[data-pin="39"]')).toContainText('External control');
+    await expect(page.getByTestId('discovery-probe-39')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-probe-38')).toBeVisible();
+    expect(card.beaconPins).not.toContain(39);
+  });
+
+  test('new firmware reports GPIO 39, while GPIOs 35–37 remain unavailable', async ({ page }, testInfo) => {
+    card.availableBeaconPorts = [...BEACON_PORTS, 39];
+    await page.route('**/api/firmware-info', route => route.fulfill({ json: blankStatus({
+      controls: {
+        encoder: { a: 14, b: 5, press: 0, configuredAlternatePress: 6, effectiveAlternatePress: 6 },
+        previous: 7, next: 8, blackout: 9, statusLed: 2, brightnessAnalog: 1,
+      },
+    }) }));
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('discovery-probe-39')).toBeVisible();
-    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('GPIO 36 and 37');
+    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('GPIOs 35–37');
     await expect(page.getByTestId('discovery-gpio-availability')).toContainText('PSRAM');
     await expect(page.getByTestId('discovery-probe-36')).toHaveCount(0);
     await expect(page.getByTestId('discovery-probe-37')).toHaveCount(0);
     await page.getByTestId('discovery-probe-39').click();
     await expect.poll(() => card.beaconPinned).toBe(39);
-    await page.screenshot({ path: testInfo.outputPath('gpio39-discovery-desktop.png'), fullPage: true });
+    const pinMap = page.getByTestId('discovery-pin-map');
+    await expect(pinMap.locator('[data-pin="39"]')).toContainText('LED available · JTAG');
+    await expect(pinMap.locator('[data-pin="12"]')).toContainText('microSD SCK');
+    await expect(pinMap.locator('[data-pin="37"]')).toContainText('PSRAM');
+    await expect(pinMap).toContainText('Card controls');
+    await expect(pinMap.locator('[data-pin="14"]')).toContainText('Encoder A');
+    await expect(pinMap.locator('[data-pin="1"]')).toContainText('Dimmer pot');
+    await pinMap.screenshot({ path: testInfo.outputPath('gpio39-discovery-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: testInfo.outputPath('gpio39-discovery-mobile.png'), fullPage: true });
+    expect(await pinMap.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await pinMap.screenshot({ path: testInfo.outputPath('gpio39-discovery-mobile.png') });
     await page.getByTestId('discovery-start').click();
     await expect.poll(() => card.configs.length).toBeGreaterThan(0);
     expect(card.configs[0].led.outputs.map((output: { pin: number }) => output.pin)).toEqual([39]);

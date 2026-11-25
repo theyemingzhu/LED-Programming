@@ -11,7 +11,7 @@ import {
   DEFAULT_STANDALONE_OUTPUTS,
   STANDALONE_RUNTIME_MODES,
 } from './standaloneController.js';
-import { normalizeCardLedType } from './cardHardwareContract.js';
+import { CARD_HARDWARE_CONTRACT, normalizeCardLedType } from './cardHardwareContract.js';
 import { defaultPortRoles, normalizePortRoles } from './portRoles.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { normalizePatternLabSequenceAssets } from './patternLabHandoff.js';
@@ -511,13 +511,12 @@ function alignChainToStripOrder(project) {
   ];
   const rawPatchBoard = layout.patchBoard;
   const rawDataWireCount = Number(rawPatchBoard?.dataWireCount);
-  const hasExplicitDataWireCount = Number.isInteger(rawDataWireCount) && rawDataWireCount >= 1 && rawDataWireCount <= 4;
+  const hasExplicitDataWireCount = Number.isInteger(rawDataWireCount) && rawDataWireCount >= 1 && rawDataWireCount <= CARD_HARDWARE_CONTRACT.maxOutputs;
   const savedWiringOutputCount = Array.isArray(layout.wiring?.outputs) && layout.wiring.outputs.length
-    ? Math.min(4, layout.wiring.outputs.length)
+    ? layout.wiring.outputs.length
     : 0;
   const configuredOutputCount = (project.devices?.standaloneController?.outputs || [])
     .filter(output => Number(output?.pixels ?? output?.pixelCount) > 0)
-    .slice(0, 4)
     .length;
   // Saved wiring outputs are the physical truth. Count metadata is a UI-owned
   // declaration, but it may lag behind an older or partially saved project and

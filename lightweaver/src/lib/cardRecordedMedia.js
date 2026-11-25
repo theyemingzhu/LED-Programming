@@ -1,3 +1,4 @@
+import { lwseqTopologyVersion } from './standaloneController.js';
 import { sendCardBridgeRequest } from './cardBridge.js';
 import { readCardStatusEnvelope, readCardProjectEvidence } from './cardPushClient.js';
 import { cardNeedsTouch } from './cardNeedsTouch.js';
@@ -143,6 +144,11 @@ export async function installRecordedMediaForRuntimePackage(runtimePackage, {
   }
   cancelled(signal);
   const evidence = await readEvidence({ host, transport });
+  const requiredTopologyVersion = lwseqTopologyVersion(config.led.outputs.length);
+  const supportedTopologyVersion = evidence?.capabilities?.outputTopology?.sequenceVersion ?? 1;
+  if (supportedTopologyVersion < requiredTopologyVersion) {
+    throw new Error(`This card needs recording topology version ${requiredTopologyVersion} to play ${config.led.outputs.length} outputs.`);
+  }
   const mediaCapability = evidence?.capabilities?.sequenceMedia;
   if (mediaCapability?.version !== 2
     || mediaCapability.maxBytes < Math.max(...assets.map(asset => asset.byteLength))

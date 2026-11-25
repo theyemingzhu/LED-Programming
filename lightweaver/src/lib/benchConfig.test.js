@@ -245,13 +245,24 @@ test('legacy zone upgrade retains observed chipset, color order, controls and di
     { maxMilliamps: 2001 }), /current limit/i);
 });
 
-test('outputs stop at the four RMT channels the silicon has', () => {
+test('legacy discovery limits unreported card capacity to four outputs', () => {
   const counts = Object.fromEntries(SAFE_PINS.slice(0, 6).map(pin => [pin, 16]));
   const { config, layout, skipped } = buildBenchConfig(stripRoles(counts), { maxPixels: 1024 });
-  assert.equal(config.led.outputs.length, CARD_HARDWARE_CONTRACT.maxOutputs);
-  assert.equal(layout.length, CARD_HARDWARE_CONTRACT.maxOutputs);
-  const dropped = SAFE_PINS.slice(CARD_HARDWARE_CONTRACT.maxOutputs, 6);
+  assert.equal(config.led.outputs.length, CARD_HARDWARE_CONTRACT.defaultOutputLimit);
+  assert.equal(layout.length, CARD_HARDWARE_CONTRACT.defaultOutputLimit);
+  const dropped = SAFE_PINS.slice(CARD_HARDWARE_CONTRACT.defaultOutputLimit, 6);
   assert.deepEqual(skipped, dropped.map(pin => ({ pin, reason: BENCH_SKIP_MAX_OUTPUTS })));
+});
+
+test('bench discovery provisions five outputs with one long run on reporting firmware', () => {
+  const pins = SAFE_PINS.slice(0, 5);
+  const counts = Object.fromEntries(pins.map((pin, index) => [pin, index === 0 ? 600 : 16]));
+  const { config, layout, skipped } = buildBenchConfig(stripRoles(counts), {
+    maxOutputs: 8, maxPixels: CARD_HARDWARE_CONTRACT.maxPixels, outputPins: pins,
+  });
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(config.led.outputs.map(output => output.pin), pins);
+  assert.deepEqual(layout.map(output => output.count), [600, 16, 16, 16, 16]);
 });
 
 test('totals clamp to the pixel ceiling the card reported', () => {
@@ -352,7 +363,10 @@ test('exactly one zone covers every provisioned pixel', () => {
 test('the bench config fits the card storage budget at every port count', () => {
   for (let ports = 1; ports <= CARD_HARDWARE_CONTRACT.maxOutputs; ports += 1) {
     const counts = Object.fromEntries(SAFE_PINS.slice(0, ports).map(pin => [pin, 256]));
-    const { config } = buildBenchConfig(stripRoles(counts), { maxPixels: 1024 });
+    const { config, layout } = buildBenchConfig(stripRoles(counts), {
+      maxOutputs: ports, maxPixels: CARD_HARDWARE_CONTRACT.maxPixels,
+    });
+    assert.equal(layout.length, ports);
     const bytes = new TextEncoder().encode(JSON.stringify(config)).byteLength;
     assert.ok(
       bytes <= CARD_CONFIG_STORAGE_LIMIT_BYTES,

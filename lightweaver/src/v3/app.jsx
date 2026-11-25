@@ -2,6 +2,7 @@
    wired to the real ProjectProvider. The shell chrome (TopBar/Rail/StatusBar)
    keeps the mockup markup; data/handlers are threaded in from project state. */
 import { cardNeedsTouch } from '../lib/cardNeedsTouch.js';
+import { confirmedBoardProfile } from '../lib/boardLedPins.js';
 import React, { Component, lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { FirstInstallCheckSheet } from '../components/card/FirstInstallCheckSheet.jsx';
 import { cardChangedSinceSeen } from '../lib/patternGate.js';
@@ -774,6 +775,7 @@ function Shell({ offlineUpdateController = null }) {
   const commissioningActiveRef = useRef(commissioningActive);
   const installRouteRef = useRef('#screen=card&section=install');
   const [connectionCenterOpen, setConnectionCenterOpen] = useState(false);
+  const [boardSetupEntry, setBoardSetupEntry] = useState(null);
   const [cardSavePending, setCardSavePending] = useState(false);
   const cardSaveRef = useRef(false);
   const expressionDeliveryRef = useRef(null);
@@ -1511,10 +1513,20 @@ function Shell({ offlineUpdateController = null }) {
     // take-over mid-flight has not established the link yet, so nothing
     // closes under it; the close fires when its verification lands.
     if (connectCloseArmedRef.current && cardLinkEstablished) {
+      const cardId = cardLink.card?.id || cardLink.readiness?.cardId || '';
       connectCloseArmedRef.current = false;
+      if (/^lw-[a-f0-9]{12}$/.test(cardId) && !confirmedBoardProfile(cardId)) return;
       setConnectionCenterOpen(false);
     }
-  }, [connectionCenterOpen, cardLinkEstablished]);
+  }, [connectionCenterOpen, cardLinkEstablished, cardLink.card?.id, cardLink.readiness?.cardId]);
+  useEffect(() => {
+    if (cardRoute.section !== 'boards') setBoardSetupEntry(null);
+  }, [cardRoute.section]);
+  const returnToBoardSetup = () => {
+    setBoardSetupEntry(null);
+    openCardSection('overview');
+    openConnectionCenter();
+  };
   const saveLedCountToCard = useCallback(async () => {
     if (cardSaveRef.current) return;
     const host = cardLink.host || cardStatus.host;
@@ -2544,6 +2556,8 @@ function Shell({ offlineUpdateController = null }) {
               cardLifecycle={cardLifecycle}
               onConnectCard={onConnectCard}
               onOpenConnectionCenter={openConnectionCenter}
+              boardSetupEntry={boardSetupEntry}
+              onReturnToBoardSetup={returnToBoardSetup}
               onOpenProjects={onLoad}
               go={navigateStudio}
               onOpenSection={openCardSection}
@@ -2661,6 +2675,27 @@ function Shell({ offlineUpdateController = null }) {
           openSetupTask();
         }}
         onClose={closeConnectionCenter}
+        onOpenBoardManager={({ profileId, copy = false } = {}) => {
+          if (installActiveRef.current) return;
+          const cardId = cardLink.card?.id || cardLink.readiness?.cardId;
+          setBoardSetupEntry({
+            initialProfileId: profileId,
+            copyOnEntry: copy,
+            expectedCardId: cardId,
+          });
+          closeConnectionCenter();
+          openCardSection('boards');
+        }}
+        onSetUpLights={() => {
+          if (installActiveRef.current) return;
+          closeConnectionCenter();
+          if (cardLink.cardBlank) {
+            routeStore.push('#screen=discovery');
+            return;
+          }
+          flushProjectAutosave();
+          routeStore.push('#screen=layout&mode=draw');
+        }}
         onConnectCard={onConnectCard}
         onLaunchBridge={onLaunchBridge}
         bridgeResult={bridgeResult}

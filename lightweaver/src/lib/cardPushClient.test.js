@@ -48,6 +48,37 @@ const runtimePackage = {
   },
 };
 
+test('install preflight rejects an oversized project before writing and accepts the same project on bench firmware', async () => {
+  const identity = { cardId: 'lw-test', buildId: 'build-test' };
+  const outputs = [15, 16, 17, 18, 21].map((pin, index) => ({
+    id: `out${index + 1}`, pin, pixels: index === 0 ? 600 : 20,
+  }));
+  const prepared = { ...identity, config: { led: { outputs } } };
+  let writes = 0;
+  const run = status => orchestrateCardDeploymentStart(prepared, {
+    readFirmwareInfo: async () => identity,
+    readStatus: async () => ({ ...identity, ...status }),
+    readWiringStatus: async () => identity,
+    config: async () => { writes += 1; return { ok: true }; },
+  });
+  await assert.rejects(() => run({}), { reason: 'card-output-capacity' });
+  await assert.rejects(() => run({ limits: { outputs: 4 } }), /5 LED outputs.*up to 4/);
+  await assert.rejects(() => run({ limits: { outputs: 8, pixels: 650 } }), {
+    reason: 'card-pixel-capacity', message: 'This design uses 680 LEDs. The card supports up to 650.',
+  });
+  await assert.rejects(() => run({
+    limits: { outputs: 8 },
+    capabilities: { outputTopology: { version: 1, outputPins: [15, 16, 17, 18] } },
+  }), { reason: 'card-output-pin' });
+  assert.equal(writes, 0);
+  const applied = await run({
+    limits: { outputs: 8 },
+    capabilities: { outputTopology: { version: 1, outputPins: outputs.map(output => output.pin) } },
+  });
+  assert.equal(applied.action, 'stage-new');
+  assert.equal(writes, 1);
+});
+
 test('probation candidate reuses only its exact positive wiring identity on reload', async () => {
   const config = {
     projectRevision: 13, projectFingerprint: 'a'.repeat(64),

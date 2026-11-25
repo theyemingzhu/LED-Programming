@@ -30,17 +30,18 @@ import { getCardBridgeState, sendCardBridgeRequest } from '../../lib/cardBridge.
 import { connectCardTransport } from '../../lib/cardTransport.js';
 import { cardConnectionOptionsFor, cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
 import { prepareCardDeployment } from '../../lib/cardDeployment.js';
-import { readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
+import { readCardFirmwareInfoEnvelope, readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
 import { buildPackageForPortRoles, deploySetupToCard } from '../../lib/cardSetupDeploy.js';
 import { discoveryProjectParts, layoutIsUncountedHeadroom, withDiscoveryPatternChoices } from '../../lib/discoveryCommit.js';
 import { auditionBenchPattern, requireBenchInstallReadback, requireBenchZoneMapping, restoreBenchPatternSnapshot } from '../../lib/benchPatternAudition.js';
 import { CardPinPicker } from './CardPinPicker.jsx';
+import { CardPinMap } from './CardPinMap.jsx';
+import { confirmedBoardProfile, selectBoardLedPins } from '../../lib/boardLedPins.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../../lib/cardLiveControl.js';
 import { getCardWiringStatus } from '../../lib/cardWiringSafety.js';
 import { useProject } from '../../state/ProjectContext.jsx';
-import { CARD_HARDWARE_CONTRACT } from '../../lib/cardHardwareContract.js';
-import { isCardLedType } from '../../lib/cardHardwareContract.js';
+import { CARD_HARDWARE_CONTRACT, isCardLedType } from '../../lib/cardHardwareContract.js';
 import { FRAME_CHUNK_MAX_PIXELS, createCardFrameStream } from '../../lib/cardFrameStream.js';
 import { normalizeCardReadiness } from '../../lib/cardReadiness.js';
 import { CORE_CARD_PATTERN_BANK } from '../../lib/cardPatternBank.js';
@@ -331,8 +332,8 @@ export function StripDiscoveryPanel({
 
   // Which ports to go looking on. Seeded from whatever discovery last recorded
   // so a second pass starts from the owner's own answers, and left entirely
-  // unused otherwise: the card's compiled pin menu is far wider than the four
-  // outputs it can actually drive, so guessing which ones are wired would both
+  // unused otherwise: the card permits more pin choices than output slots,
+  // so guessing which ones are wired would both
   // waste the pixel budget and walk the owner through ports they never touched.
   // Discovery is an intentional new card setup. Even when local storage still
   // holds the complete older menu, offer newly approved pins on this screen;
@@ -387,7 +388,19 @@ export function StripDiscoveryPanel({
   // on pre-upgrade firmware answers 1024, and a bench config built past that is
   // refused outright — which is why this is read from the card rather than
   // assumed.
-  const cardMaxPixels = normalizeCardReadiness(cardLink?.readiness || {}).maxPixels;
+  const observedCard = cardLink?.readiness || cardLink?.card;
+  const { maxPixels: cardMaxPixels, maxOutputs: cardMaxOutputs, outputPins: cardOutputPins } = useMemo(
+    () => normalizeCardReadiness(observedCard), [observedCard],
+  );
+  const cardId = cardLink?.card?.id || '';
+  const profile = useMemo(() => confirmedBoardProfile(cardId), [cardId]);
+  const effectiveOutputPins = useMemo(() => profile ? selectBoardLedPins({
+    profile, firmwarePins: cardOutputPins ?? CARD_HARDWARE_CONTRACT.outputPins,
+  }) : cardOutputPins, [profile, cardOutputPins]);
+  const benchOutputOptions = useMemo(
+    () => ({ maxPixels: cardMaxPixels, maxOutputs: cardMaxOutputs, outputPins: effectiveOutputPins }),
+    [cardMaxPixels, cardMaxOutputs, effectiveOutputPins],
+  );
   // Added by the firmware workstream; older cards simply do not report it, and
   // its absence must never be read as "the limit is fine".
   const maxMilliampsSource = cardLink?.readiness?.maxMilliampsSource
@@ -408,8 +421,9 @@ export function StripDiscoveryPanel({
   const selectablePortRoles = useMemo(() => {
     const cardPins = probePorts?.available ? new Set(probePorts.ports) : null;
     return portRoles.filter(entry => !BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)
-      && (cardPins ? cardPins.has(entry.pin) : entry.pin !== 39));
-  }, [portRoles, probePorts]);
+      && (!effectiveOutputPins || effectiveOutputPins.includes(entry.pin))
+      && (cardPins ? cardPins.has(entry.pin) : entry.pin !== 39 || cardOutputPins?.includes(39)));
+  }, [portRoles, probePorts, cardOutputPins, effectiveOutputPins]);
   // Only the ports the owner asked Studio to look at get bench pixels. A port
   // left on "Skip" must be provisioned zero, otherwise the session would treat
   // it as discoverable and walk the owner through a port they said to leave
@@ -418,21 +432,18 @@ export function StripDiscoveryPanel({
     () => selectablePortRoles.filter(entry => entry.role === PORT_ROLE_STRIP),
     [selectablePortRoles],
   );
-  // Four is a silicon limit, not a policy: the ESP32-S3 has four RMT TX
-  // channels, so a fifth output cannot be driven no matter how it is wired.
-  // This is the one place discovery says "not that many" — and it is about
-  // outputs, never about how long a strip may be.
-  const overOutputLimit = probeTargets.length > CARD_HARDWARE_CONTRACT.maxOutputs;
+  // Discovery counts the installed firmware’s configured output slots.
+  const overOutputLimit = probeTargets.length > cardMaxOutputs;
 
   const bench = useMemo(() => {
     const pixelsPerPort = Object.fromEntries(probeTargets.map(entry => [
       entry.pin,
       Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM),
     ]));
-    return buildBenchConfig(portRoles, { pixelsPerPort, maxPixels: cardMaxPixels });
-  }, [portRoles, probeTargets, cardMaxPixels]);
+    return buildBenchConfig(portRoles, { pixelsPerPort, ...benchOutputOptions });
+  }, [portRoles, probeTargets, benchOutputOptions]);
 
-  // Ports that only overflow the 4-output silicon limit are reported once, in
+  // Ports that only overflow the configured output limit are reported once, in
   // the output-limit banner, instead of one near-identical line per port.
   const outputLimitSkips = bench.skipped.filter(entry => entry.reason === BENCH_SKIP_MAX_OUTPUTS);
   const otherSkips = bench.skipped.filter(entry => entry.reason !== BENCH_SKIP_MAX_OUTPUTS);
@@ -461,6 +472,34 @@ export function StripDiscoveryPanel({
   const [probeUnlit, setProbeUnlit] = useState(false);
   const pinnedPortRef = useRef(null);
   pinnedPortRef.current = pinnedPort;
+
+  const [pinMapEvidence, setPinMapEvidence] = useState(null);
+  const pinMapVisible = !phaseIsPastIdle && (profile || selectedPort !== null || pinnedPort !== null);
+  const bootId = cardLink?.readiness?.bootId || '';
+  const cardTransport = cardLink?.transport;
+  const pinMapKey = `${host}|${cardId}|${bootId}`;
+  const pinMapFirmware = pinMapEvidence?.key === pinMapKey ? pinMapEvidence.firmware : null;
+  useEffect(() => {
+    if (!pinMapVisible || !cardId || !bootId) return undefined;
+    let cancelled = false;
+    readCardFirmwareInfoEnvelope({ host, transport: cardTransport }).then(firmware => {
+      if (!cancelled && firmware?.cardId === cardId && firmware?.bootId === bootId) {
+        setPinMapEvidence({ key: pinMapKey, firmware });
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [pinMapVisible, host, cardId, bootId, cardTransport, pinMapKey]);
+  const reportedControls = pinMapFirmware?.controls;
+  const pinMapControls = reportedControls?.encoder ? {
+    ...reportedControls,
+    encoder: {
+      ...reportedControls.encoder,
+      alternatePress: reportedControls.encoder.effectiveAlternatePress
+        ?? reportedControls.encoder.configuredAlternatePress
+        ?? reportedControls.encoder.alternatePress,
+    },
+    brightness: reportedControls.brightnessAnalog ?? reportedControls.brightness,
+  } : null;
 
   useEffect(() => {
     if (phaseIsPastIdle) return undefined;
@@ -870,7 +909,15 @@ export function StripDiscoveryPanel({
     const availablePins = new Set(selectablePortRoles.map(entry => entry.pin));
     const cardSelectedRoles = normalizePortRoles(selectedRoles.map(entry => availablePins.has(entry.pin)
       ? entry : { ...entry, role: PORT_ROLE_UNUSED, pixelCount: 0 }));
-    const selectedBench = buildBenchConfig(cardSelectedRoles, { pixelsPerPort: Object.fromEntries(cardSelectedRoles.filter(entry => entry.role === PORT_ROLE_STRIP).map(entry => [entry.pin, Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM)])), maxPixels: cardMaxPixels });
+    const selectedStrips = cardSelectedRoles.filter(entry => entry.role === PORT_ROLE_STRIP);
+    if (selectedStrips.length > cardMaxOutputs) {
+      setFailure(`The card supports up to ${cardMaxOutputs} strip outputs. Choose which outputs to count.`);
+      return;
+    }
+    const pixelsPerPort = Object.fromEntries(selectedStrips.map(entry => [
+      entry.pin, Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM),
+    ]));
+    const selectedBench = buildBenchConfig(cardSelectedRoles, { pixelsPerPort, ...benchOutputOptions });
     setPortRoles(cardSelectedRoles);
     setBusy(true);
     setFailure('');
@@ -992,7 +1039,7 @@ export function StripDiscoveryPanel({
         .map(port => [port.pin, port.pin === activePin
           ? Math.max(port.provisioned * 2, DISCOVERY_BENCH_HEADROOM)
           : port.provisioned]));
-      larger = buildBenchConfig(portRoles, { pixelsPerPort, maxPixels: cardMaxPixels });
+      larger = buildBenchConfig(portRoles, { pixelsPerPort, ...benchOutputOptions });
       // The card restarts to pick up the bigger pixel buffers, so the stream's
       // failure counters from the gap are stale the moment it returns.
       await installBenchConfig({ host, config: larger.config, flowId: flowIdRef.current, transport: cardLink?.transport });
@@ -1202,7 +1249,7 @@ export function StripDiscoveryPanel({
         statusLed: reportedControls.statusLed,
       };
       const pixelsPerPort = Object.fromEntries(session.benchLayout.map(entry => [entry.pin, entry.count]));
-      const updated = buildBenchConfig(session.ports, { pixelsPerPort, maxPixels: cardMaxPixels,
+      const updated = buildBenchConfig(session.ports, { pixelsPerPort, ...benchOutputOptions,
         ledType: observedLed.type, colorOrder: observedLed.colorOrder,
         maxMilliamps: Number(observedLed.maxMilliamps),
         brightnessLimit: Number(firmwareInfo.led.brightnessLimit), controls });
@@ -1350,6 +1397,7 @@ export function StripDiscoveryPanel({
         projectRevision: sourceRevision,
         standaloneController: saved.devices?.standaloneController || {},
         portRoles: measuredParts.portRoles,
+        maxOutputs: cardMaxOutputs,
         measuredGeometry: {
           strips: measuredParts.strips,
           patchBoard: measuredParts.patchBoard,
@@ -1539,26 +1587,26 @@ export function StripDiscoveryPanel({
     });
   }, [probeError]);
 
-  // The 4-output silicon ceiling is about the run's whole port selection,
+  // The card limit applies to the run's whole port selection,
   // never about one row — each skipped port still keeps its own line in the
   // list that stays in flow below.
   useEffect(() => {
     const overLimit = phase === 'idle' && (overOutputLimit
-      || (selectedPort !== null && probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs
+      || (selectedPort !== null && probeTargets.length >= cardMaxOutputs
         && !probeTargets.some(port => port.pin === selectedPort)));
     if (!overLimit) { dismissNoticeKey('discovery-output-limit'); return; }
     publishNotice({
       key: 'discovery-output-limit',
       testId: 'discovery-output-limit',
       tone: 'error',
-      body: `This card can drive ${CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs at once`
+      body: `This card can drive ${cardMaxOutputs} strip outputs at once`
         + (outputLimitSkips.length > 0
           ? `, so ${outputLimitSkips.map(entry => `GPIO ${entry.pin}`).join(', ')} will not be lit`
           : '')
-        + `. Pick at most ${CARD_HARDWARE_CONTRACT.maxOutputs}, or use a second card for the rest.`,
+        + `. Pick at most ${cardMaxOutputs}, or use a second card for the rest.`,
       source: 'strip-discovery',
     });
-  }, [phase, overOutputLimit, selectedPort, probeTargets, outputLimitSkips]);
+  }, [phase, overOutputLimit, selectedPort, probeTargets, outputLimitSkips, cardMaxOutputs]);
 
   useEffect(() => {
     const noOutputs = phase === 'idle' && probeTargets.length > 0 && !bench.config;
@@ -1665,6 +1713,16 @@ export function StripDiscoveryPanel({
     ].forEach(dismissNoticeKey);
   }, []);
 
+  const discoveryPinMap = ({ lit = null, pickable = sweepPins, ground = false }) => (
+    <CardPinMap
+      testId="discovery-pin-map" cardId={cardId} outputCapabilities={observedCard ? benchOutputOptions : null}
+      title={ground ? 'Check the ground pins' : 'Where the strip plugs in'} controls={pinMapControls}
+      controlSource="Card controls" outputs={pinMapFirmware?.outputs || cardLink?.readiness?.outputs || []}
+      availablePins={selectablePortRoles.map(entry => entry.pin)} lit={lit === null ? [] : [{ pin: lit }]}
+      pickable={pickable} onPick={pickPin} disabled={busy || Boolean(probeBusy)}
+    />
+  );
+
   return (
     <div className={`${embedded ? '' : 'screen '}strip-discovery${embedded ? ' is-embedded' : ''}`} data-testid="strip-discovery">
       {/* Whether Studio is actually driving the strip right now. Without this a
@@ -1693,14 +1751,14 @@ export function StripDiscoveryPanel({
           {findMode === 'watch' && selectedPort === null ? (
             <>
               <h3>Watch your strip.</h3>
-              <CardPinPicker
+              {profile ? discoveryPinMap({ lit: sweepPin }) : <CardPinPicker
                 testId="discovery-pin-map"
                 pickable={sweepPins}
                 pulse={sweepPin}
                 labels={false}
                 onPick={pickPin}
                 label="Card pins. The lit pin is the one the card is lighting now."
-              />
+              />}
               <div className="strip-discovery-actions">
                 <button type="button" className="btn primary" data-testid="discovery-sweep-mine" disabled={busy || sweepPin === null} onClick={claimSweepPin}>
                   {sweepPin === null ? 'Starting the lights…' : 'That\u2019s mine'}
@@ -1711,7 +1769,7 @@ export function StripDiscoveryPanel({
           ) : findMode === 'quiet' && selectedPort === null ? (
             <>
               <h3>Nothing lit?</h3>
-              <CardPinPicker testId="discovery-pin-map" pickable={[]} labels={false} ground label="Card pins, with the ground pins marked" />
+              {profile ? discoveryPinMap({ pickable: [], ground: true }) : <CardPinPicker testId="discovery-pin-map" pickable={[]} labels={false} ground label="Card pins, with the ground pins marked" />}
               <p className="strip-discovery-note" data-testid="discovery-quiet-hint">Check power and ground.</p>
               <div className="strip-discovery-actions">
                 <button type="button" className="btn primary" data-testid="discovery-watch-again" onClick={watchAgain}>Watch again</button>
@@ -1721,7 +1779,7 @@ export function StripDiscoveryPanel({
           ) : selectedPort === null ? (
             <>
               <h3>Tap where your strip plugs in.</h3>
-              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
+              {profile ? discoveryPinMap({ lit: pinnedPort }) : <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />}
               {canSweep && (
                 <div className="strip-discovery-actions">
                   <button type="button" className="btn btn-ghost" data-testid="discovery-watch-again" onClick={watchAgain}>Watch instead</button>
@@ -1731,12 +1789,12 @@ export function StripDiscoveryPanel({
           ) : (
             <div className="strip-discovery-confirm">
               <h3>{probeError || probeUnlit ? 'Count the strip on this pin?' : 'Did your strip light up?'}</h3>
-              <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />
+              {discoveryPinMap({ lit: pinnedPort })}
               {probeBusy && (
                 <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">Lighting this pin…</p>
               )}
               <div className="strip-discovery-actions">
-                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
+                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= cardMaxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
                 <button type="button" className="btn btn-ghost" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another pin</button>
               </div>
             </div>
@@ -1745,7 +1803,7 @@ export function StripDiscoveryPanel({
             <ul className="strip-discovery-skipped" data-testid="discovery-skipped">
               {otherSkips.map(entry => (
                 <li key={entry.pin} role="status" data-testid={`discovery-skipped-${entry.pin}`}>
-                  GPIO {entry.pin} will not be lit — {benchSkipReasonText(entry.reason)}.
+                  GPIO {entry.pin} will not be lit — {benchSkipReasonText(entry.reason, cardMaxOutputs)}.
                 </li>
               ))}
             </ul>
@@ -1754,8 +1812,8 @@ export function StripDiscoveryPanel({
             <summary>Why?</summary>
             <p>While counting, the card lights at most 8 lights dimly under 100 mA, then runs a temporary dim setup capped at {BENCH_MAX_MILLIAMPS} mA.</p>
             <p data-testid="discovery-start-note">Counting saves a temporary setup on the card, kept after restart until you save your project.</p>
-            <p data-testid="discovery-gpio-availability">GPIO 36 and 37 are used by this card&apos;s PSRAM, so they cannot drive LED strips. GPIO 39 appears when this card reports it as available.</p>
-            <p>Up to {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs. {host || 'No card connected'}.</p>
+            <p data-testid="discovery-gpio-availability">GPIOs 35–37 are reserved for PSRAM. GPIO 39 appears when this card reports it as available.</p>
+            <p>Up to {cardMaxOutputs} strip outputs. {host || 'No card connected'}.</p>
             {powerWarning && <p role="note" className="strip-discovery-power" data-testid="discovery-power-warning">{powerWarning}</p>}
           </details>
         </section>

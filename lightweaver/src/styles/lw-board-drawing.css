@@ -1,0 +1,94 @@
+.lw-board-art {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 5px 0;
+  border: 1px solid var(--border-mid, var(--border-soft));
+  border-radius: var(--r-sm);
+  background: var(--bg-app);
+}
+.lw-board-art-antenna {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 21px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.lw-board-art-antenna span {
+  width: 24%;
+  height: 9px;
+  border: 1px solid var(--control-selected-edge);
+  border-bottom: 0;
+}
+.lw-board-art-antenna span:nth-child(even) { transform: translateY(4px) rotate(180deg); }
+.lw-board-art-module {
+  display: grid;
+  min-width: 0;
+  min-height: 36px;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  padding: 4px 1px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elev-2, var(--bg-elev));
+}
+.lw-board-art-chip {
+  width: 42%;
+  aspect-ratio: 1;
+  max-width: 22px;
+  border: 1px solid var(--border-mid, var(--border-soft));
+  background: var(--bg-app);
+}
+.lw-board-art-mark {
+  max-width: 100%;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-align: center;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.lw-board-art-parts,
+.lw-board-art-ports {
+  display: flex;
+  align-self: end;
+  justify-content: center;
+  gap: 8%;
+}
+.lw-board-art-parts span {
+  width: 19%;
+  aspect-ratio: 1;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+}
+.lw-board-art-ports span {
+  width: 33%;
+  height: 11px;
+  border: 1px solid var(--border-mid, var(--border-soft));
+  border-radius: 2px 2px 0 0;
+  background: var(--bg-elev-2, var(--bg-elev));
+}
+
+/* Position markers at the edges of the board, on the same rows as the labels. */
+.lw-board-map-with-art > .lw-board-connector li { position: relative; }
+.lw-board-map-with-art > .lw-board-connector li::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-block-start: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-50%);
+  border: 1px solid var(--control-selected-edge);
+  border-radius: 50%;
+  background: var(--bg-app);
+  pointer-events: none;
+}
+.lw-board-map-with-art > .lw-board-connector:first-of-type li::after { inset-inline-end: -13px; }
+.lw-board-map-with-art > .lw-board-connector:last-child li::after { inset-inline-start: -13px; }
+.lw-board-map-with-art > .lw-board-connector li:has(.lw-board-contact[aria-pressed=true])::after {
+  background: var(--control-selected-edge);
+}

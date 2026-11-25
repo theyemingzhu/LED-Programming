@@ -12,7 +12,9 @@ and Madrix commissioning are deferred lanes documented separately in
 
 1. Disconnect LED power before changing wiring.
 2. Connect the ESP32-S3 card to the computer with a data-capable USB cable.
-3. Wire LED data only to a production-supported output: GPIO 16, 17, 18, or 21.
+3. For a first strip, use an available GPIO 16, 17, 18, or 21. For other
+   connections, check the [N16R8 pin map](plans/2026-11-25-board-pin-and-output-capacity.md#pin-roles)
+   and the card’s installed wiring and control assignments.
 4. Connect controller ground and LED power-supply ground.
 5. Power the LEDs from their final supply, not from USB.
 6. Start with the Studio brightness limit at a safe bench level.

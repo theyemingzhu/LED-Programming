@@ -55,7 +55,7 @@ export async function installHttpsStudio(page: Page, localBaseURL: string) {
  * relay set. Answering `ready` alone is not enough — only a `status` reply sets
  * runtimeCommandReady, without which every privileged command is refused.
  */
-export async function installFakeCardBridge(page: Page, card: CardSimulator, host = 'lightweaver.local') {
+export async function installFakeCardBridge(page: Page, card: Pick<CardSimulator, 'relayBridge'>, host = 'lightweaver.local') {
   await page.exposeFunction('__lwBridgeRequest', (type: string, payload: unknown) => card.relayBridge(type, payload));
 
   await page.addInitScript(({ cardHost, bridgeVersion }) => {

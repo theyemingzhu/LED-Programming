@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { installFakeCardBridge } from './harness/bridgeTransport';
 
 const signedRelease = JSON.parse(await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'));
 
@@ -43,6 +45,31 @@ async function currentProjectEvidence(page) {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     return { projectId: project.id, projectRevision: 0, projectFingerprint: cardProjectFingerprint(project) };
   });
+}
+
+async function prepareVerifiedBridge(page: Page, firmware = {}) {
+  const readiness = readyStatus('lw-quality', {
+    ...(await currentProjectEvidence(page)),
+    bridgeVersion: 6,
+    cardName: 'Gallery card',
+    pixelCount: 440,
+    ...firmware,
+  });
+  // Keep an answering card-page window behind the link. Injecting a single
+  // reducer event leaves the bridge lifecycle without a real reply source.
+  await installFakeCardBridge(page, {
+    async relayBridge(type) {
+      if (type === 'status' || type === 'firmware-info') return { ok: true, response: readiness };
+      return { ok: false, reason: 'invalid-payload', error: 'Unexpected card request in connection test' };
+    },
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-link-status')).toBeVisible();
+  return () => page.evaluate(async identity => {
+    const { connectCardLink } = await import('/src/lib/cardLink.js');
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, ...identity }));
+    connectCardLink('lightweaver.local');
+  }, { id: readiness.cardId, firmwareVersion: readiness.firmwareVersion, buildId: readiness.buildId });
 }
 
 function finalStationStatus(cardId: string, overrides = {}) {
@@ -219,6 +246,7 @@ async function deliverBridgeResult(page, overrides: Record<string, unknown> = {}
 }
 
 test('announces asynchronous connection states without repeating card metadata', async ({ page }) => {
+  const connect = await prepareVerifiedBridge(page);
   const announcement = page.locator('.card-status-announcement');
 
   await dispatchCardLinkEvent(page, { type: 'connecting', via: 'bridge', host: 'lightweaver.local' });
@@ -230,17 +258,8 @@ test('announces asynchronous connection states without repeating card metadata',
   await dispatchCardLinkEvent(page, { type: 'operation-failed' });
   await expect(announcement).toHaveText('Needs attention');
 
-  const installedProject = await currentProjectEvidence(page);
   await dispatchCardLinkEvent(page, { type: 'operation-confirmed' });
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified',
-    via: 'bridge',
-    host: 'lightweaver.local',
-    card: { id: 'lw-quality', name: 'Gallery card', pixelCount: 440, firmwareVersion: '1.4.0', buildId: 'a'.repeat(40) },
-    readiness: readyStatus('lw-quality', {
-      ...installedProject,
-    }),
-  });
+  await connect();
   await expect(announcement).toHaveText('Connected');
   await expect(announcement).not.toContainText(/Gallery card|440 pixels|firmware/i);
 });
@@ -264,15 +283,9 @@ test('normalizes a bare local card name before validation and storage', async ({
 });
 
 test('renders verified card behavior through the new orchestrator state', async ({ page }) => {
-  const installedProject = await currentProjectEvidence(page);
+  const connect = await prepareVerifiedBridge(page);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified',
-    via: 'bridge',
-    host: 'lightweaver.local',
-    card: { id: 'lw-quality', name: 'Gallery card', pixelCount: 440, firmwareVersion: '1.4.0', buildId: 'a'.repeat(40) },
-    readiness: readyStatus('lw-quality', installedProject),
-  });
+  await connect();
 
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
@@ -281,7 +294,7 @@ test('renders verified card behavior through the new orchestrator state', async 
 });
 
 test('a connect-intent panel closes itself when the link becomes established while open', async ({ page }) => {
-  const installedProject = await currentProjectEvidence(page);
+  const connect = await prepareVerifiedBridge(page);
   // Screens open the panel through the connect-panel event (openCardFlow),
   // never the footer chip. That opening carries the connect intent.
   await page.evaluate(() => {
@@ -290,11 +303,7 @@ test('a connect-intent panel closes itself when the link becomes established whi
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toBeVisible();
 
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
-    card: { id: 'lw-quality', name: 'Gallery card', pixelCount: 440, firmwareVersion: '1.4.0', buildId: 'a'.repeat(40) },
-    readiness: readyStatus('lw-quality', installedProject),
-  });
+  await connect();
   // Connecting completed the intent: the panel closes and the owner lands
   // where they were — no "Done" resting state to dismiss.
   await expect(dialog).toHaveCount(0);
@@ -334,20 +343,13 @@ test('a blank connected card renders one route-out line to Card Home, not a stri
 });
 
 test('connected outdated firmware routes the update out to the install section without starting hardware work', async ({ page }) => {
+  const connect = await prepareVerifiedBridge(page, { buildNumber: signedRelease.buildNumber - 1 });
   await page.evaluate(() => {
     (window as any).__hardwareOperations = 0;
     window.addEventListener('lw-hardware-operation-active', () => { (window as any).__hardwareOperations += 1; });
   });
-  const installedProject = await currentProjectEvidence(page);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
-    card: {
-      id: 'lw-quality', name: 'Gallery card', pixelCount: 440,
-      firmwareVersion: '1.4.0', buildNumber: signedRelease.buildNumber - 1, buildId: 'a'.repeat(40),
-    },
-    readiness: readyStatus('lw-quality', installedProject),
-  });
+  await connect();
 
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   // The panel renders no update remedy of its own (no build comparison, no
@@ -362,16 +364,9 @@ test('connected outdated firmware routes the update out to the install section w
 });
 
 test('connected outdated firmware can be deferred without losing the verified card', async ({ page }) => {
-  const installedProject = await currentProjectEvidence(page);
+  const connect = await prepareVerifiedBridge(page, { buildNumber: signedRelease.buildNumber - 1 });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
-    card: {
-      id: 'lw-quality', name: 'Gallery card', pixelCount: 440,
-      firmwareVersion: '1.4.0', buildNumber: signedRelease.buildNumber - 1, buildId: 'a'.repeat(40),
-    },
-    readiness: readyStatus('lw-quality', installedProject),
-  });
+  await connect();
 
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   // Deferring is closing the panel — there is no separate "Not now" remedy.
@@ -382,22 +377,13 @@ test('connected outdated firmware can be deferred without losing the verified ca
 });
 
 test('connected current firmware does not show an update prompt', async ({ page }) => {
-  const installedProject = await currentProjectEvidence(page);
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
-    card: {
-      id: 'lw-quality', name: 'Gallery card', pixelCount: 440,
-      firmwareVersion: signedRelease.firmwareVersion,
-      buildNumber: signedRelease.buildNumber,
-      buildId: signedRelease.buildId,
-    },
-    readiness: readyStatus('lw-quality', {
-      ...installedProject,
-      firmwareVersion: signedRelease.firmwareVersion,
-      buildId: signedRelease.buildId,
-    }),
+  const connect = await prepareVerifiedBridge(page, {
+    firmwareVersion: signedRelease.firmwareVersion,
+    buildNumber: signedRelease.buildNumber,
+    buildId: signedRelease.buildId,
   });
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  await connect();
 
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByText('Your card firmware is out of date.')).toHaveCount(0);

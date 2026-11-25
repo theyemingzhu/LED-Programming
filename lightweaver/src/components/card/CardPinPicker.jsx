@@ -47,7 +47,7 @@ export function CardPinPicker({
   const span = first * 2 + pitch * (length - 1);
   const width = upright ? 250 : span;
   const height = upright ? span : 176;
-  const across = upright ? { J3: 82, J1: 168 } : { J3: 62, J1: 114 };
+  const across = upright ? { J3: 168, J1: 82 } : { J3: 62, J1: 114 };
   const press = pin => { if (!disabled && onPick && pickSet.has(pin)) onPick(pin); };
   return (
     <figure className={`lw-pinpicker${upright ? ' is-upright' : ''}`} data-testid={testId}>
@@ -77,7 +77,7 @@ export function CardPinPicker({
           const classes = ['lw-pinpicker-pin',
             canPick ? 'is-pickable' : 'is-inert',
             isLit ? 'is-lit' : '', isPulse ? 'is-pulse' : '', isGround ? 'is-ground' : ''].filter(Boolean).join(' ');
-          const labelX = upright ? (row.id === 'J3' ? x - 26 : x + 26) : x;
+          const labelX = upright ? (row.id === 'J1' ? x - 26 : x + 26) : x;
           const labelY = upright ? y + 4 : (row.id === 'J3' ? y - 16 : y + 24);
           const showLabel = labels || !isNumber;
           const body = (

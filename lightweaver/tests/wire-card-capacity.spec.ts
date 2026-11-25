@@ -81,7 +81,7 @@ test('a card matching the design stays quiet on the Wire plan', async ({ page })
 test('a wrong GPIO is still a fault, because nothing lights at all', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 16, countedPin: 18, countedPixels: 41 }));
   await expect(page.getByTestId('wire-mismatch-18'))
-    .toContainText('This design sends its lights to GPIO 16, but your strip is plugged into GPIO 18.');
+    .toContainText('This output uses GPIO 16 in the design. Your strip is plugged into GPIO 18.');
   await page.getByTestId('wire-adopt-18').click();
   await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
 });
