@@ -27,11 +27,11 @@ test('rejects totals that cannot give every active strip at least one LED', () =
   });
 });
 
-test('rejects totals beyond the per-strip addressable limit', () => {
-  const maximum = strips.length * CARD_HARDWARE_CONTRACT.maxPixels;
+test('rejects project totals beyond the addressable limit of one card', () => {
+  const maximum = CARD_HARDWARE_CONTRACT.maxPixels;
   assert.deepEqual(allocateLedCountsByLength(strips, maximum + 1), {
     ok: false,
-    error: `Enter no more than ${maximum.toLocaleString('en-US')} LEDs for 3 strips.`,
+    error: `Enter no more than ${maximum.toLocaleString('en-US')} LEDs for one card.`,
   });
 });
 
