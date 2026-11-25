@@ -1,10 +1,7 @@
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 
-// What each physical card port is being used for. The card has four output
-// ports (CARD_HARDWARE_CONTRACT.outputPins); the owner may hang a strip off
-// one, a physical control off another, and leave the rest empty. Recording the
-// intent separately from the card config is what lets discovery ask "which of
-// these four should I go looking for pixels on?" before any project exists.
+// Each eligible pin can be reserved for a control, assigned to a strip or left
+// unused. Recording the owner's intent lets setup discover just the wired pins.
 export const PORT_ROLE_STRIP = 'strip';
 export const PORT_ROLE_CONTROL = 'control';
 export const PORT_ROLE_UNUSED = 'unused';

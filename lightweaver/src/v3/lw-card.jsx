@@ -3,6 +3,7 @@ import { AutomaticInstallScreen, TechnicianFlashScreen } from './lw-flash.jsx';
 import { InstallerScreen } from './lw-installer.jsx';
 import { CardFacts } from '../components/card/CardFacts.jsx';
 import { deriveStudioArrivalReadiness } from '../lib/studioArrivalReadiness.js';
+import { BoardManager, BoardManagerEntry } from '../components/card/BoardManager.jsx';
 import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.jsx';
 import { ProductionScreen } from './lw-production.jsx';
@@ -73,6 +74,7 @@ const SECTION_HEADINGS = Object.freeze({
   install: 'Install or update',
   preferences: 'Preferences',
   workshop: 'Batch production',
+  boards: 'Board Manager',
 });
 
 function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
@@ -1070,7 +1072,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Home is the landing default too: any section this dispatch does not name
   // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
-    || !['install', 'workshop', 'preferences'].includes(route.section);
+    || !['install', 'workshop', 'preferences', 'boards'].includes(route.section);
   const freshWorkspace = currentProject?.layout?.starterPending === true;
   const observedCard = Boolean(connected || cardLink?.card?.id || cardLink?.readiness?.cardId);
   const showPublicWorkerStart = showFreshWorkerStart({
@@ -1121,6 +1123,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           )}
         </div>
       )}
+      <BoardManagerEntry cardId={connected ? cardLink?.card?.id : ''} onOpen={() => onOpenSection('boards')} />
       <SetupScreen
         {...cardProps}
         startOwnsPrimary={showPublicWorkerStart}
@@ -1221,6 +1224,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       onCommissioningComplete={() => onOpenSection('overview')}
     />
   );
+  else if (route.section === 'boards') content = <BoardManager {...cardProps} onOpenConnectionCenter={onOpenConnectionCenter} />;
   else if (route.section === 'workshop') content = <ProductionScreen embedded cardHost={cardHost} cardLink={cardLink} onConnectCard={onConnectCard} />;
   else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
@@ -1241,7 +1245,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     <div className="screen card-workspace-screen">
       <div className="card-workspace">
         <main className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
-          <header className="card-workspace-header">
+          <header className={`card-workspace-header${route.section === 'boards' ? ' lw-board-page-header' : ''}`}>
             {/* Home has no kicker: the status module beneath the heading is
                 the card's own name-plate now, and "Lightweaver hardware" above
                 a 34px "Your Lightweaver" was two lines of orientation before
@@ -1250,6 +1254,9 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
             <h1 ref={headingRef} tabIndex={-1} data-testid="card-workspace-heading" data-home={home ? 'true' : undefined}>{heading}</h1>
             {workshop && (
               <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Hardware</button>
+            )}
+            {route.section === 'boards' && (
+              <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Card</button>
             )}
           </header>
           {content}

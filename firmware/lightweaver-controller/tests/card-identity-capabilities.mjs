@@ -7,6 +7,7 @@ const platform = fs.readFileSync(path.join(root, 'platformio.ini'), 'utf8');
 const main = fs.readFileSync(path.join(root, 'src/main.cpp'), 'utf8');
 const storage = fs.readFileSync(path.join(root, 'src/LightweaverStorage.cpp'), 'utf8');
 const runtimeApi = fs.readFileSync(path.join(root, 'src/LightweaverRuntimeApi.h'), 'utf8');
+const hardware = fs.readFileSync(path.join(root, 'src/LightweaverHardwareCapabilities.h'), 'utf8');
 const firmwareInfo = main.match(/String runtimeFirmwareInfo\(\)\s*\{[\s\S]*?\n\}/)?.[0] || '';
 const runtimeStatus = storage.match(/String runtimeStatusJson\([^)]*\)\s*\{[\s\S]*?\n\}/)?.[0] || '';
 const injector = fs.readFileSync(path.join(root, 'scripts/inject-build-identity.py'), 'utf8');
@@ -48,12 +49,18 @@ for (const [source, payload] of [[firmwareInfo, '/api/firmware-info'], [runtimeS
   ]) {
     assert.match(source, new RegExp(`doc\\["${field}"\\]`), `${payload} must expose ${field}`);
   }
+  assert.match(source, /writeBoardHardwareHints\(doc\)/, `${payload} must expose detected hardware hints`);
   assert.match(source, /output\["(?:gpio|pin)"\]/, `${payload} outputs must expose GPIO`);
   assert.match(source, /output\["(?:count|pixels)"\]/, `${payload} outputs must expose pixel count`);
   for (const limit of ['pixels', 'outputs', 'looks', 'zones', 'rangesPerZone', 'configStorageBytes']) {
     assert.match(source, new RegExp(`\\["limits"\\]\\["${limit}"\\]`), `${payload} limits must expose ${limit}`);
   }
 }
+
+assert.match(hardware, /doc\["chipName"\] = ESP\.getChipModel\(\)/);
+assert.match(hardware, /esp_flash_get_physical_size\(nullptr, &bytes\)/);
+assert.match(hardware, /esp_spiram_is_initialized\(\)[\s\S]*esp_spiram_get_size\(\)/);
+assert.doesNotMatch(hardware, /doc\["(?:boardProfile|pcbRevision)"\]/);
 
 for (const source of [firmwareInfo, runtimeStatus]) {
   assert.match(source, /LW_MAX_PIXELS/);

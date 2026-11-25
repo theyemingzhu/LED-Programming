@@ -63,6 +63,51 @@ int main() {
   legacy[10] = 1; legacy[12] = 3;
   assert(sequenceOutputTopologyMatches(legacy, sizeof(legacy), outputs.data(), 1));
 
+  // Eight independently mapped outputs, with a 600-pixel first output.
+  // Bytes 48..63 carry actual entries and the frame offset stays at byte 64.
+  uint8_t expanded[64] = {};
+  std::memcpy(expanded, "LWSEQ1", 6);
+  expanded[8] = 1;
+  expanded[10] = 8;
+  expanded[12] = 0x77; expanded[13] = 0x02; // 631 LEDs
+  std::memcpy(expanded + 24, "LWOP", 4);
+  expanded[28] = 2;
+  expanded[29] = 8;
+  expanded[32] = 15; expanded[34] = 0x58; expanded[35] = 0x02; // 600 LEDs
+  expanded[36] = 16; expanded[38] = 1;
+  expanded[40] = 17; expanded[42] = 2;
+  expanded[44] = 18; expanded[46] = 3;
+  expanded[48] = 21; expanded[50] = 4;
+  expanded[52] = 38; expanded[54] = 5;
+  expanded[56] = 39; expanded[58] = 6;
+  expanded[60] = 40; expanded[62] = 10;
+  const std::array<Output, 8> expandedOutputs = {{
+    { 15, 600, 0, { { 600, false } }, 1 },
+    { 16, 1, 600, { { 1, false } }, 1 },
+    { 17, 2, 601, { { 2, false } }, 1 },
+    { 18, 3, 603, { { 3, false } }, 1 },
+    { 21, 4, 606, { { 4, false } }, 1 },
+    { 38, 5, 610, { { 5, false } }, 1 },
+    { 39, 6, 615, { { 6, false } }, 1 },
+    { 40, 10, 621, { { 10, false } }, 1 },
+  }};
+  assert(sequenceOutputTopologyMatches(expanded, sizeof(expanded), expandedOutputs.data(), 8));
+  assert(!sequenceOutputTopologySyntax(expanded, 48));
+  expanded[60] = 15;
+  assert(!sequenceOutputTopologySyntax(expanded, sizeof(expanded)));
+  expanded[60] = 40;
+  expanded[28] = 1;
+  assert(!sequenceOutputTopologySyntax(expanded, sizeof(expanded)));
+  expanded[28] = 2;
+  expanded[10] = 5; expanded[29] = 5;
+  assert(!sequenceOutputTopologySyntax(expanded, sizeof(expanded)));
+  std::memset(expanded + 52, 0, 12);
+  expanded[12] = 0x62; // 610 LEDs
+  assert(sequenceOutputTopologyMatches(expanded, sizeof(expanded), expandedOutputs.data(), 5));
+  auto wrongExpanded = expandedOutputs;
+  wrongExpanded[4].pin = 41;
+  assert(!sequenceOutputTopologyMatches(expanded, sizeof(expanded), wrongExpanded.data(), 5));
+
   std::array<uint8_t, 27> rgb{};
   for (size_t index = 0; index < 9; index++) {
     rgb[index * 3] = static_cast<uint8_t>(index + 1);

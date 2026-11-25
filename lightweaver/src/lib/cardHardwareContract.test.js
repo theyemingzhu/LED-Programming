@@ -46,6 +46,7 @@ test('canonical hardware manifest stays identical in Studio and firmware', async
   const expected = {
     outputPins: hardwareManifest.outputPins,
     maxOutputs: hardwareManifest.limits.maxOutputs,
+    defaultOutputLimit: hardwareManifest.limits.defaultOutputLimit,
     maxPixels: hardwareManifest.limits.maxPixels,
     maxZones: hardwareManifest.limits.maxZones,
     maxRangesPerZone: hardwareManifest.limits.maxRangesPerZone,
@@ -55,6 +56,7 @@ test('canonical hardware manifest stays identical in Studio and firmware', async
   assert.deepEqual(CARD_HARDWARE_CONTRACT, expected);
   assert.deepEqual(headerPins(header), expected.outputPins);
   assert.equal(headerNumber(header, 'LW_CARD_HARDWARE_MAX_OUTPUTS'), expected.maxOutputs);
+  assert.equal(headerNumber(header, 'LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT'), expected.defaultOutputLimit);
   assert.equal(headerNumber(header, 'LW_CARD_HARDWARE_MAX_PIXELS'), expected.maxPixels);
   assert.equal(headerNumber(header, 'LW_CARD_HARDWARE_MAX_ZONES'), expected.maxZones);
   assert.equal(headerNumber(header, 'LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE'), expected.maxRangesPerZone);
@@ -120,7 +122,7 @@ test('active Studio and firmware capacity consumers enforce generated contract p
   ]);
 
   assert.match(types, /static_assert\(LW_MAX_PIXELS == LW_CARD_HARDWARE_MAX_PIXELS/);
-  assert.match(types, /static_assert\(LW_MAX_OUTPUTS == LW_CARD_HARDWARE_MAX_OUTPUTS/);
+  assert.match(types, /LW_MAX_OUTPUTS = LW_EXPERIMENTAL_MULTI_OUTPUT\s*\? LW_CARD_HARDWARE_MAX_OUTPUTS\s*: LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT/);
   assert.match(types, /static_assert\(LW_MAX_ZONES == LW_CARD_HARDWARE_MAX_ZONES/);
   assert.match(types, /static_assert\(LW_MAX_RANGES_PER_ZONE == LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE/);
   assert.match(web, /static_assert\(LW_MAX_RUNTIME_REQUEST_BODY_BYTES == LW_CARD_HARDWARE_CONFIG_CAPACITY_BYTES/);

@@ -18,6 +18,7 @@ import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.j
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
   LWSEQ_HEADER_BYTES,
+  LWSEQ_MAX_OUTPUTS,
   assertLwseqOutputTopology,
   buildStandaloneProfile,
   normalizeStandaloneOutputs,
@@ -248,7 +249,7 @@ function normalizeManifest(value) {
 function normalizeAssetOutputs(value, expectedPixels) {
   if (!Array.isArray(value)
     || value.length < 1
-    || value.length > 4
+    || value.length > LWSEQ_MAX_OUTPUTS
     || value.some(output => !record(output)
       || typeof output.id !== 'string'
       || output.id.length < 1

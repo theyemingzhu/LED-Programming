@@ -56,7 +56,6 @@ for (const [fn, nextFn] of [
 for (const validation of [
   'unsupported output pin',
   'duplicate output pin',
-  'more than 4 outputs',
   'output pin conflicts with controls',
   'pixel total exceeds',
   'zone range exceeds',
@@ -65,6 +64,8 @@ for (const validation of [
 ]) {
   assert.match(storage, new RegExp(validation), `strict candidate validation should report ${validation}`);
 }
+assert.match(storage, /outputJson\.size\(\) > LW_MAX_OUTPUTS[\s\S]*?message = String\("more than "\) \+ LW_MAX_OUTPUTS/,
+  'strict candidate validation rejects more outputs than the running firmware supports');
 
 const stageStart = storage.indexOf('bool stageRuntimeConfigJson(');
 const stageEnd = storage.indexOf('bool activateStagedRuntimeConfig(', stageStart);

@@ -1,7 +1,7 @@
 import { bakedSideModeFields } from './recordingSideMode.js';
 import { canonicalSceneExpressionBakeJson } from './sceneExpressionRecording.js';
 import { normalizePatternLabSequenceAssets, MAX_PATTERN_LAB_SEQUENCE_ASSETS } from './patternLabHandoff.js';
-import { LWSEQ_HEADER_BYTES, assertLwseqOutputTopology, buildStandaloneProfile } from './standaloneController.js';
+import { LWSEQ_HEADER_BYTES, LWSEQ_MAX_OUTPUTS, assertLwseqOutputTopology, buildStandaloneProfile } from './standaloneController.js';
 import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { normalizeSceneExpression } from './sceneExpression.js';
@@ -49,7 +49,7 @@ function assertHeader(bytes, sidecar, outputs, { allowLegacyMultiOutput = false 
 }
 
 function assertOutputs(outputs, sidecar) {
-  if (!Array.isArray(outputs) || outputs.length < 1 || outputs.length > 4
+  if (!Array.isArray(outputs) || outputs.length < 1 || outputs.length > LWSEQ_MAX_OUTPUTS
     || outputs.some(output => !output?.id || !Number.isInteger(output.pin)
       || !Number.isInteger(output.pixels) || output.pixels < 1)
     || outputs.reduce((sum, output) => sum + output.pixels, 0) !== sidecar.pixelCount

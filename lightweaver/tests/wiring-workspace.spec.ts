@@ -531,6 +531,19 @@ test('changing logical sections never changes the derived physical data-wire cou
   expect(await gpioGroupsOnWire(page)).toBe(2);
 });
 
+test('moving a whole output preserves its identity and run assignments', async ({ page }) => {
+  await seedDefaultCircles(page, { mode: 'draw' });
+  const original = await saveProject(page);
+  const originalOutput = original.layout.wiring.outputs[0];
+  await openAdvanced(page);
+  await page.getByLabel('Pin for LED output', { exact: true }).selectOption('17');
+  await expect(page.getByText('moved from GPIO 16 to GPIO 17 in the design.', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('wire-pin-map').locator('[data-pin="17"]')).toContainText('LED output');
+  const saved = await saveProject(page);
+  expect(saved.layout.wiring.outputs).toEqual([{ ...originalOutput, pin: 17 }]);
+  expect(saved.layout.patchBoard.patches).toEqual(original.layout.patchBoard.patches);
+});
+
 test('Find my LED wire maps a visible discovery color to the selected GPIO', async ({ page }) => {
   await installStableCardIdentity(page);
   await page.route('**/api/wiring/discover', route => route.fulfill({
@@ -562,6 +575,12 @@ test('Test & Install never scrolls horizontally at phone width', async ({ page }
   await openAdvanced(page);
   const tools = page.getByTestId('layout-wire-tools');
   const advanced = page.getByTestId('advanced-installation-tools');
+  const pinMap = page.getByTestId('wire-pin-map');
+  await expect(pinMap.locator('[data-pin="11"]')).toContainText('microSD MOSI');
+  await expect(pinMap.locator('[data-pin="20"]')).toContainText('USB D+');
+  await expect(pinMap.locator('[data-pin="35"]')).toContainText('PSRAM');
+  await expect(pinMap.locator('[data-pin="4"]')).toContainText('Encoder A');
+  expect(await pinMap.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   const power = page.getByTestId('wire-power-section');
   await power.locator('summary').click();
   await expect(page.getByLabel('Power supply amps')).toBeVisible();

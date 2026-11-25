@@ -1,4 +1,4 @@
-import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
+import { CARD_HARDWARE_CONTRACT, readCardOutputCapabilities } from './cardHardwareContract.js';
 import { DEFAULT_CARD_CONTROLS, makeCardRuntimePackage } from './cardRuntimeContract.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
 import { fingerprintCommissioningProject } from './cardCommissioningFlow.js';
@@ -85,6 +85,7 @@ export const BENCH_SKIP_ROLE_CONTROL = 'port-role-control';
 export const BENCH_SKIP_RESERVED_CONTROL_PIN = 'port-reserved-for-control';
 export const BENCH_SKIP_MAX_OUTPUTS = 'max-outputs';
 export const BENCH_SKIP_PIXEL_BUDGET = 'pixel-budget';
+export const BENCH_SKIP_OUTPUT_PIN = 'unsupported-output-pin';
 
 // Plain-language sentence per skip reason. It lives beside the constants rather
 // than in the panel so a new reason cannot ship without copy — a port that
@@ -93,11 +94,12 @@ export const BENCH_SKIP_PIXEL_BUDGET = 'pixel-budget';
 const BENCH_SKIP_REASON_TEXT = Object.freeze({
   [BENCH_SKIP_ROLE_CONTROL]: 'you set this port to a physical control, so it is never driven as an LED output',
   [BENCH_SKIP_RESERVED_CONTROL_PIN]: 'it is in use by the controls (encoder, buttons, status light)',
-  [BENCH_SKIP_MAX_OUTPUTS]: `this card can drive only ${CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs at once`,
+  [BENCH_SKIP_OUTPUT_PIN]: 'the card does not support LED output on this pin',
   [BENCH_SKIP_PIXEL_BUDGET]: 'the earlier ports already used up every pixel this card can hold',
 });
 
-export function benchSkipReasonText(reason) {
+export function benchSkipReasonText(reason, maxOutputs = CARD_HARDWARE_CONTRACT.defaultOutputLimit) {
+  if (reason === BENCH_SKIP_MAX_OUTPUTS) return `this card supports up to ${maxOutputs} strip outputs`;
   return BENCH_SKIP_REASON_TEXT[reason] || 'this card cannot drive an LED output here';
 }
 
@@ -168,6 +170,8 @@ export function buildBenchConfig(portRoles, {
   brightnessLimit,
   pixelsPerPort = {},
   maxPixels,
+  maxOutputs: reportedMaxOutputs,
+  outputPins,
 } = {}) {
   if (!Number.isInteger(Number(maxMilliamps)) || Number(maxMilliamps) < 100
     || Number(maxMilliamps) > BENCH_MAX_MILLIAMPS) {
@@ -176,6 +180,7 @@ export function buildBenchConfig(portRoles, {
   const roles = normalizePortRoles(portRoles);
   const requestedByPin = readPixelsPerPort(pixelsPerPort);
   const budget = resolvePixelBudget(maxPixels);
+  const { maxOutputs } = readCardOutputCapabilities({ maxOutputs: reportedMaxOutputs });
   const skipped = [];
 
   const reservedPins = [controls?.encoder?.a, controls?.encoder?.b, controls?.encoder?.press,
@@ -197,12 +202,14 @@ export function buildBenchConfig(portRoles, {
       skipped.push({ pin: entry.pin, reason: BENCH_SKIP_RESERVED_CONTROL_PIN });
       continue;
     }
+    if (outputPins && !outputPins.includes(entry.pin)) {
+      skipped.push({ pin: entry.pin, reason: BENCH_SKIP_OUTPUT_PIN });
+      continue;
+    }
     candidates.push(entry);
   }
 
-  // The ESP32-S3 has four RMT TX channels, so four is a silicon limit on how
-  // many ports can be driven at once no matter how many the owner wired.
-  for (const entry of candidates.slice(CARD_HARDWARE_CONTRACT.maxOutputs)) {
+  for (const entry of candidates.slice(maxOutputs)) {
     skipped.push({ pin: entry.pin, reason: BENCH_SKIP_MAX_OUTPUTS });
   }
   // Deliberately NO fallback port. Provisioning a port the owner did not choose
@@ -211,7 +218,7 @@ export function buildBenchConfig(portRoles, {
   // "0 LEDs found" with nothing explaining it. When nothing survives, the
   // builder says so — config null, plus a reason for every skipped pin — and
   // the caller tells the owner why.
-  const ports = candidates.slice(0, CARD_HARDWARE_CONTRACT.maxOutputs);
+  const ports = candidates.slice(0, maxOutputs);
 
   const outputs = [];
   const layout = [];

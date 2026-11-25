@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import { CARD_HARDWARE_CAPABILITIES } from '../src/lib/cardRuntimeContract.js';
 
 const types = fs.readFileSync('../firmware/lightweaver-controller/src/LightweaverTypes.h', 'utf8');
+const hardware = fs.readFileSync('../firmware/lightweaver-controller/src/LightweaverHardwareContract.h', 'utf8');
 const main = fs.readFileSync('../firmware/lightweaver-controller/src/main.cpp', 'utf8');
+const storage = fs.readFileSync('../firmware/lightweaver-controller/src/LightweaverStorage.cpp', 'utf8');
 const platformio = fs.readFileSync('../firmware/lightweaver-controller/platformio.ini', 'utf8');
 
 const integer = (source, pattern, label) => {
@@ -14,7 +16,14 @@ const integer = (source, pattern, label) => {
 };
 
 assert.equal(CARD_HARDWARE_CAPABILITIES.maxPixels, integer(types, /#define\s+LW_MAX_PIXELS\s+(\d+)/, 'LW_MAX_PIXELS'));
-assert.equal(CARD_HARDWARE_CAPABILITIES.maxOutputs, integer(types, /LW_MAX_OUTPUTS\s*=\s*(\d+)/, 'LW_MAX_OUTPUTS'));
+assert.equal(CARD_HARDWARE_CAPABILITIES.maxOutputs, integer(hardware, /LW_CARD_HARDWARE_MAX_OUTPUTS\s*=\s*(\d+)/, 'LW_CARD_HARDWARE_MAX_OUTPUTS'));
+assert.equal(integer(hardware, /LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT\s*=\s*(\d+)/, 'LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT'), 4);
+assert.match(platformio, /^default_envs = esp32-s3-n16r8$/m);
+assert.match(platformio, /\[env:esp32-s3-n16r8-output-bench\][^\[]*-DLW_EXPERIMENTAL_MULTI_OUTPUT=1/);
+for (const source of [main, storage]) {
+  assert.match(source, /doc\["limits"\]\["outputs"\] = LW_MAX_OUTPUTS/);
+  assert.match(source, /writeOutputTopologyCapabilities\(doc\["capabilities"\]\["outputTopology"\].to<JsonObject>\(\)\)/);
+}
 assert.equal(CARD_HARDWARE_CAPABILITIES.maxZones, integer(types, /LW_MAX_ZONES\s*=\s*(\d+)/, 'LW_MAX_ZONES'));
 assert.equal(CARD_HARDWARE_CAPABILITIES.maxRangesPerZone, integer(types, /LW_MAX_RANGES_PER_ZONE\s*=\s*(\d+)/, 'LW_MAX_RANGES_PER_ZONE'));
 
@@ -56,7 +65,7 @@ assert.ok(
   'the pin menu must cover every concurrent output the card can drive',
 );
 
-assert.throws(
-  () => CARD_HARDWARE_CAPABILITIES.assertSupported({ outputs: Array.from({ length: 5 }, (_, i) => ({ id: `o${i}`, pin: 16 + i, pixels: 1 })) }),
-  /at most 4 outputs/,
-);
+const outputs = CARD_HARDWARE_CAPABILITIES.supportedOutputPins.slice(4, 13)
+  .map((pin, index) => ({ id: `o${index}`, pin, pixels: index === 0 ? 600 : 1 }));
+assert.doesNotThrow(() => CARD_HARDWARE_CAPABILITIES.assertSupported({ outputs: outputs.slice(0, 8) }));
+assert.throws(() => CARD_HARDWARE_CAPABILITIES.assertSupported({ outputs }), /at most 8 outputs/);

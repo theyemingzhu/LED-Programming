@@ -27,6 +27,7 @@ import {
   rollbackCardWiringCandidate,
 } from './cardWiringSafety.js';
 import { reclaimCardFrameStreams } from './cardFrameStream.js';
+import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 
 const SETTLE_MS = 900;
 const POLL_MS = 1500;
@@ -225,16 +226,18 @@ export async function deploySetupToCard(runtimePackage, host, {
 // nothing to do with the strip in front of them. Building the card from that is
 // how a card ends up driving a port nothing is plugged into, or a length that does
 // not exist. When the strip has been measured, the measurement wins.
-export function outputsFromPortRoles(portRoles, maxOutputs = 4) {
-  return (Array.isArray(portRoles) ? portRoles : [])
-    .filter(entry => entry?.role === 'strip' && Number(entry.pixelCount) > 0)
-    .slice(0, maxOutputs)
-    .map((entry, index) => ({
-      id: `out${index + 1}`,
-      name: `Output ${index + 1}`,
-      pin: Number(entry.pin),
-      pixels: Number(entry.pixelCount),
-    }));
+export function outputsFromPortRoles(portRoles, maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs) {
+  const outputs = (Array.isArray(portRoles) ? portRoles : [])
+    .filter(entry => entry?.role === 'strip' && Number(entry.pixelCount) > 0);
+  if (outputs.length > maxOutputs) {
+    throw new RangeError(`You counted ${outputs.length} LED outputs. This card supports up to ${maxOutputs}.`);
+  }
+  return outputs.map((entry, index) => ({
+    id: `out${index + 1}`,
+    name: `Output ${index + 1}`,
+    pin: Number(entry.pin),
+    pixels: Number(entry.pixelCount),
+  }));
 }
 
 export function buildPackageForPortRoles({
@@ -248,7 +251,7 @@ export function buildPackageForPortRoles({
   projectRevision = 0,
   standaloneController = {},
   portRoles = [],
-  maxOutputs = 4,
+  maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs,
   measuredGeometry = null,
 } = {}, prepareImpl) {
   const outputs = outputsFromPortRoles(portRoles, maxOutputs);

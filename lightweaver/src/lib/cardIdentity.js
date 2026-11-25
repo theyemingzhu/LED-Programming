@@ -158,6 +158,7 @@ export function normalizeCardProjectEvidence(payload = {}) {
     ...(identity.productionJobId ? { productionJobId: identity.productionJobId } : {}),
     ...(identity.productionJobDigest ? { productionJobDigest: identity.productionJobDigest } : {}),
     ...(capabilities ? { capabilities } : {}),
+    ...(source.limits && typeof source.limits === 'object' ? { limits: identity.limits } : {}),
     ...(recipeCapabilities ? { recipeCapabilities } : {}),
     ...(hasMappings ? { kaleidoscopeMappings } : {}),
     // The card's own answer to "is what I am holding the temporary
@@ -208,6 +209,11 @@ function normalizeEvidenceCapabilities(value) {
           version: value.sequenceMedia.version, maxBytes: value.sequenceMedia.maxBytes,
           chunkBytes: value.sequenceMedia.chunkBytes,
           storageReady: value.sequenceMedia.storageReady === true,
+        } } : {}),
+    ...(value.outputTopology?.version === 1 && Array.isArray(value.outputTopology.outputPins)
+      ? { outputTopology: {
+          version: 1, outputPins: value.outputTopology.outputPins.filter(Number.isSafeInteger),
+          sequenceVersion: value.outputTopology.sequenceVersion, experimental: value.outputTopology.experimental === true,
         } } : {}),
     ...(value.physicalFrameOrder?.version === 1
       ? { physicalFrameOrder: { version: 1 } } : {}),

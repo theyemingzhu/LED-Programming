@@ -26,6 +26,7 @@ import {
   prepareCardStoragePayload,
 } from './cardStoragePayload.js';
 import { classifyCardReadiness } from './cardReadiness.js';
+import { assertCardOutputCapacity } from './cardHardwareContract.js';
 import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
 import { runtimeConfigUsesSymmetry } from './cardRuntimeContract.js';
@@ -644,6 +645,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   // firmware-info preflight and no wiring candidate can intervene between the
   // proof and the complete first project.
   if (initialBridgeConfig) {
+    assertCardOutputCapacity(runtimePackage, options.cardEvidence);
     assertCardKaleidoscopeSupport(runtimePackage, options.cardEvidence);
     assertCardColorJourneySupport(runtimePackage, options.cardEvidence);
     assertCardSymmetrySupport(runtimePackage, options.cardEvidence);
@@ -707,6 +709,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         timeoutMs: Math.min(options.timeoutMs || 6000, 1500),
         fetchImpl: options.fetchImpl || globalThis.fetch,
       });
+      assertCardOutputCapacity(runtimePackage, status);
       const readiness = classifyCardReadiness(status, { expectedCard: exactIdentity });
       if (readiness.state !== 'blank' || readiness.blank !== true) {
         throw new CardPushError(
@@ -726,6 +729,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
     }
   }
   const rebootPlan = await resolveConfigRebootForCard(host, runtimePackage, options);
+  assertCardOutputCapacity(runtimePackage, rebootPlan.current);
   assertFreshKaleidoscopeEvidence(runtimePackage, rebootPlan.current, exactIdentity);
   assertCardColorJourneySupport(runtimePackage, rebootPlan.current);
   assertCardSymmetrySupport(runtimePackage, rebootPlan.current);

@@ -878,18 +878,17 @@ assert.throws(
   'past the uint16_t ceiling the bound stops being validation and becomes a silent wrap',
 );
 
-// The pin menu widened, but maxOutputs stays 4: the ESP32-S3 has four RMT TX
-// channels. The menu is about WHICH four, not how many.
-assert.equal(CARD_HARDWARE_CAPABILITIES.maxOutputs, 4,
-  'four concurrent outputs is an RMT silicon limit, not a contract preference');
+// Studio accepts the widest supported schema. The running card's limit
+// is checked separately during install and discovery.
+assert.equal(CARD_HARDWARE_CAPABILITIES.maxOutputs, 8);
 assert.ok(contractPins.length > CARD_HARDWARE_CAPABILITIES.maxOutputs,
-  'the pin menu should offer more GPIOs than one card can drive at once');
+  'the pin menu should offer more GPIOs than the output schema can hold');
 assert.doesNotThrow(() => CARD_HARDWARE_CAPABILITIES.assertSupported({
   led: {
-    pixels: 4,
-    outputs: freePins.slice(0, 4).map((pin, index) => ({ id: `o${index}`, pin, pixels: 1 })),
+    pixels: 8,
+    outputs: freePins.slice(0, 8).map((pin, index) => ({ id: `o${index}`, pin, pixels: 1 })),
   },
-}), 'any four GPIOs from the menu the default controls have not claimed must be accepted');
+}), 'eight available design GPIOs pass the schema before card preflight');
 // Ports are versatile: a pin may carry a strip OR a control, never both. That
 // overlap is why the collision check matters more with a wide menu than a
 // narrow one.

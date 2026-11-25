@@ -21,6 +21,7 @@ function positiveInteger(value, label) {
 // firmware type change, not a contract edit.
 const LIMIT_CEILINGS = {
   maxOutputs: 0xff,
+  defaultOutputLimit: 0xff,
   maxPixels: 0xffff,
   maxZones: 0xff,
   maxRangesPerZone: 0xff,
@@ -69,6 +70,7 @@ export function validateCardHardwareManifest(manifest) {
     outputPins: [...outputPins],
     limits: {
       maxOutputs: boundedInteger(limits.maxOutputs, 'limits.maxOutputs', LIMIT_CEILINGS.maxOutputs),
+      defaultOutputLimit: boundedInteger(limits.defaultOutputLimit, 'limits.defaultOutputLimit', LIMIT_CEILINGS.defaultOutputLimit),
       maxPixels: boundedInteger(limits.maxPixels, 'limits.maxPixels', LIMIT_CEILINGS.maxPixels),
       maxZones: boundedInteger(limits.maxZones, 'limits.maxZones', LIMIT_CEILINGS.maxZones),
       maxRangesPerZone: boundedInteger(limits.maxRangesPerZone, 'limits.maxRangesPerZone', LIMIT_CEILINGS.maxRangesPerZone),
@@ -79,13 +81,16 @@ export function validateCardHardwareManifest(manifest) {
   if (normalized.outputPins.length < normalized.limits.maxOutputs) {
     throw new RangeError('outputPins must cover every configured output.');
   }
+  if (normalized.limits.defaultOutputLimit > normalized.limits.maxOutputs) {
+    throw new RangeError('limits.defaultOutputLimit cannot exceed limits.maxOutputs.');
+  }
   return normalized;
 }
 
 export function generateCardHardwareHeader(manifest) {
   const contract = validateCardHardwareManifest(manifest);
   const { limits } = contract;
-  return `#pragma once\n\n// Generated from packages/lightweaver-contract/card-hardware.json. Do not edit.\n\n#include <cstddef>\n#include <cstdint>\n\nconstexpr uint8_t LW_CARD_HARDWARE_CONTRACT_VERSION = ${contract.contractVersion};\nconstexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {${contract.outputPins.join(', ')}};\nconstexpr size_t LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT =\n    sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS) / sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS[0]);\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_OUTPUTS = ${limits.maxOutputs};\nconstexpr uint16_t LW_CARD_HARDWARE_MAX_PIXELS = ${limits.maxPixels};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_ZONES = ${limits.maxZones};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE = ${limits.maxRangesPerZone};\nconstexpr uint16_t LW_CARD_HARDWARE_CONFIG_CAPACITY_BYTES = ${limits.configCapacityBytes};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_PLAYLIST_ENTRIES = ${limits.maxPlaylistEntries};\n`;
+  return `#pragma once\n\n// Generated from packages/lightweaver-contract/card-hardware.json. Do not edit.\n\n#include <cstddef>\n#include <cstdint>\n\nconstexpr uint8_t LW_CARD_HARDWARE_CONTRACT_VERSION = ${contract.contractVersion};\nconstexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {${contract.outputPins.join(', ')}};\nconstexpr size_t LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT =\n    sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS) / sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS[0]);\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_OUTPUTS = ${limits.maxOutputs};\nconstexpr uint8_t LW_CARD_HARDWARE_DEFAULT_OUTPUT_LIMIT = ${limits.defaultOutputLimit};\nconstexpr uint16_t LW_CARD_HARDWARE_MAX_PIXELS = ${limits.maxPixels};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_ZONES = ${limits.maxZones};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE = ${limits.maxRangesPerZone};\nconstexpr uint16_t LW_CARD_HARDWARE_CONFIG_CAPACITY_BYTES = ${limits.configCapacityBytes};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_PLAYLIST_ENTRIES = ${limits.maxPlaylistEntries};\n`;
 }
 
 export async function writeCardHardwareHeader({ source = manifestPath, target = headerPath } = {}) {

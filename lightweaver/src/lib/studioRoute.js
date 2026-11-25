@@ -19,7 +19,7 @@
 
 export const DEFAULT_CARD_SECTION = 'overview';
 export const FIRST_RUN_CARD_SECTION = 'setup';
-const CARD_SECTION_KEYS = new Set(['setup', 'overview', 'install', 'settings', 'workshop', 'support', 'preferences']);
+const CARD_SECTION_KEYS = new Set(['setup', 'overview', 'install', 'settings', 'workshop', 'support', 'preferences', 'boards']);
 const SETUP_TASK_KEYS = new Set([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',

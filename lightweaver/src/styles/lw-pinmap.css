@@ -1,21 +1,38 @@
-/* The card pin drawing (CardPinMap). Colours come from the shared control
-   tokens so the drawing follows the console theme. */
-.lw-pinmap { margin: 12px 0; }
-.lw-pinmap-title { margin-bottom: 6px; color: var(--text-hi, inherit); font-size: 12px; font-weight: 600; }
-.lw-pinmap svg { color: var(--text-mid, rgba(255, 255, 255, 0.6)); display: block; width: 100%; height: auto; max-width: 560px; }
+.lw-pinmap { margin: 12px 0; min-width: 0; max-width: 560px; color: var(--text-mid, inherit); }
+.lw-pinmap-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-bottom: 6px; font-size: 12px; }
+.lw-pinmap-title strong, .lw-pinmap-text strong { color: var(--text-hi, inherit); }
 
-.lw-pinmap-board { fill: var(--bg-elev, rgba(255, 255, 255, 0.04)); stroke: var(--border-soft, rgba(255, 255, 255, 0.16)); }
-.lw-pinmap-end { fill: var(--text-mid, currentColor); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+.lw-pinmap-board { padding: 4px 6px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); }
+.lw-pinmap-end { padding: 2px 0; text-align: center; color: var(--text-mid, inherit); font-size: 11px; font-weight: 600; }
+.lw-pinmap-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; align-items: center; }
+.lw-pinmap-pin { display: grid; grid-template-columns: minmax(0, 1fr) 34px; column-gap: 5px; align-items: center; min-height: 18px; }
+.lw-pinmap-pin-left { text-align: right; }
+.lw-pinmap-pin-right { grid-template-columns: 34px minmax(0, 1fr); }
+.lw-pinmap-pin-right .lw-pinmap-pad { grid-column: 1; grid-row: 1; }
+.lw-pinmap-pin-right .lw-pinmap-role { grid-column: 2; grid-row: 1; }
+.lw-pinmap-role { font-size: 11px; line-height: 1.15; overflow-wrap: anywhere; }
+.lw-pinmap-pad { min-width: 0; text-align: center; border: 1px solid var(--border-soft); border-radius: var(--r-sm); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.lw-pinmap-pin.is-available .lw-pinmap-pad,
+.lw-pinmap-pin.is-output .lw-pinmap-pad,
+.lw-pinmap-pin.is-lit .lw-pinmap-pad { border-color: var(--control-selected-edge); }
+.lw-pinmap-pin.is-output .lw-pinmap-role,
+.lw-pinmap-pin.is-lit .lw-pinmap-role { color: var(--text-hi, inherit); font-weight: 600; }
+.lw-pinmap-pin.is-lit .lw-pinmap-pad { background: var(--control-selected-edge); color: var(--bg-app); font-weight: 700; }
+.lw-pinmap-text p { margin: 4px 0; font-size: 12px; line-height: 1.4; }
+.lw-pinmap-profile { margin: 0 0 6px; font-size: 11px; overflow-wrap: anywhere; }
+.lw-pinmap-board + .lw-pinmap-board { margin-top: 6px; }
+.lw-pinmap-with-art { position: relative; isolation: isolate; --lw-pinmap-core: clamp(45px, 16%, 84px); }
+.lw-pinmap-with-art .lw-board-art {
+  position: absolute;
+  inset-block: 24px;
+  inset-inline-start: 50%;
+  width: var(--lw-pinmap-core);
+  transform: translateX(-50%);
+  z-index: -1;
+}
+.lw-pinmap-with-art .lw-pinmap-row { column-gap: var(--lw-pinmap-core); }
+.lw-pinmap-pad { overflow-wrap: anywhere; }
 
-.lw-pinmap-pin rect { fill: none; stroke: currentColor; stroke-opacity: 0.45; stroke-width: 1; }
-.lw-pinmap-label { fill: var(--text-mid, currentColor); font-size: 8px; }
-.lw-pinmap-pin.is-ground .lw-pinmap-label,
-.lw-pinmap-pin.is-power .lw-pinmap-label { font-weight: 600; }
-.lw-pinmap-pin.is-connector rect { stroke-opacity: 1; stroke: var(--control-selected-edge, #C8813F); stroke-width: 1.5; }
-.lw-pinmap-pin.is-lit rect { stroke-opacity: 1; fill: var(--control-selected-edge, #C8813F); stroke: var(--control-selected-edge, #C8813F); stroke-width: 1.5; }
-.lw-pinmap-pin.is-lit .lw-pinmap-label { fill: var(--text-hi, currentColor); font-weight: 700; }
-.lw-pinmap-tag { fill: var(--text-hi, currentColor); font-size: 11px; font-weight: 700; }
-
-.lw-pinmap-text p { margin: 4px 0; color: var(--text-mid, inherit); font-size: 12px; line-height: 1.4; }
-.lw-pinmap-text strong { color: var(--text-hi, inherit); }
-.lw-pinmap-key { opacity: 0.8; }
+.lw-pinmap-pick { padding: 2px; min-height: 30px; background: var(--bg-app); color: inherit; cursor: pointer; }
+.lw-pinmap-pick:focus-visible { outline: 2px solid var(--control-selected-edge); outline-offset: 1px; }
+.lw-pinmap-pick:disabled { cursor: wait; }

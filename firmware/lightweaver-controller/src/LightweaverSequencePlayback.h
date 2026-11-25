@@ -3,9 +3,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// LWSEQ1 reserves bytes 24..47 for an ordered physical-output identity. Older
-// single-output files can still play; a multi-output file without this identity
-// cannot safely name the GPIO boundaries and must be recorded again.
+// The LWSEQ1 header carries the ordered GPIO/count map without moving frame
+// offsets. Topology v1 uses four entries (bytes 32..47) and v2 uses eight
+// (bytes 32..63). Older unmarked single-output files can still play.
+constexpr uint8_t LWSEQ_TOPOLOGY_V1_SLOTS = 4;
+constexpr uint8_t LWSEQ_TOPOLOGY_V2_SLOTS = 8;
+
 inline uint16_t sequenceHeaderU16(const uint8_t* header, size_t offset) {
   return uint16_t(header[offset]) | (uint16_t(header[offset + 1]) << 8);
 }
@@ -13,7 +16,7 @@ inline uint16_t sequenceHeaderU16(const uint8_t* header, size_t offset) {
 inline bool sequenceOutputTopologySyntax(const uint8_t* header, size_t headerBytes) {
   if (header == nullptr || headerBytes < 48) return false;
   const uint16_t count = sequenceHeaderU16(header, 10);
-  if (count < 1 || count > 4) return false;
+  if (count < 1 || count > LWSEQ_TOPOLOGY_V2_SLOTS) return false;
   const bool marked = header[24] == 'L' && header[25] == 'W' &&
       header[26] == 'O' && header[27] == 'P';
   if (!marked) {
@@ -22,9 +25,18 @@ inline bool sequenceOutputTopologySyntax(const uint8_t* header, size_t headerByt
     }
     return count == 1;
   }
-  if (header[28] != 1 || header[29] != count || header[30] != 0 || header[31] != 0) return false;
+  const uint8_t version = header[28];
+  if (header[29] != count || header[30] != 0 || header[31] != 0) return false;
+  uint8_t slots;
+  if (version == 1 && count <= LWSEQ_TOPOLOGY_V1_SLOTS) {
+    slots = LWSEQ_TOPOLOGY_V1_SLOTS;
+  } else if (version == 2 && count > LWSEQ_TOPOLOGY_V1_SLOTS && headerBytes >= 64) {
+    slots = LWSEQ_TOPOLOGY_V2_SLOTS;
+  } else {
+    return false;
+  }
   uint32_t pixels = 0;
-  for (uint16_t index = 0; index < 4; index++) {
+  for (uint8_t index = 0; index < slots; index++) {
     const size_t offset = 32 + size_t(index) * 4;
     const uint16_t pin = sequenceHeaderU16(header, offset);
     const uint16_t length = sequenceHeaderU16(header, offset + 2);

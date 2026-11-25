@@ -22,3 +22,13 @@ test('GPIO 39 is permitted as an N16R8 LED output', () => {
   const outputPins = [...manifest.outputPins.filter((pin) => pin !== 39), 39];
   assert.deepEqual(validateCardHardwareManifest({ ...manifest, outputPins }).outputPins, outputPins);
 });
+
+test('the production output ceiling cannot exceed the authoring capacity', () => {
+  assert.throws(
+    () => validateCardHardwareManifest({
+      ...manifest,
+      limits: { ...manifest.limits, defaultOutputLimit: manifest.limits.maxOutputs + 1 },
+    }),
+    /defaultOutputLimit cannot exceed limits.maxOutputs/,
+  );
+});

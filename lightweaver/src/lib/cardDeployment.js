@@ -3,6 +3,7 @@ import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
 import { normalizeCardKaleidoscopeMappings } from './cardRuntimeContract.js';
 import { connectCardTransport } from './cardTransport.js';
+import { assertCardOutputCapacity } from './cardHardwareContract.js';
 
 export function prepareCardDeployment(project = {}, cardEvidence = {}) {
   const needsFingerprint = Number.isSafeInteger(project.projectRevision) && project.projectRevision >= 0 && !project.projectFingerprint;
@@ -97,6 +98,7 @@ export async function orchestrateCardDeploymentStart(prepared, operations = {}) 
     error.reason = 'card-changed-elsewhere';
     throw error;
   }
+  assertCardOutputCapacity(prepared.config, status);
   const action = classifyCardDeploymentResume(prepared, wiringStatus);
   if (action !== 'stage-new') return { action, status: wiringStatus, response: null };
   if (typeof operations.config !== 'function') {

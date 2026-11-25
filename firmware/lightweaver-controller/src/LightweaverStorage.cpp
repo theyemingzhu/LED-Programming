@@ -1,4 +1,5 @@
 #include "LightweaverStorage.h"
+#include "LightweaverHardwareCapabilities.h"
 #include "LightweaverColorJourney.h"
 #include "LightweaverWifiCredentialPolicy.h"
 #include "LightweaverRuntimeApi.h"
@@ -1217,7 +1218,7 @@ bool validateRuntimeConfigJsonStrict(const String& json,
     return false;
   }
   if (outputJson.size() > LW_MAX_OUTPUTS) {
-    message = "more than 4 outputs are not supported";
+    message = String("more than ") + LW_MAX_OUTPUTS + " outputs are not supported";
     return false;
   }
 
@@ -3318,6 +3319,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["firmwareVersion"] = LW_FIRMWARE_VERSION;
   doc["buildId"] = LW_BUILD_ID;
   doc["buildNumber"] = LW_BUILD_NUMBER;
+  writeBoardHardwareHints(doc);
   doc["bootId"] = runtimeBootId();
   doc["uptimeMs"] = millis();
   doc["provisioningContractVersion"] = LW_PROVISIONING_CONTRACT_VERSION;
@@ -3355,6 +3357,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["safeMode"] = runtimeSafeModeActive();
   doc["configSchemaVersion"] = LW_CONFIG_SCHEMA_VERSION;
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
+  writeOutputTopologyCapabilities(doc["capabilities"]["outputTopology"].to<JsonObject>());
   doc["capabilities"]["clientPlaylist"]["version"] = 1;
   doc["capabilities"]["clientPattern"]["version"] = 1;
   doc["capabilities"]["lookTuning"]["version"] = 1;

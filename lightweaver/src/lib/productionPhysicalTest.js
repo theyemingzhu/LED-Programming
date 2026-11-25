@@ -32,7 +32,9 @@ function clone(value) { return JSON.parse(JSON.stringify(value)); }
 // 100-20000 mA check above, which the card enforces with its own aggregate cap,
 // and it is unaffected by how long a strip is.
 function boundedOutputs(outputs) {
-  if (!Array.isArray(outputs) || !outputs.length || outputs.length > 4) throw new Error('Physical verification requires one to four outputs.');
+  if (!Array.isArray(outputs) || !outputs.length || outputs.length > CARD_HARDWARE_CONTRACT.maxOutputs) {
+    throw new Error(`Physical verification requires one to ${CARD_HARDWARE_CONTRACT.maxOutputs} outputs.`);
+  }
   const ids = new Set();
   return outputs.map(output => {
     const pixels = Number(output?.pixels);

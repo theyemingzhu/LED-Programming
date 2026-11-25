@@ -1,5 +1,16 @@
 let activeInspection = null;
 let nextInspectionId = 1;
+let lastUsbHardware = null;
+
+export function recordUsbHardwareEvidence({ cardId, chipName, flashBytes } = {}) {
+  if (!/^lw-[a-f\d]{12}$/.test(cardId || '') || typeof chipName !== 'string' || !chipName
+    || !Number.isSafeInteger(flashBytes) || flashBytes <= 0) return;
+  lastUsbHardware = Object.freeze({ cardId, chipName, flashBytes });
+}
+
+export function usbHardwareEvidenceForCard(cardId) {
+  return lastUsbHardware?.cardId === cardId ? lastUsbHardware : null;
+}
 // After USB is released so the card can rejoin Wi-Fi, Studio must not poke
 // /api/status until the owner asks. The card's radio is still coming up, and
 // a background LAN poll is what this hold exists to stop.

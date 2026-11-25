@@ -1,0 +1,209 @@
+import { test, expect, type Page } from '@playwright/test';
+import { createDefaultProject } from '../src/lib/projectModel.js';
+import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
+import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
+import { makeDefaultWiring } from '../src/lib/wiringModel.js';
+import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
+import {
+  CARD_HOSTS, createCardSimulator, DEMO_FIVE_OUTPUTS, DEMO_OUTPUT_TOPOLOGY,
+  type CardSimulator, type SimulatedOutput,
+} from './harness/cardSimulator';
+import { cardState } from './harness/cardStates';
+
+const HOST = 'lightweaver.local';
+const CARD_ID = 'lw-d30850000001';
+const LAYOUT_ROUTE = '/#screen=layout';
+const expectedOutputs = DEMO_FIVE_OUTPUTS.map(({ pin, pixels }) => [pin, pixels]);
+const totalPixels = DEMO_FIVE_OUTPUTS.reduce((sum, output) => sum + output.pixels, 0);
+
+function makeDemoProject() {
+  const project = createDefaultProject();
+  const strips = createDefaultCircleLayout({
+    sectionPixelCounts: DEMO_FIVE_OUTPUTS.map(output => output.pixels),
+  });
+  project.id = 'demo-five-output-install';
+  project.name = 'Demo five-output installation';
+  project.layout.starterPending = false;
+  project.layout.strips = strips;
+  project.layout.patchBoard = createDefaultPatchBoard(strips);
+  project.layout.patchBoard.dataWireCount = 4;
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = DEMO_FIVE_OUTPUTS.slice(0, 4).map(({ id, pin }, index) => ({
+    id, pin, name: `Output ${index + 1}`,
+    runIds: index === 3 ? wiring.runs.slice(index).map(run => run.id) : [wiring.runs[index].id],
+  }));
+  project.layout.wiring = wiring;
+  Object.assign(project.devices.standaloneController.led, {
+    type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 2000,
+    colorOrderConfirmed: true, confirmedColorOrder: 'GRB',
+  });
+  return project;
+}
+
+async function connectDemoCard(page: Page, card: CardSimulator) {
+  await card.install(page);
+  for (const other of CARD_HOSTS.filter(host => host !== HOST)) {
+    await page.route(`http://${other}/**`, route => route.abort('connectionrefused'));
+    await page.route(`https://${other}/**`, route => route.abort('connectionrefused'));
+  }
+}
+
+function readCard(page: Page, path = '/api/status') {
+  return page.evaluate(async url => (await fetch(url)).json(), `http://${HOST}${path}`);
+}
+
+function toTopology(outputs: SimulatedOutput[]) {
+  return outputs.map(({ id, pin, pixels, segments }) => ({ id, pin, pixels, segments }));
+}
+
+function cardOutputs(card: CardSimulator) {
+  if (!card.state.explicitOutputs) throw new Error('The demo card must preserve its complete topology.');
+  return toTopology(card.state.explicitOutputs);
+}
+
+async function assignGpio(page: Page, name: string, pin: number) {
+  const strip = page.locator('[data-strip-id]').filter({
+    has: page.locator('.la-strip-row').filter({ hasText: name }),
+  });
+  if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
+  await strip.getByLabel('GPIO output', { exact: true }).selectOption(String(pin));
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return (saved.layout?.wiring?.outputs || []).map(output => output.pin);
+  })).toContain(pin);
+}
+
+async function startLightTest(page: Page) {
+  await page.getByTestId('layout-check-and-install').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
+}
+
+test('the demo card installs a fifth output and restores its exact topology after a rejected rewire', async ({ page }) => {
+  const project = makeDemoProject();
+  const { config } = prepareCardDeployment({
+    projectId: project.id, projectName: project.name, projectRevision: 0,
+    strips: project.layout.strips, patchBoard: project.layout.patchBoard, wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  });
+  const patterns = config.looks.map(({ id, label }) => ({ id, label }));
+  const card = createCardSimulator({
+    ...cardState('installed-match'),
+    projectId: project.id, projectName: project.name,
+    projectRevision: config.projectRevision, projectFingerprint: config.projectFingerprint,
+    pin: config.led.outputs[0].pin, pixels: config.led.pixels,
+    patterns, currentId: config.startupPatternId,
+    currentIndex: patterns.findIndex(pattern => pattern.id === config.startupPatternId),
+  }, {
+    cardId: CARD_ID, outputTopology: DEMO_OUTPUT_TOPOLOGY, initialOutputs: config.led.outputs,
+    initialWiring: { revision: config.wiringRevision, digest: config.wiringDigest },
+  });
+
+  await connectDemoCard(page, card);
+  await page.addInitScript(({ identity, savedProject, host }) => {
+    if (window !== window.top) return;
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
+    localStorage.setItem('lw_chip_card_host', host);
+    localStorage.setItem('lw_card_host', host);
+    localStorage.setItem('lw-board-profiles-v1', JSON.stringify({
+      profiles: [], confirmations: { [identity.id]: { id: 'espressif-devkitc-1-n16r8-v1.0', revision: 1 } },
+    }));
+    if (!localStorage.getItem('lw_autosave_v3')) {
+      localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
+    }
+  }, { identity: { version: 1, id: CARD_ID, buildId: card.state.buildId, firmwareVersion: card.state.firmwareVersion },
+    savedProject: project, host: HOST });
+
+  await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-link-status')).toContainText('Connected');
+  const startStatus = await readCard(page);
+  expect(startStatus.limits.outputs).toBe(8);
+  expect(startStatus.capabilities.outputTopology).toEqual({
+    version: 1, outputPins: [...DEMO_OUTPUT_TOPOLOGY.outputPins], sequenceVersion: 2, experimental: true,
+  });
+  expect(startStatus.outputs).toHaveLength(4);
+  await page.getByTestId('layout-specs-trigger').click();
+  const tools = page.getByTestId('advanced-installation-tools');
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
+  const map = page.getByTestId('wire-pin-map');
+  await expect(map).toContainText('ESP32-S3-DevKitC-1 N16R8 v1.0');
+  await expect(map.locator('[data-pin="48"]')).toContainText('Onboard RGB');
+  await expect(map.locator('[data-pin="38"]')).not.toContainText('Onboard RGB');
+  await expect(map.locator('[data-pin="12"]')).toContainText('microSD SCK');
+  await page.getByRole('button', { name: 'Back to inspector' }).click();
+
+  await assignGpio(page, 'Ring 5', 21);
+  await startLightTest(page);
+  expect(card.state.bootId).not.toBe(startStatus.bootId);
+  expect(card.state.wiringTestActive).toBe(true);
+  expect(cardOutputs(card).map(output => [output.pin, output.pixels])).toEqual(expectedOutputs);
+  expect(card.state.pixels).toBe(totalPixels);
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect(page).toHaveURL(/#screen=pattern$/);
+  const confirmed = await readCard(page);
+  const confirmedTopology = cardOutputs(card);
+  expect(toTopology(confirmed.outputs)).toEqual(confirmedTopology);
+  expect(confirmed.wiringProbation.active).toBe(false);
+  expect(confirmed.projectFingerprint).not.toBe(startStatus.projectFingerprint);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/confirm')).toHaveLength(1);
+
+  const startupLook = card.state.installedStartupPatternId;
+  expect(startupLook).toBeTruthy();
+  const requestsBeforeReboot = card.requests.length;
+  card.goOffline();
+  card.reboot();
+  expect(card.playingId()).toBe(startupLook);
+  expect(card.requests).toHaveLength(requestsBeforeReboot);
+  card.goOnline();
+  const restarted = await readCard(page);
+  expect(restarted.bootId).not.toBe(confirmed.bootId);
+  expect(restarted.wiringDigest).toBe(confirmed.wiringDigest);
+  expect(toTopology(restarted.outputs)).toEqual(confirmedTopology);
+
+  await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-link-status')).toContainText('Connected');
+  await assignGpio(page, 'Outer circle', 38);
+  await startLightTest(page);
+  expect(card.state.wiringTestActive).toBe(true);
+  expect(cardOutputs(card)).toEqual(confirmedTopology.map(output => output.pin === 15 ? { ...output, pin: 38 } : output));
+  await page.getByTestId('wiring-test-restore').click();
+  await expect(page.getByText(/Restored the last working setup/)).toBeVisible();
+  const restored = await readCard(page);
+  expect(restored.bootId).not.toBe(restarted.bootId);
+  expect(restored.wiringProbation.active).toBe(false);
+  expect(restored.projectFingerprint).toBe(confirmed.projectFingerprint);
+  expect(restored.wiringDigest).toBe(confirmed.wiringDigest);
+  expect(toTopology(restored.outputs)).toEqual(confirmedTopology);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/rollback')).toHaveLength(1);
+});
+
+test('a simulated capacity or pin violation leaves the running project untouched', async ({ page }) => {
+  const card = createCardSimulator({ ...cardState('installed-match'), pin: 15, pixels: totalPixels }, {
+    outputTopology: DEMO_OUTPUT_TOPOLOGY, initialOutputs: DEMO_FIVE_OUTPUTS,
+  });
+  await connectDemoCard(page, card);
+  // Fulfill the test document in memory so no request goes to a physical card.
+  await page.route('http://lightweaver.local/demo-test', route => route.fulfill({ body: '<!doctype html>' }));
+  await page.goto('http://lightweaver.local/demo-test');
+  const accepted = cardOutputs(card);
+  for (const [outputs, message] of [
+    [[...accepted, ...accepted.slice(0, 4)], 'more than 8 outputs are not supported'],
+    [[{ ...accepted[0], pin: 10 }, ...accepted.slice(1)], 'unsupported output pin 10'],
+    [[{ ...accepted[0], pin: 4 }, ...accepted.slice(1)], 'output pin conflicts with controls: 4'],
+    [[{ ...accepted[0], pin: accepted[1].pin }, ...accepted.slice(1)], 'duplicate output pin'],
+    [[{ ...accepted[0], pixels: 599 }, ...accepted.slice(1)], 'output segments must sum to output pixels'],
+  ] as const) {
+    const response = await page.evaluate(async ({ outputs, pixels }) => {
+      const result = await fetch('/api/wiring/candidate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidate: { led: { outputs, pixels } } }),
+      });
+      return { status: result.status, error: (await result.json()).error };
+    }, { outputs, pixels: totalPixels });
+    expect(response.status).toBe(400);
+    expect(response.error).toContain(message);
+    expect(card.state.wiringTransactionOpen).toBe(false);
+    expect(cardOutputs(card)).toEqual(accepted);
+  }
+});
