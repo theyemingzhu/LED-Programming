@@ -170,6 +170,7 @@ function lookDeletionState({ looks, playlist, activeLookId, controls }) {
 
 const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
 const PATTERN_DRAG_TYPE = 'application/x-lightweaver-pattern';
+const BROWSE_REPEAT_CLICK_MS = 500;
 function readSectionDisplayOrder(projectId) {
   try {
     const value = JSON.parse(window.localStorage.getItem(sectionOrderKey(projectId)) || '[]');
@@ -677,10 +678,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     const failedReadingRef = useRef(null);
     const transientRetriedRef = useRef(false);
     const failedAtRef = useRef(null);
-    // The preview currently on its way to the card, by intent. A second tap on
-    // the same tile while the first is in flight is one owner intent, not two
-    // commands: it joins the pending send instead of issuing another.
-    const inFlightPreview = useRef(null);
+    const latestPreviewDelivery = useRef(null);
     const installIntentRef = useRef(null);
 
     const patternAuthorizationBinding = useMemo(() => {
@@ -1499,7 +1497,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       });
     };
 
-    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
+    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null, browseClick = false } = {}) => {
       const hasCurrentAuthority = () => {
         if (currentPatternPreviewAccess() !== 'ready') return false;
         if (patternAccessRef.current === 'ready') return true;
@@ -1522,12 +1520,18 @@ function writeSectionDisplayOrder(projectId, ids) {
       }
       setPatternCardGate('');
       setHandoffUrl('');
-      const zoneForIntent = target?.kind === 'section' ? target.zoneId || target.id : '';
-      const intentSignature = JSON.stringify({ look: nextLook, zone: zoneForIntent, patch: expectedControlPatch || null });
-      if (inFlightPreview.current && inFlightPreview.current.signature === intentSignature) return;
+      const zone = target?.kind === 'section' ? target.zoneId || target.id : '';
+      const signature = JSON.stringify({ look: nextLook, zone, ranges: zone ? target.ranges : null, patch: expectedControlPatch });
+      const previous = latestPreviewDelivery.current;
+      const startedAt = performance.now();
+      // A fast acknowledgment can land between the two clicks on a tile.
+      // Fold the repeat into that delivery while allowing a later replay.
+      if (previous?.sequence === livePreviewSeq.current && previous.signature === signature
+        && (!previous.confirmed || (browseClick && previous.browseClick && startedAt - previous.startedAt < BROWSE_REPEAT_CLICK_MS))) return;
       if (livePreviewTimer.current) clearTimeout(livePreviewTimer.current);
       const sequence = ++livePreviewSeq.current;
-      inFlightPreview.current = { signature: intentSignature, sequence };
+      const delivery = { signature, sequence, startedAt, browseClick, confirmed: false };
+      latestPreviewDelivery.current = delivery;
       // The world this request was issued into. If the project authorization
       // changes before it lands, the response describes a world that no longer
       // exists and must not speak for the present — see the status write below.
@@ -1535,11 +1539,10 @@ function writeSectionDisplayOrder(projectId, ids) {
       latestPreviewIntent.current = { look: nextLook, target, expectedControlPatch };
       dispatchPreviewAction({ type: 'start', revision: sequence });
       setPreviewFailure(null);
-      const zone = target?.kind === 'section' ? target.zoneId || target.id : '';
       livePreviewTimer.current = setTimeout(async () => {
         setHandoffUrl('');
         if (!hasCurrentAuthority()) {
-          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
+          if (latestPreviewDelivery.current === delivery) latestPreviewDelivery.current = null;
           blockPatternCardEffect(currentPatternPreviewAccess());
           return;
         }
@@ -1586,7 +1589,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                 : null),
             },
           );
-          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
+          delivery.confirmed = true;
           if (sequence === livePreviewSeq.current && hasCurrentAuthority()) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
@@ -1597,7 +1600,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             }
           }
         } catch (error) {
-          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
+          if (latestPreviewDelivery.current === delivery) latestPreviewDelivery.current = null;
           if (error?.reason === 'superseded') {
             return;
           }
@@ -1867,7 +1870,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
         setPatternCardGate('');
         if (!needsBridge) {
-          scheduleLivePreview(nextLook, target);
+          scheduleLivePreview(nextLook, target, 0, { browseClick: true });
           return;
         }
 
@@ -1905,6 +1908,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           setStatusKind('');
           setStatus('');
           scheduleLivePreview(nextLook, target, 0, {
+            browseClick: true,
             bridgeAuthority: {
               lifecycle: bridgeState.lifecycle,
               host: normalizeCardHost(bridgeState.host),

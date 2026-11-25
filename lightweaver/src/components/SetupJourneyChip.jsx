@@ -25,7 +25,7 @@ import { useSetupJourney } from '../hooks/useSetupJourney.js';
 export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
   const journey = useSetupJourney({ cardLink, cardLifecycle, project });
   const session = deriveCardSessionView({ link: cardLink, lifecycle: cardLifecycle, project });
-  if (session.capabilities.installedControl) return <button type="button" className="setup-journey-chip" data-testid="setup-journey-chip" onClick={() => { window.location.hash = '#screen=card&section=overview'; }}>On the card · {session.draft.relationship === 'matches' ? 'Installed project' : 'Draft kept separately'}</button>;
+  if (session.capabilities.installedControl) return <button type="button" className="setup-journey-chip" data-testid="installed-project-chip" onClick={() => { window.location.hash = '#screen=card&section=overview'; }}>On the card · {session.draft.relationship === 'matches' ? 'Installed project' : 'Draft kept separately'}</button>;
   if (journey.setupComplete) return null;
   // Footer already owns "connected or not". Repeating "Setup: phase 1 of 4"
   // on Patterns while no card is talking sent people back into Connect/Setup
