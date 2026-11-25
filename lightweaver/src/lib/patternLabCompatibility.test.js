@@ -342,6 +342,18 @@ test('firmware descriptor overrides drive decisions and preserve descriptor vers
   assert.deepEqual(result.descriptor, { id: 'future-card-v7', version: 7 });
 });
 
+test('the recording ceiling does not apply to live card patterns', () => {
+  const metrics = { ...FIT_METRICS, pixelCount: 4097, microSdBytes: 10_000_000 };
+  const native = classifyPatternLabCompatibility(recipe(), { metrics });
+  assert.equal(native.classification, 'live-on-card');
+
+  const layered = recipe({ layers: [{ id: 'a', generator: { kind: 'lightweaver-pattern', patternId: 'aurora' } }] });
+  assert.equal(classifyPatternLabCompatibility(layered, { metrics: { ...metrics, pixelCount: 4096 } }).classification, 'bake-to-card');
+  const over = classifyPatternLabCompatibility(layered, { metrics });
+  assert.equal(over.classification, 'studio-only');
+  assert.match(over.reasons.find(reason => reason.code === 'recording-pixel-limit')?.message, /4,097 LEDs.*up to 4,096 LEDs/);
+});
+
 test('descriptor pattern and layer capabilities drive native decisions', () => {
   const descriptor = structuredClone(DEFAULT_PATTERN_LAB_CARD_DESCRIPTOR);
   descriptor.features.patterns.push('gradient');

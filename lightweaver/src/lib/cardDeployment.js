@@ -253,6 +253,29 @@ export function verifyCardDeployment(prepared, readBack = {}, { requireReady = f
   return { ok: true, cardId: prepared.cardId, fingerprint: prepared.fingerprint };
 }
 
+export function verifyCardWiringTestOutputs(prepared, status = {}, previousBootId = '') {
+  const installed = verifyCardDeployment(prepared, status);
+  if (!installed.ok) return installed;
+  if (!exactText(prepared.buildId, status.buildId) || !optionalWiringIdentityMatches(prepared.config, status)) {
+    return { ok: false, reason: 'read-back-mismatch' };
+  }
+  if (!status.bootId || status.bootId === previousBootId) return { ok: false, reason: 'restart-pending' };
+  if (status.wiringProbation?.active !== true) return { ok: false, reason: 'test-not-running' };
+  if (status.outputDriverReady !== true || status.outputReady !== true || status.outputInitialization?.ok === false) {
+    return { ok: false, reason: 'output-not-ready' };
+  }
+  const expected = prepared.config.led?.outputs || [];
+  const pixels = expected.reduce((sum, output) => sum + Number(output.pixels), 0);
+  const allocated = status.pixelCapacity?.allocatedBoot;
+  if (!Number.isSafeInteger(allocated) || allocated < pixels) return { ok: false, reason: 'output-allocation' };
+  const actual = status.outputs || [];
+  if (!expected.length || expected.length !== actual.length || expected.some((output, index) => (
+    Number(actual[index]?.pin ?? actual[index]?.gpio) !== Number(output.pin)
+      || Number(actual[index]?.pixels ?? actual[index]?.count) !== Number(output.pixels)
+  ))) return { ok: false, reason: 'read-back-mismatch' };
+  return installed;
+}
+
 function postSaveVerificationError(reason, message) {
   const error = new Error(message);
   error.reason = reason;

@@ -67,6 +67,8 @@ assert.match(driverReady, /return\s+ledOutputsReady/,
 
 assert.match(main, /setOutputInitializationFailure\("pixel-buffer-allocation"/,
   'allocation failure must identify its initialization stage');
+assert.match(main, /if \(!allocatePixelBuffers\(configTotalPixels\(runtimeConfig\)\)\) \{[^}]*if \(loadResult\.bootedCandidate\) rollbackCandidateBeforeRestart\("candidate pixel buffer allocation failed"\);[^}]*return;/,
+  'a candidate that cannot allocate its buffers must restore the working setup before networking starts');
 assert.match(main, /setOutputInitializationFailure\("project-output"/,
   'configured output failure must identify its initialization stage');
 assert.match(main, /setOutputInitializationFailure\("factory-beacon"/,

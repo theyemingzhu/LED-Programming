@@ -109,7 +109,7 @@ import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
 import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
 import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
-import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate } from '../lib/cardFlowEntry.js';
+import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate, openCardFlow } from '../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { chooseCardResumePlace, rememberCardResumePlace } from '../lib/cardResumePlace.js';
@@ -1540,6 +1540,7 @@ function Shell({ offlineUpdateController = null }) {
         const studioFingerprint = cardProjectFingerprint(snapshot);
         const result = await applyTypedLedCountToCard({
           host,
+          transport: cardLink.transport,
           project: {
             projectId: snapshot.id,
             projectName: snapshot.name,
@@ -1551,6 +1552,11 @@ function Shell({ offlineUpdateController = null }) {
             standaloneController: snapshot.devices?.standaloneController,
           },
         });
+        if (result.reason === 'requires-light-test' || result.reason === 'staged-candidate') {
+          flushProjectAutosave();
+          openCardFlow('install-project', { startProjectInstall: true });
+          return;
+        }
         if (!result.applied) return;
         const config = result.runtimePackage?.config || {};
         markProjectInstalled({
@@ -1579,8 +1585,10 @@ function Shell({ offlineUpdateController = null }) {
   }, [
     cardLink.card?.id,
     cardLink.host,
+    cardLink.transport,
     cardLink.readiness?.cardId,
     cardStatus.host,
+    flushProjectAutosave,
     markProjectInstalled,
     projectLifecycle.editedRevision,
     projectLifecycle.generation,

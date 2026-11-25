@@ -335,6 +335,29 @@ export function cardConfigPinLayoutChangedFromInfo(current = {}, runtimePackage 
   return !outputPinsMatch(current?.outputs, targetOutputs);
 }
 
+// The schema limit is not the running buffer size. Crossing the allocation
+// on an installed card must keep its working setup available during reboot.
+export function cardPixelAllocationNeedsTest(current = {}, runtimePackage = {}) {
+  if (current?.provisionalSetup === true || current?.knownGoodProject === false) return false;
+  const allocated = Number(current?.pixelCapacity?.allocatedBoot ?? current?.capacity?.allocatedPixels ?? current?.allocatedPixels);
+  const outputs = targetRuntimeOutputs(runtimePackage);
+  return Number.isSafeInteger(allocated) && allocated > 0
+    && outputs.reduce((sum, output) => sum + output.pixels, 0) > allocated;
+}
+
+export function assertCardPixelAllocationCanBeTested(current, runtimePackage) {
+  if (cardPixelAllocationNeedsTest(current, runtimePackage) && current.pixelCapacity?.candidateRollback !== true) {
+    const error = new CardPushError('allocation-test-needs-update', 'Update the card firmware before testing this longer count. The card still has its working setup.');
+    error.delivery = 'not-sent';
+    throw error;
+  }
+}
+
+export function cardConfigRequiresWiringTest(current = {}, runtimePackage = {}) {
+  return cardConfigStructuralWiringChangedFromInfo(current, runtimePackage)
+    || cardPixelAllocationNeedsTest(current, runtimePackage);
+}
+
 // Compare the physical identity the card actually reports. A lone run may
 // change length on its existing output without a candidate; changing section
 // boundaries, names, direction, protocol, or current ceiling needs one.
@@ -367,7 +390,7 @@ export function cardConfigStructuralWiringChangedFromInfo(current = {}, runtimeP
 }
 
 export async function assignCardWiringIdentityForChange(config, current = {}, { cryptoImpl } = {}) {
-  if (!cardConfigStructuralWiringChangedFromInfo(current, config)) return config;
+  if (!cardConfigRequiresWiringTest(current, config)) return config;
   const currentRevision = Number(current.wiringRevision) || 0;
   const revision = Number(config.wiringRevision) > currentRevision
     ? Number(config.wiringRevision) : currentRevision + 1;
@@ -430,6 +453,11 @@ function summarizeOutputs(outputs = []) {
 }
 
 function layoutMismatchError(current = {}, runtimePackage = {}) {
+  if (cardPixelAllocationNeedsTest(current, runtimePackage)) {
+    const error = new CardPushError('requires-light-test', 'This count is larger than the card’s current LED allocation. Use Save to card in Layout to test it before keeping it.');
+    error.delivery = 'not-sent';
+    return error;
+  }
   const targetOutputs = targetRuntimeOutputs(runtimePackage);
   const currentSummary = summarizeOutputs(current?.outputs);
   const targetSummary = summarizeOutputs(targetOutputs);
@@ -543,12 +571,12 @@ async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
     await new Promise(resolve => setTimeout(resolve, options.readRetryMs ?? CARD_READ_RETRY.intervalMs));
     current = await readOnce();
   }
-  const pinLayoutChanged = current ? cardConfigStructuralWiringChangedFromInfo(current, runtimePackage) : false;
+  const layoutChanged = current ? cardConfigRequiresWiringTest(current, runtimePackage) : false;
   const outputsChanged = current ? cardConfigNeedsRebootFromInfo(current, runtimePackage) : false;
   const projectChanged = current ? cardConfigProjectMismatchFromInfo(current, runtimePackage) : false;
   const reboot = options.reboot === true ||
     (options.reboot === 'if-needed' && outputsChanged);
-  return { reboot, current, layoutChanged: pinLayoutChanged, projectChanged };
+  return { reboot, current, layoutChanged, projectChanged };
 }
 
 export async function requestCardReboot(host, options = {}) {
@@ -730,6 +758,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   }
   const rebootPlan = await resolveConfigRebootForCard(host, runtimePackage, options);
   assertCardOutputCapacity(runtimePackage, rebootPlan.current);
+  assertCardPixelAllocationCanBeTested(rebootPlan.current, runtimePackage);
   assertFreshKaleidoscopeEvidence(runtimePackage, rebootPlan.current, exactIdentity);
   assertCardColorJourneySupport(runtimePackage, rebootPlan.current);
   assertCardSymmetrySupport(runtimePackage, rebootPlan.current);
@@ -811,6 +840,8 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         try {
           await guardDirectCardMutation(found.host, { fetchImpl: options.fetchImpl, timeoutMs: Math.min(options.timeoutMs || 6000, 1500) });
           const retryRebootPlan = await resolveConfigRebootForCard(found.host, runtimePackage, options);
+          assertCardOutputCapacity(runtimePackage, retryRebootPlan.current);
+          assertCardPixelAllocationCanBeTested(retryRebootPlan.current, runtimePackage);
           assertFreshKaleidoscopeEvidence(runtimePackage, retryRebootPlan.current);
           assertCardColorJourneySupport(runtimePackage, retryRebootPlan.current);
           assertCardSymmetrySupport(runtimePackage, retryRebootPlan.current);

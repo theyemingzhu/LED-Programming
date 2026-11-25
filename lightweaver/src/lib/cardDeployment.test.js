@@ -9,6 +9,25 @@ async function deploymentApi() {
   }
 }
 
+test('a wiring test proves the new boot, active probation and sufficient working output buffers', async () => {
+  const { verifyCardWiringTestOutputs } = await deploymentApi();
+  const prepared = { cardId: 'lw-count', buildId: 'build', config: { projectRevision: 7,
+    projectFingerprint: 'fingerprint', wiringRevision: 4, wiringDigest: 'digest',
+    led: { pixels: 3500, outputs: [{ pin: 16, pixels: 3500 }] } } };
+  const status = { cardId: 'lw-count', buildId: 'build', bootId: 'candidate', projectRevision: 7,
+    projectFingerprint: 'fingerprint', wiringRevision: 4, wiringDigest: 'digest',
+    outputDriverReady: true, outputReady: true, outputInitialization: { ok: true },
+    wiringProbation: { active: true }, pixelCapacity: { allocatedBoot: 3500 },
+    outputs: [{ pin: 16, pixels: 3500 }] };
+  assert.equal(verifyCardWiringTestOutputs(prepared, status, 'working').ok, true);
+  assert.equal(verifyCardWiringTestOutputs(prepared, status, 'candidate').reason, 'restart-pending');
+  assert.equal(verifyCardWiringTestOutputs(prepared, { ...status, pixelCapacity: { allocatedBoot: 512 } }).reason, 'output-allocation');
+  assert.equal(verifyCardWiringTestOutputs(prepared, { ...status, outputDriverReady: false }).reason, 'output-not-ready');
+  assert.equal(verifyCardWiringTestOutputs(prepared, { ...status, wiringProbation: { active: false } }).reason, 'test-not-running');
+  assert.equal(verifyCardWiringTestOutputs(prepared, { ...status, wiringDigest: 'other' }).reason, 'read-back-mismatch');
+  assert.equal(verifyCardWiringTestOutputs(prepared, { ...status, outputs: [{ pin: 16, pixels: 3499 }] }).reason, 'read-back-mismatch');
+});
+
 function projectFixture() {
   return {
     projectId: 'installation-7',

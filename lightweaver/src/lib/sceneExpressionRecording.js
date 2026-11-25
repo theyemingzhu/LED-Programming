@@ -8,7 +8,7 @@ import { buildSceneExpressionAreaCatalog } from './sceneExpressionTargets.js';
 import { compileBundledScenePattern, createSceneExpressionPreviewRenderer } from './sceneExpressionFlow.js';
 import { mapSceneExpressionPreviewFrame } from './sceneExpressionFrame.js';
 import { effectiveSceneFlowAt, scenePlaybackAt, scenePreviewAvailability } from '../scene-expression/sceneExpressionEditorModel.js';
-import { estimateLwseqBytes, LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
+import { assertLwseqPixelCount, estimateLwseqBytes, LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
 
 export const MAX_SCENE_FLOW_RECORDING_BYTES = 16 * 1024 * 1024;
 export const MAX_SCENE_FLOW_RECORDING_SECONDS = 10 * 60;
@@ -92,8 +92,9 @@ function sourceSnapshot(input) {
 function prepare(input) {
   // Reject a card-incompatible physical layout before catalog or renderer work.
   const physicalCount = input.compiledWiring?.pixels?.length;
-  if (Number.isSafeInteger(physicalCount) && (physicalCount < 1 || physicalCount > 4096)) {
-    throw new RangeError('Flow recording supports from 1 to 4096 physical LEDs');
+  if (Number.isSafeInteger(physicalCount)) {
+    if (physicalCount < 1) throw new RangeError('Flow recording needs at least one LED.');
+    assertLwseqPixelCount(physicalCount);
   }
   const snapshot = sourceSnapshot(input);
   const fps = input.fps ?? MAX_FPS;
@@ -104,9 +105,6 @@ function prepare(input) {
   }
   const frameCount = Math.ceil(durationMs * fps / 1000);
   const pixelCount = snapshot.layout.compiledWiring.pixels.length;
-  if (pixelCount < 1 || pixelCount > 4096) {
-    throw new RangeError('Flow recording supports from 1 to 4096 physical LEDs');
-  }
   const estimate = estimateLwseqBytes({ pixels: pixelCount, frames: frameCount, fps });
   const maxBytes = input.maxBytes ?? MAX_SCENE_FLOW_RECORDING_BYTES;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < LWSEQ_HEADER_BYTES || maxBytes > MAX_SCENE_FLOW_RECORDING_BYTES) {

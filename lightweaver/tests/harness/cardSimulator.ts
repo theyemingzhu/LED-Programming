@@ -310,6 +310,8 @@ function hasProject(state: CardStateSpec) {
  * exist, which is how "ready card with no project" got into this suite.
  */
 function outputReadyOf(state: CardStateSpec) {
+  const trial = state as CardStateSpec & { wiringTestActive?: boolean; candidateOutputFailure?: boolean };
+  if (trial.wiringTestActive && trial.candidateOutputFailure) return false;
   return state.pixels > 0;
 }
 
@@ -491,10 +493,14 @@ function statusBody(state: CardSimulator['state']) {
       // (the real card reports `rolled-back` long after it recovered).
       ...((state as { firmwareUpdateOverride?: Record<string, unknown> }).firmwareUpdateOverride || {}),
     },
-    pixelCapacity: { schemaLimit: 65535, allocatedBoot: state.outputTopology ? Math.max(512, state.pixels) : 512 },
+    pixelCapacity: state.outputTopology ? {
+      schemaLimit: 65535, allocatedBoot: Math.max(512, state.pixels), candidateRollback: true,
+    } : { schemaLimit: 65535, allocatedBoot: 512 },
     outputInitialization: outputReadyOf(state)
       ? { ok: true, code: 'ready', message: 'configured project outputs initialized' }
-      : { ok: false, code: 'no-outputs', message: 'no configured project outputs' },
+      : state.wiringTestActive && (state as { candidateOutputFailure?: boolean }).candidateOutputFailure
+        ? { ok: false, code: 'initialization-failed', message: 'test candidate outputs did not initialize' }
+        : { ok: false, code: 'no-outputs', message: 'no configured project outputs' },
     wiringProbation: {
       active: state.wiringTestActive === true,
       remainingMs: state.wiringTestActive ? state.wiringProbationRemainingMs : 0,

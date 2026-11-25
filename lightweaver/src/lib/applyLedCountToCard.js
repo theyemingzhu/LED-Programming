@@ -5,6 +5,9 @@ import {
   pushConfigToCard,
   withCardReadRetry,
   cardGaveNoAnswer,
+  cardPixelAllocationNeedsTest,
+  assertCardPixelAllocationCanBeTested,
+  CardPushError,
   readCardFirmwareInfoEnvelope,
   readCardStatusEnvelope,
   shouldDirectApplyLedCountChange,
@@ -12,6 +15,7 @@ import {
 import { reconcileWiringToStrips } from './wiringModel.js';
 import { getCardWiringStatus } from './cardWiringSafety.js';
 import { getCardLinkState } from './cardLink.js';
+import { assertCardOutputCapacity } from './cardHardwareContract.js';
 
 function currentLinkTransport() {
   try { return getCardLinkState()?.transport || undefined; } catch { return undefined; }
@@ -217,12 +221,13 @@ export async function applyTypedLedCountToCard({
   pushConfig = pushConfigToCard,
   readEvidence = readCardStatusEnvelope,
   retry = {},
+  transport = currentLinkTransport(),
 } = {}) {
   if (!host) return { applied: false, reason: 'disconnected' };
   const runtimePackage = suppliedRuntimePackage || buildCardRuntimePackageFromProject(projectForTypedLedCount(project));
   let evidence;
   try {
-    evidence = await withCardReadRetry(() => readEvidence({ host }), retry);
+    evidence = await withCardReadRetry(() => readEvidence({ host, transport }), retry);
   } catch {
     return { applied: false, reason: 'unreachable' };
   }
@@ -237,33 +242,56 @@ export async function applyTypedLedCountToCard({
     || !isOnlyLedLengthChange(evidence, runtimePackage)) {
     return { applied: false, reason: 'not-a-length-change' };
   }
+  assertCardOutputCapacity(runtimePackage, evidence);
+  assertCardPixelAllocationCanBeTested(evidence, runtimePackage);
+  if (cardPixelAllocationNeedsTest(evidence, runtimePackage)) {
+    return { applied: false, reason: 'requires-light-test' };
+  }
   let result;
+  let uncertainReply;
   try {
     result = await pushConfig(runtimePackage, {
       host,
+      transport,
       reboot: 'if-needed',
       autoDiscover: false,
     });
   } catch (error) {
+    if (error?.reason === 'requires-light-test') return { applied: false, reason: 'requires-light-test' };
     // A length change saves and restarts the card at once, and the reply is
     // what a restarting card loses. That is not "did not answer": read the
     // card back through its restart and accept it if it holds the new count
     // (F-E2, todo/plans/false-failures.md). A refusal still fails as before.
     if (!cardGaveNoAnswer(error) || error?.delivery === 'not-sent' || error?.delivery === 'rejected') throw error;
-    const wanted = Number((runtimePackage.config || runtimePackage)?.led?.pixels) || 0;
-    const deadline = Date.now() + 45000;
-    let landed = false;
-    while (!landed && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const after = await readEvidence({ host }).catch(() => null);
-      const pixels = Number(after?.led?.pixels ?? after?.pixels);
-      landed = Boolean(after) && wanted > 0 && pixels === wanted;
-    }
-    if (!landed) throw error;
-    result = { ok: true, rebooting: true, replyLost: true };
+    uncertainReply = error;
   }
   if (result?.state === 'staged' || result?.requiresConfirmation === true) {
     return { applied: false, reason: 'staged-candidate', result, runtimePackage };
+  }
+  const expectOutputProof = evidence.pixelCapacity?.candidateRollback === true;
+  if (uncertainReply || (expectOutputProof && (result?.requiresReboot || result?.rebooting))) {
+    const config = runtimePackage.config || runtimePackage;
+    const wanted = Number(config?.led?.pixels) || 0;
+    const deadline = Date.now() + 45000;
+    let landed = false;
+    for (let attempt = 0; !landed && Date.now() < deadline; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+      const after = await readEvidence({ host, transport }).catch(() => null);
+      if (!after || (evidence.cardId && after.cardId !== evidence.cardId)
+          || (evidence.buildId && after.buildId !== evidence.buildId)) continue;
+      if (expectOutputProof && (!after.bootId || after.bootId === evidence.bootId)) continue;
+      if (after.outputInitialization?.ok === false) {
+        throw new CardPushError('count-output-not-ready', after.outputInitialization.message || 'The card could not initialize the saved LED count.');
+      }
+      const pixels = Number(after?.led?.pixels ?? after?.pixels);
+      landed = wanted > 0 && pixels === wanted && after.outputReady !== false;
+      if (expectOutputProof) landed = landed && after.outputReady === true && after.outputDriverReady === true
+        && Number(after.pixelCapacity?.allocatedBoot) >= wanted
+        && sameOutputEvidence(after.outputs, config.led.outputs)
+        && (!config.projectFingerprint || after.projectFingerprint === config.projectFingerprint);
+    }
+    if (!landed) throw uncertainReply || new CardPushError('count-readback', 'The card did not verify the saved count and working outputs after restarting.');
+    if (uncertainReply) result = { ok: true, rebooting: true, replyLost: true };
   }
   return { applied: true, result, runtimePackage };
 }
@@ -316,8 +344,8 @@ export async function applyLedCountOnCard({
     if (!exact) return { applied: false, reason: 'firmware-evidence-mismatch' };
     const runtimePackage = countedBenchPackage(exact, { pixels, pin });
     if (!runtimePackage) return { applied: false, reason: 'bench-evidence-incomplete' };
-    return applyTypedLedCountToCard({ host, runtimePackage, expectedEvidence: exact, retry, ...rest });
+    return applyTypedLedCountToCard({ host, runtimePackage, expectedEvidence: exact, retry, transport, ...rest });
   }
   const project = projectFromCountedCardStatus(status, { pixels, pin });
-  return applyTypedLedCountToCard({ host, project, retry, ...rest });
+  return applyTypedLedCountToCard({ host, project, retry, transport, ...rest });
 }

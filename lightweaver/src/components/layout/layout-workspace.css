@@ -79,6 +79,16 @@
   border: 0; border-radius: 0;
   background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 24px 1px no-repeat;
 }
+.la .la-mode-nav:has(> .la-refresh-warning) { flex-wrap: wrap; }
+.la .la-refresh-warning {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  margin: 2px 0 0;
+  padding: 5px 6px;
+  color: var(--text-mid);
+  font: 12px/1.35 var(--font-ui);
+}
+.la .la-refresh-warning strong { font-weight: 600; color: var(--warn); }
 .la .la-strip-pin-button {
   display: inline-flex;
   align-items: center;

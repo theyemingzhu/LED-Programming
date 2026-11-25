@@ -83,7 +83,7 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigRequiresWiringTest, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope, withCardReadRetry, CARD_READ_RETRY, cardGaveNoAnswer } from '../lib/cardPushClient.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
@@ -2450,10 +2450,10 @@ function writeSectionDisplayOrder(projectId, ids) {
           || (wiringStatus.buildId && wiringStatus.buildId !== before.buildId)) {
           throw new Error('The card changed during the wiring check. Nothing was sent.');
         }
-        const structuralWiringChanged = cardConfigStructuralWiringChangedFromInfo(
+        const wiringNeedsTest = cardConfigRequiresWiringTest(
           { ...cardStatus, outputs: wiringStatus.outputs }, packageForCard,
         );
-        if (wiringStatus.hasCandidate || structuralWiringChanged) {
+        if (wiringStatus.hasCandidate || wiringNeedsTest) {
           // The Card status installer owns staging, activation, the timed real-
           // light test, and confirmation. Patterns has no authority to confirm
           // a changed physical section layout or re-post an existing candidate.

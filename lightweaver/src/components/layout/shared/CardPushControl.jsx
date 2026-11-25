@@ -12,7 +12,7 @@ import {
   CardPushError,
   assignCardWiringIdentityForChange,
   assignExactCandidateWiringIdentity,
-  cardConfigStructuralWiringChangedFromInfo,
+  cardConfigRequiresWiringTest,
   withCardReadRetry,
   CARD_READ_RETRY,
   CARD_SLOW_READ_MS,
@@ -27,6 +27,7 @@ import {
   isCardAlreadyCurrent,
   orchestrateCardDeploymentStart,
   waitForCardDeploymentVerification,
+  verifyCardWiringTestOutputs,
   CARD_RESTART_WAIT_MS,
 } from '../../../lib/cardDeployment.js';
 import {
@@ -247,6 +248,31 @@ export function CardPushControl({
   const installInFlightRef = useRef(false);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
 
+  const verifyWiringTestOutput = async attempt => {
+    if (!attempt.verifyTestOutputs) return;
+    const status = await readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport });
+    const verification = verifyCardWiringTestOutputs(attempt.prepared, status, attempt.bootBeforeTest);
+    if (!verification.ok) {
+      throw new CardPushError('wiring-test-unverified',
+        status.outputInitialization?.ok === false && status.outputInitialization?.message
+          ? `The card reports: ${status.outputInitialization.message}. Restore the working setup or check again.`
+          : 'Studio could not verify the test outputs and their pixel allocation. Restore the working setup or check again.');
+    }
+  };
+
+  const showActiveWiringTest = async attempt => {
+    setWiringTestState('checking-outputs');
+    try {
+      await verifyWiringTestOutput(attempt);
+      setWiringTestState('testing');
+      setLightTestActivity('testing');
+      setPushStatus('Testing the new wiring. Check that the lights are steady. The card will restore the working setup automatically if you do not confirm it.');
+    } catch (error) {
+      setWiringTestState('unverified');
+      setPushStatus(error.message || 'Studio could not verify the test outputs. Restore the working setup or check again.');
+    }
+  };
+
   // One write owner per card, ACROSS tabs. withStudioHardwareOperation below
   // serialises hardware work inside this page and cannot see another one, so
   // until this wrapper existed two Studio tabs could both take the direct-apply
@@ -366,17 +392,17 @@ export function CardPushControl({
           previousConfig: cardStatusAsConfig({ ...status, outputs: wiringStatus?.outputs || status.outputs }),
         });
         const liveWiring = { ...status, outputs: wiringStatus?.outputs || status.outputs };
+        const hasCandidate = wiringStatus?.hasCandidate === true
+          || ['staged', 'testing'].includes(wiringStatus?.state)
+          || wiringStatus?.candidateState === 'awaiting-confirmation';
         if (!handoffOnly) {
-          const hasCandidate = wiringStatus?.hasCandidate === true
-            || ['staged', 'testing'].includes(wiringStatus?.state)
-            || wiringStatus?.candidateState === 'awaiting-confirmation';
           if (hasCandidate) {
             // Exact candidate evidence takes precedence over the active
             // geometry: while testing, both /api/status and wiring status
             // can describe the probationary output, so a fresh structural
             // comparison cannot derive the original revision.
             await assignExactCandidateWiringIdentity(prepared.config, wiringStatus, before);
-          } else if (cardConfigStructuralWiringChangedFromInfo(liveWiring, prepared.config)) {
+          } else if (cardConfigRequiresWiringTest(liveWiring, prepared.config)) {
             await assignCardWiringIdentityForChange(prepared.config, liveWiring);
           }
           validateCardPushAttempt({ revision: projectLifecycle.editedRevision, generation: projectLifecycle.generation }, readProjectLifecycle());
@@ -419,6 +445,8 @@ export function CardPushControl({
           alreadyCurrent,
           replaceProjectIntent,
           readMs,
+          verifyTestOutputs: status.pixelCapacity?.candidateRollback === true,
+          bootBeforeTest: hasCandidate && wiringStatus?.state !== 'staged' ? '' : (status.bootId || ''),
         };
       }
       assertCurrentAttempt(attempt);
@@ -567,8 +595,7 @@ export function CardPushControl({
           setWiringTestState('staged');
           setPushStatus('This exact wiring installation is already staged. Continue with its light test; nothing was sent again.');
         } else if (attempt.resumeAction === 'resume-physical-test' || attempt.resumeAction === 'resume-confirmation') {
-          setWiringTestState('testing');
-          setPushStatus('This exact wiring installation is already in its physical test. Confirm it only after checking the real LEDs.');
+          await showActiveWiringTest(attempt);
         }
         failedAttemptRef.current = null;
         return;
@@ -730,9 +757,10 @@ export function CardPushControl({
           throw new CardPushError('candidate-conflict', 'The exact staged candidate could not be verified. Inspect this card before starting a new install.');
         }
         setWiringCandidate({ activationId: status.activationId, attempt: pending });
-        setWiringTestState(action === 'resume-activation' ? 'staged' : 'testing');
+        if (action === 'resume-activation') setWiringTestState('staged');
+        else await showActiveWiringTest(pending);
         failedAttemptRef.current = null;
-        setPushStatus('This exact wiring installation is staged. Continue the light test; nothing was sent again.');
+        if (action === 'resume-activation') setPushStatus('This exact wiring installation is staged. Continue the light test; nothing was sent again.');
       } catch (error) {
         setPushStatus(error.message || 'Candidate readback is still inconclusive. Retry only reads the card.');
         dispatchAction({ type: 'fail', error: error.message || 'Candidate readback unavailable.' });
@@ -799,9 +827,7 @@ export function CardPushControl({
         expiresAt: Date.now() + (testingStatus.remainingMs || 90000),
         expiryChecks: 0,
       } : current);
-      setWiringTestState('testing');
-      setLightTestActivity('testing');
-      setPushStatus('Testing the new wiring. The card will restore the working setup automatically if you do not confirm it.');
+      await showActiveWiringTest(wiringCandidate.attempt);
     } catch (error) {
       setLightTestActivity('');
       setWiringTestState('failed');
@@ -820,6 +846,13 @@ export function CardPushControl({
     try {
       if (visible) {
         assertCurrentAttempt(wiringCandidate.attempt);
+        try {
+          await verifyWiringTestOutput(wiringCandidate.attempt);
+        } catch (error) {
+          setWiringTestState('unverified');
+          setPushStatus(error.message);
+          return;
+        }
         await confirmCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
         setPushStatus('Verifying the confirmed wiring on the card…');
         const { verification } = await waitForReadyDeploymentVerification(
@@ -868,7 +901,7 @@ export function CardPushControl({
   const pushing = action.status === 'pending' && wiringTestState === 'idle';
   const wiringTransactionActive = Boolean(wiringCandidate);
   useEffect(() => {
-    if (wiringTestState !== 'testing' || !wiringCandidate?.expiresAt) return undefined;
+    if (!['testing', 'unverified'].includes(wiringTestState) || !wiringCandidate?.expiresAt) return undefined;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -1065,6 +1098,8 @@ export function CardPushControl({
             <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-testid="wiring-test-start" onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." data-testid="wiring-test-cancel" onClick={() => finishWiringTest(false)}>Cancel change</button></div>
           ) : wiringTestState === 'testing' ? (
             <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." data-testid="wiring-test-confirm" onClick={() => finishWiringTest(true)}>The lights look correct</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>No, restore working setup</button></div>
+          ) : wiringTestState === 'unverified' ? (
+            <div><button className="btn" data-testid="wiring-test-check-outputs" onClick={() => void showActiveWiringTest(wiringCandidate.attempt)}>Check outputs again</button><button className="btn primary" data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>Restore working setup</button></div>
           ) : <p>Working…</p>}
         </section>
       )}

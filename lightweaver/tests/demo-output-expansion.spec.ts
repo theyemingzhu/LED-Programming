@@ -79,9 +79,7 @@ async function startLightTest(page: Page) {
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
 }
 
-test('the demo card saves a board correction, installs a fifth output, and restores a rejected rewire', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const project = makeDemoProject();
+async function openDemoInstallation(page: Page, project: ReturnType<typeof makeDemoProject>) {
   const { config } = prepareCardDeployment({
     projectId: project.id, projectName: project.name, projectRevision: 0,
     strips: project.layout.strips, patchBoard: project.layout.patchBoard, wiring: project.layout.wiring,
@@ -119,6 +117,12 @@ test('the demo card saves a board correction, installs a fifth output, and resto
 
   await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-link-status')).toContainText('Connected');
+  return card;
+}
+
+test('the demo card saves a board correction, installs a fifth output, and restores a rejected rewire', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const card = await openDemoInstallation(page, makeDemoProject());
   const startStatus = await readCard(page);
   expect(startStatus.limits.outputs).toBe(8);
   expect(startStatus.capabilities.outputTopology).toEqual({
@@ -195,6 +199,73 @@ test('the demo card saves a board correction, installs a fifth output, and resto
   expect(restored.wiringDigest).toBe(confirmed.wiringDigest);
   expect(toTopology(restored.outputs)).toEqual(confirmedTopology);
   expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/rollback')).toHaveLength(1);
+});
+
+test('a 3,500 LED run can be tested across two pins and restored to one output', async ({ page }) => {
+  const project = makeDemoProject();
+  const strips = createDefaultCircleLayout({ sectionPixelCounts: [1750, 1750] });
+  project.layout.strips = strips;
+  project.layout.patchBoard = createDefaultPatchBoard(strips);
+  project.layout.patchBoard.dataWireCount = 1;
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = [{ id: 'out1', pin: 15, name: 'Output 1', runIds: wiring.runs.map(run => run.id) }];
+  project.layout.wiring = wiring;
+
+  const card = await openDemoInstallation(page, project);
+  const before = await readCard(page);
+  expect(before.outputs.map(({ pin, pixels }) => [pin, pixels])).toEqual([[15, 3500]]);
+  const refresh = page.getByTestId('layout-refresh-warning');
+  await expect(refresh).toContainText('9.5 fps');
+
+  await assignGpio(page, 'Inner circle', 21);
+  await expect(refresh).toContainText('19.0 fps');
+  await startLightTest(page);
+  const split = await readCard(page);
+  expect(split.outputs.map(({ pin, pixels }) => [pin, pixels])).toEqual([[15, 1750], [21, 1750]]);
+  expect(split.bootId).not.toBe(before.bootId);
+  expect(split.wiringProbation.active).toBe(true);
+  expect(split.outputDriverReady).toBe(true);
+  expect(split.pixelCapacity.allocatedBoot).toBeGreaterThanOrEqual(3500);
+
+  await page.getByTestId('wiring-test-restore').click();
+  await expect(page.getByText(/Restored the last working setup/)).toBeVisible();
+  const restored = await readCard(page);
+  expect(restored.outputs).toEqual(before.outputs);
+  expect(restored.projectFingerprint).toBe(before.projectFingerprint);
+  expect(restored.wiringDigest).toBe(before.wiringDigest);
+  expect(restored.wiringProbation.active).toBe(false);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/confirm')).toHaveLength(0);
+});
+
+test('same-pin growth stages and restores when the test outputs fail to initialize', async ({ page }) => {
+  const project = makeDemoProject();
+  const card = await openDemoInstallation(page, project);
+  const before = await readCard(page);
+  Object.assign(card.state, { candidateOutputFailure: true });
+
+  const firstStrip = page.locator('[data-strip-id]').filter({
+    has: page.locator('.la-strip-row').filter({ hasText: project.layout.strips[0].name }),
+  }).first();
+  if (!await firstStrip.locator('.la-strip-detail').isVisible()) await firstStrip.locator('.la-strip-row').click();
+  const count = firstStrip.getByRole('spinbutton', { name: / LED count$/ });
+  await count.fill('3500');
+  await count.press('Enter');
+  const footer = page.getByTestId('card-link-status');
+  await expect(footer).toHaveAccessibleName('Save to card');
+  await footer.click();
+  await expect(page.getByTestId('wiring-test-restore')).toBeVisible();
+  await expect(page.getByText(/test candidate outputs did not initialize/)).toBeVisible();
+  await expect(page.getByTestId('wiring-test-confirm')).toHaveCount(0);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/config')).toHaveLength(0);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/candidate')).toHaveLength(1);
+
+  await page.getByTestId('wiring-test-restore').click();
+  await expect(page.getByText(/Restored the last working setup/)).toBeVisible();
+  const restored = await readCard(page);
+  expect(restored.outputs).toEqual(before.outputs);
+  expect(restored.projectFingerprint).toBe(before.projectFingerprint);
+  expect(restored.wiringProbation.active).toBe(false);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/confirm')).toHaveLength(0);
 });
 
 test('a simulated capacity or pin violation leaves the running project untouched', async ({ page }) => {

@@ -15,6 +15,7 @@ import { describeCardCapacity } from '../../../lib/designCapacity.js';
 import { STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../../lib/cardAction.js';
 import { estimatePowerBudget } from '../../../lib/controllerProfiles.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../../lib/powerSupplySettings.js';
+import { estimateWiringFrameTiming } from '../../../lib/wiringFrameTiming.js';
 import { useWiringCard } from './useWiringCard.js';
 import '../../../styles/lw-wire.css';
 
@@ -100,10 +101,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
   const { availablePins: availableOutputPins, cardId: liveCardId,
     capacity: outputCapacity, maxOutputs, state: cardReadinessState } = useWiringCard();
   const tooManyOutputs = outputCapacity && wiring.outputs.length > maxOutputs;
-  // Both supported strips send 24 bits at 800 kbit/s. This lower bound
-  // assumes all four ESP32-S3 transmitters are busy when needed.
-  const longestOutput = Math.max(0, ...compiledWiring.outputs.map(output => output.count));
-  const minimumFrameDataMs = 0.03 * Math.max(longestOutput, compiledWiring.totalPixels / 4);
+  const { minimumFrameDataMs } = estimateWiringFrameTiming(compiledWiring);
   const selectedOutput = wiring.outputs.find(output => output.id === selectedOutputId) || wiring.outputs[0];
 
   const changeOutputPin = (outputId, pin) => {
@@ -378,7 +376,6 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
           </p>
           {minimumFrameDataMs > 0 && <p className="wire-capacity-line">
             {compiledWiring.totalPixels.toLocaleString()} LEDs · {minimumFrameDataMs.toFixed(1)} ms minimum data time per frame
-            {minimumFrameDataMs > 1000 / 30 && ' · below 30 fps on this wiring'}
           </p>}
           {selectedOutput && <div className="lww-output-pin-editor">
             <label>Output <select aria-label="LED output to move" value={selectedOutput.id} onChange={event => setSelectedOutputId(event.target.value)}>

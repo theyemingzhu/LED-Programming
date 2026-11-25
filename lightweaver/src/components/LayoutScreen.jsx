@@ -13,6 +13,7 @@ import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { classifyCardChanges, cardStatusAsConfig } from '../lib/cardDeployment.js';
+import { cardPixelAllocationNeedsTest } from '../lib/cardPushClient.js';
 import { getCardLinkState } from '../lib/cardLink.js';
 import {
   createDefaultKaleidoscope,
@@ -23,6 +24,7 @@ import {
 } from '../lib/kaleidoscope.js';
 import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibration.js';
 import { stripPitchMm } from '../lib/wireBuildSheet.js';
+import { estimateWiringFrameTiming } from '../lib/wiringFrameTiming.js';
 import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
 import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
@@ -140,6 +142,8 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // or null) — drives the ghost preview of the primitive on the canvas.
   const [starterPreview, setStarterPreview] = useState(null);
   const { wiring, compiledWiring, updateWiring, standaloneController, projectId, projectLifecycle } = useProject();
+  const { maximumFps, longestOutputSetsLimit } = estimateWiringFrameTiming(compiledWiring);
+  const showRefreshWarning = !inspectorCollapsed && maximumFps !== null && maximumFps < 30;
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const targetId = params.get('focusTarget');
@@ -171,17 +175,17 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // Reuses classifyCardChanges (src/lib/cardDeployment.js) — the same
   // function that decides `prepared.changes` for an actual push — purely to
   // choose which sentence to show, never to gate the button. hardwareFacts()
-  // inside it deliberately ignores pixel COUNT (only pin/segment identity,
-  // power, and colour count as hardware), so a length-only edit reads
-  // 'visual' here exactly as it does on the card (F14): applied and
-  // rebooted at once, no light test. Any pin/output/power/colour edit reads
-  // 'hardware': staged, and answered with a light test. `getCardLinkState()`
+  // inside it deliberately ignores pixel count. Use the same additional
+  // capacity check as the card save to describe a larger allocation as a
+  // light test. Ordinary length-only edits still save and reboot (F14).
+  // `getCardLinkState()`
   // is read as a plain snapshot (same pattern CardPushControl already uses
   // for its transport check) — stale by at most a render, which is fine for
   // an informational line that never decides anything.
   const layoutChangeKind = useMemo(() => {
     const readiness = getCardLinkState()?.readiness;
     if (!readiness || !standaloneController?.outputs?.length) return null;
+    if (cardPixelAllocationNeedsTest(readiness, { led: { outputs: compiledWiring.outputs } })) return 'hardware';
     const previousConfig = cardStatusAsConfig(readiness);
     const nextConfig = {
       led: {
@@ -197,7 +201,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
       },
     };
     return classifyCardChanges(previousConfig, nextConfig).kind;
-  }, [standaloneController]);
+  }, [compiledWiring, standaloneController]);
   const {
     // context passthroughs + composer-level derived (chrome + canvas only)
     strips, layers, hidden,
@@ -619,6 +623,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               type="button"
               className="btn primary"
               data-testid="layout-check-and-install"
+              aria-describedby={showRefreshWarning ? 'layout-refresh-warning' : undefined}
               title="Check the lights and install this project on the connected card."
               data-tooltip="Check the lights and install this project on the connected card."
               onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
@@ -637,13 +642,21 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                 <div className="la-change-help-popover">
                   <p className="la-change-kind" data-testid="layout-change-kind">
                     {layoutChangeKind === 'hardware'
-                      ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
+                      ? 'The card keeps the previous setup while you test the lights.'
                       : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
                   </p>
                 </div>
               </details>
             )}
           </div>
+          {showRefreshWarning && (
+            <p className="la-refresh-warning" id="layout-refresh-warning" data-testid="layout-refresh-warning" role="status">
+              <strong>Estimated maximum of {maximumFps.toFixed(1)} fps.</strong>{' '}
+              {longestOutputSetsLimit
+                ? 'Split the longest run across outputs for smoother motion.'
+                : 'Use fewer LEDs per card for smoother motion.'}
+            </p>
+          )}
         </WireHoverDescription>
         <div className="la-mode-content is-draw">
           <div className={`la-inspector-main${shapesOpen && !state.starterLayoutActive ? ' is-choosing-shape' : ''}`} hidden={specsOpen}>
