@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { createCardSimulator } from './harness/cardSimulator';
+import { cardState } from './harness/cardStates';
+import { seedKnownCard } from './harness/falseFailureWatch';
 
 // A placed look in Layout: a frame the owner drags over the strips. Inside it
 // a sweep or rings move, and each LED dot takes the colour under it. It is a
@@ -291,4 +294,44 @@ test('on a phone the frame, the dials and the record line stay inside the screen
     expect(box!.x + box!.width, id).toBeLessThanOrEqual(390);
   }
   expect(lit(await allColours(page, ids)).length).toBeGreaterThan(20);
+});
+
+test('Show it on the lights streams the look to the card, follows the frame, and gives the card its look back', async ({ page }) => {
+  await seedPiece(page, LOTUS);
+  // The piece is drawn first; then a card is on the network.
+  const card = createCardSimulator(cardState('playing'));
+  await card.install(page);
+  await seedKnownCard(page);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await openSheet(page);
+  await turnOn(page);
+  const live = page.getByTestId('placed-look-live');
+  const note = page.getByTestId('placed-look-live-note');
+  await expect(live).toBeEnabled({ timeout: 20_000 });
+  await expect(note).toContainText('Nothing is sent to the card until you tick this.');
+  expect(card.frames.length).toBe(0);
+
+  await live.check();
+  await expect(note).toHaveAttribute('data-state', 'live', { timeout: 20_000 });
+  await expect(note).toContainText('On the lights.');
+  await expect.poll(() => card.frames.length, { timeout: 10_000 }).toBeGreaterThan(3);
+  const lights = (frame: string[]) => frame.filter(colour => colour !== '000000').length;
+  expect(card.frames.at(-1)!.length).toBe(168);
+  expect(lights(card.frames.at(-1)!)).toBeGreaterThan(20);
+
+  // A smaller frame lights fewer strips, and the card shows it straight away.
+  const before = lights(card.frames.at(-1)!);
+  await page.getByTestId('placed-look-width').fill('5');
+  await page.getByTestId('placed-look-speed').fill('0');
+  await expect.poll(() => lights(card.frames.at(-1)!), { timeout: 10_000 }).not.toBe(before);
+
+  const sent = card.frames.length;
+  await live.uncheck();
+  await expect(note).toHaveAttribute('data-state', 'restored', { timeout: 20_000 });
+  await expect(note).toContainText("The card's own look is back.");
+  await page.waitForTimeout(500);
+  const after = card.frames.length;
+  await page.waitForTimeout(800);
+  expect(card.frames.length, 'no frames after stopping').toBe(after);
+  expect(after).toBeGreaterThanOrEqual(sent);
 });
