@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { handleAccountPagesRequest } from '../functions/api/account/[[path]].js';
 import { handleLibraryPagesRequest } from '../functions/api/library/[[path]].js';
 
@@ -31,6 +32,16 @@ for (const directive of ['script-src', 'connect-src']) {
   const sources = cspDirective(directive);
   assert.ok(!sources.includes('https:') && !sources.some(s => s.includes('*.')), `${directive} must not open every HTTPS host`);
   assert.ok(!sources.includes("'unsafe-inline'"), `${directive} must not allow inline code`);
+}
+
+// index.html's classic inline script (the open-from-file fallback) ships
+// byte-for-byte through Vite, so it is allowed by its exact hash. Editing that
+// script changes the hash: update public/_headers with the value printed here.
+const indexHtml = readFileSync(resolve(import.meta.dirname, '../index.html'), 'utf8');
+for (const [, attrs, body] of indexHtml.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)) {
+  if (/type=["']module["']/.test(attrs) || !body.trim()) continue; // module entries are bundled to /assets
+  const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;
+  assert.ok(cspDirective('script-src').includes(hash), `index.html inline script must be allowed by script-src ${hash}`);
 }
 
 const unauthenticatedLibraryResponse = await handleLibraryPagesRequest({
