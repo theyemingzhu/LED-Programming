@@ -13,6 +13,8 @@
 .lw-installer-sheet[open] { display: flex; flex-direction: column; }
 .lw-installer-sheet::backdrop { background: rgb(0 0 0 / 60%); }
 .lw-installer-sheet .btn { min-height: var(--lw-tap, 44px); }
+/* The dialog uses native tooltips so a focused control cannot widen the sheet. */
+.lw-installer-sheet [data-tooltip]::after { content: none; }
 .lw-installer-sheet h2, .lw-installer-sheet p { margin: 0; }
 .lw-installer-sheet-header, .lw-installer-sheet-footer, .lw-installer-sheet-body { padding: 12px 16px; }
 .lw-installer-sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--border); }

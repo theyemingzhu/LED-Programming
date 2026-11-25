@@ -40,13 +40,13 @@ export function InstallerWiringSheetButton({ cardId: preferredCardId, className 
   if (!available) return null;
 
   return <>
-    <button className={className} type="button" ref={triggerRef} onClick={openSheet} aria-haspopup="dialog" data-testid="installer-wiring-sheet-trigger">Wiring sheet</button>
+    <button className={className} type="button" ref={triggerRef} onClick={openSheet} aria-haspopup="dialog" title="Review the board, connector positions, and LED counts for this installation." data-tooltip="Review the board, connector positions, and LED counts for this installation." data-testid="installer-wiring-sheet-trigger">Wiring sheet</button>
     {createPortal(
       <dialog className="lw-installer-sheet" ref={dialogRef} aria-label="Wiring sheet" onClose={() => triggerRef.current?.focus({ preventScroll: true })}>
         {snapshot && <>
           <header className="lw-installer-sheet-header">
             <div><h2>Wiring sheet</h2><p>{snapshot.projectName}</p></div>
-            <button className="btn" type="button" onClick={() => dialogRef.current.close()}>Close</button>
+            <button className="btn" type="button" title="Close the wiring sheet." data-tooltip="Close the wiring sheet." onClick={() => dialogRef.current.close()}>Close</button>
           </header>
           <div className="lw-installer-sheet-body">
             <p className="lw-installer-sheet-board">{snapshot.board || 'Choose the board in Connect to see its connector positions.'}</p>
@@ -69,7 +69,7 @@ export function InstallerWiringSheetButton({ cardId: preferredCardId, className 
             </ul>
           </div>
           <footer className="lw-installer-sheet-footer">
-            <button className="btn primary" type="button" onClick={() => window.print()}>Print or save as PDF</button>
+            <button className="btn primary" type="button" title="Open the print dialog to print or save the wiring sheet." data-tooltip="Open the print dialog to print or save the wiring sheet." onClick={() => window.print()}>Print or save as PDF</button>
           </footer>
         </>}
       </dialog>, document.body,
