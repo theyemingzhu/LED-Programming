@@ -20,6 +20,19 @@ assert.match(cspLine, /frame-ancestors[^;\n]+https:\/\/led\.mandalacodes\.com/);
 assert.match(cspLine, /frame-ancestors[^;\n]+http:\/\/lightweaver\.local:\*/);
 assert.match(cspLine, /frame-ancestors[^;\n]+http:\/\/192\.168\.4\.1:\*/);
 
+// Cloudflare Web Analytics is injected at the edge: its beacon loads from
+// static.cloudflareinsights.com and reports to cloudflareinsights.com. Allow
+// exactly those two hosts, never a wildcard or bare https:, so the CSP still
+// blocks every other outbound script and request.
+const cspDirective = name => (cspLine.match(new RegExp(`${name} ([^;]+)`)) || [])[1]?.split(/\s+/) || [];
+assert.ok(cspDirective('script-src').includes('https://static.cloudflareinsights.com'), 'analytics beacon script must be allowed');
+assert.ok(cspDirective('connect-src').includes('https://cloudflareinsights.com'), 'analytics beacon reports must be allowed');
+for (const directive of ['script-src', 'connect-src']) {
+  const sources = cspDirective(directive);
+  assert.ok(!sources.includes('https:') && !sources.some(s => s.includes('*.')), `${directive} must not open every HTTPS host`);
+  assert.ok(!sources.includes("'unsafe-inline'"), `${directive} must not allow inline code`);
+}
+
 const unauthenticatedLibraryResponse = await handleLibraryPagesRequest({
   request: new Request('https://led.mandalacodes.com/api/library/session'),
   env: {},
