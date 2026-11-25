@@ -2520,7 +2520,7 @@ export function DrawModePanel({
                   <input
                     type="number"
                     min={strips.length}
-                    max={strips.length * LED_COUNT_MAX}
+                    max={LED_COUNT_MAX}
                     step="1"
                     value={totalLedDraft}
                     aria-label="Total LEDs"
@@ -2530,8 +2530,8 @@ export function DrawModePanel({
                     onChange={event => changeTotalLedCount(event.target.value)}/>
                   <span className="la-inline-unit" aria-hidden="true">Project LEDs</span>
                   <button type="button" className="btn" aria-label="One more total LED"
-                          disabled={Number(totalLedDraft) >= strips.length * LED_COUNT_MAX}
-                          onClick={() => changeTotalLedCount(String(Math.min(strips.length * LED_COUNT_MAX, Number(totalLedDraft || totalLeds) + 1)))}>+</button>
+                          disabled={Number(totalLedDraft || totalLeds) >= LED_COUNT_MAX}
+                          onClick={() => changeTotalLedCount(String(Number(totalLedDraft || totalLeds) + 1))}>+</button>
                 </div>
                 {totalLedError && (
                   <span role="alert" className="la-total-led-error" data-testid="layout-total-led-error">

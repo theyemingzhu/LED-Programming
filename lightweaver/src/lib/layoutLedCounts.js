@@ -10,6 +10,9 @@ export function allocateLedCountsByLength(strips = [], requestedTotal, maxPerStr
   if (total < count) {
     return { ok: false, error: `Enter at least ${formatted(count)} LEDs so every strip has one.` };
   }
+  if (total > LED_COUNT_MAX) {
+    return { ok: false, error: `Enter no more than ${formatted(LED_COUNT_MAX)} LEDs for one card.` };
+  }
   const maximum = count * maxPerStrip;
   if (total > maximum) {
     return { ok: false, error: `Enter no more than ${formatted(maximum)} LEDs for ${count} strips.` };

@@ -1533,6 +1533,7 @@ function Shell({ offlineUpdateController = null }) {
     if (!host) return;
     cardSaveRef.current = true;
     setCardSavePending(true);
+    dismissNoticeKey('led-count-save-error');
     try {
       await withStudioHardwareOperation('save-led-count', async () => {
         const snapshot = serializeProject();
@@ -1562,8 +1563,15 @@ function Shell({ offlineUpdateController = null }) {
           verified: true,
         });
       });
-    } catch {
-      // Chip stays on Save to card until a later write succeeds.
+    } catch (error) {
+      publishNotice({
+        key: 'led-count-save-error',
+        testId: 'led-count-save-error',
+        tone: 'error',
+        title: 'Could not save the LED count',
+        body: error?.message || 'Check the card connection and try again.',
+        source: 'save-led-count',
+      });
     } finally {
       cardSaveRef.current = false;
       setCardSavePending(false);

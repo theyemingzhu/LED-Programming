@@ -1,10 +1,13 @@
+import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
+
 export const SPEED_MIN = 0.02;
 export const SPEED_MAX = 4;
 export const SPEED_SLIDER_MIN = 0;
 export const SPEED_SLIDER_MAX = 1000;
 
 export const LED_COUNT_MIN = 1;
-export const LED_COUNT_MAX = 3000;
+export const LED_COUNT_MAX = CARD_HARDWARE_CONTRACT.maxPixels;
+const LED_COUNT_QUICK_SLIDER_MAX = 3000;
 export const LED_COUNT_SLIDER_MIN = 0;
 export const LED_COUNT_SLIDER_MAX = 1000;
 export const LED_COUNT_GEAR_POINTS = Object.freeze([
@@ -12,7 +15,7 @@ export const LED_COUNT_GEAR_POINTS = Object.freeze([
   { slider: 700, count: 150 },
   { slider: 850, count: 600 },
   { slider: 950, count: 1500 },
-  { slider: LED_COUNT_SLIDER_MAX, count: LED_COUNT_MAX },
+  { slider: LED_COUNT_SLIDER_MAX, count: LED_COUNT_QUICK_SLIDER_MAX },
 ]);
 
 function clamp(value, min, max) {
@@ -52,7 +55,7 @@ export function sliderValueToLedCount(value) {
 }
 
 export function ledCountToSliderValue(count) {
-  const normalizedCount = clamp(count, LED_COUNT_MIN, LED_COUNT_MAX);
+  const normalizedCount = clamp(count, LED_COUNT_MIN, LED_COUNT_QUICK_SLIDER_MAX);
   const upperIndex = LED_COUNT_GEAR_POINTS.findIndex(point => normalizedCount <= point.count);
   if (upperIndex <= 0) return LED_COUNT_SLIDER_MIN;
 
