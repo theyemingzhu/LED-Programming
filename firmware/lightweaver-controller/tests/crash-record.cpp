@@ -294,6 +294,35 @@ void noSecrets() {
     assert(lower.find(word) == std::string::npos);
 }
 
+void crashLoop() {
+  // One crash after hours of running: back to the saved look.
+  LwCrashRing ring;
+  lwCrashRingClear(ring);
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(runningCard(40), 6, 39, 2824, "1.2.7"));
+  assert(!lwCrashLoopDetected(ring, 41));
+  // A second crash 20 s into the start that followed it: a crash loop.
+  LwCrashBreadcrumb quick = runningCard(41);
+  quick.uptimeMs = 20000;
+  lwCrashRingPush(ring, lwCrashRecordFromBreadcrumb(quick, 4, 40, 2824, "1.2.7"));
+  assert(lwCrashLoopDetected(ring, 42));
+  // The same quick crash, but the start before it was a clean one: not a loop.
+  LwCrashRing gap;
+  lwCrashRingClear(gap);
+  lwCrashRingPush(gap, lwCrashRecordFromBreadcrumb(runningCard(30), 6, 29, 2824, "1.2.7"));
+  lwCrashRingPush(gap, lwCrashRecordFromBreadcrumb(quick, 4, 40, 2824, "1.2.7"));
+  assert(!lwCrashLoopDetected(gap, 42));
+  // Back-to-back crashes, but the second start ran for over a minute: not a loop.
+  LwCrashRing slow;
+  lwCrashRingClear(slow);
+  lwCrashRingPush(slow, lwCrashRecordFromBreadcrumb(runningCard(40), 6, 39, 2824, "1.2.7"));
+  LwCrashBreadcrumb minute = runningCard(41);
+  minute.uptimeMs = 60000;
+  lwCrashRingPush(slow, lwCrashRecordFromBreadcrumb(minute, 6, 40, 2824, "1.2.7"));
+  assert(!lwCrashLoopDetected(slow, 42));
+  // A stale record (not the start that just ended) never counts.
+  assert(!lwCrashLoopDetected(ring, 50));
+}
+
 }  // namespace
 
 int main() {
@@ -304,6 +333,7 @@ int main() {
   reports();
   lastCrash();
   noSecrets();
-  std::puts("crash record: 7 groups passed");
+  crashLoop();
+  std::puts("crash record: 8 groups passed");
   return 0;
 }

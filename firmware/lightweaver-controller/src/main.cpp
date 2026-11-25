@@ -552,20 +552,25 @@ void setup() {
     }
   }
 
-  // If the previous boot ended in a crash/brownout/watchdog reset, come up in
-  // the visible low-brightness known-good state instead of silently re-entering
-  // whatever failed — a homeowner sees the piece is alive and can recover it.
+  // After a crash/brownout/watchdog reset the card comes back to its saved
+  // look at its saved brightness: one crash in hours of running must not leave
+  // a gallery piece white until someone restarts it (Adrian, 2026-11-25). Only
+  // a crash loop (lwCrashLoopDetected: a second crash within a minute of the
+  // first) comes up in the visible low-brightness warm-white state instead,
+  // so a piece that cannot stay up on its saved look still shows it is alive.
   esp_reset_reason_t resetReason = esp_reset_reason();
   if (!safeDiscoveryMode && !factoryBeaconMode &&
       (resetReason == ESP_RST_BROWNOUT || resetReason == ESP_RST_PANIC ||
       resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_INT_WDT ||
       resetReason == ESP_RST_WDT)) {
+    const bool crashLoop = lightweaverCrashLoopDetected();
     if (Serial) {
-      Serial.print("Recovering after abnormal reset (reason ");
+      Serial.print(crashLoop ? "Recovering after a crash loop (reason "
+                             : "Back on the saved look after an abnormal reset (reason ");
       Serial.print((int)resetReason);
       Serial.println(")");
     }
-    runtimeRecoverLights("warm-white", 0.65f, true);
+    if (crashLoop) runtimeRecoverLights("warm-white", 0.65f, true);
   }
 
   // Task watchdog: reboot if the loop task ever wedges (hung handler, blocked

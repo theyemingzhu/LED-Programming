@@ -131,6 +131,10 @@ void lightweaverCrashReportSummary(JsonObject crash) {
   crash["bootsSince"] = summary.bootsSince;
 }
 
+bool lightweaverCrashLoopDetected() {
+  return lwCrashLoopDetected(g_ring, g_bootCount);
+}
+
 String lightweaverCrashLastCrashJson() {
   char text[LW_CRASH_LAST_BYTES];
   if (lwCrashLastCrashJson(g_ring, text, sizeof(text)) == 0) return String("null");
@@ -198,6 +202,7 @@ extern "C" void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t* info) {
 
 #else
 void lightweaverCrashRecorderBoot() {}
+bool lightweaverCrashLoopDetected() { return false; }
 void lightweaverCrashRecorderTick(uint32_t) {}
 void lightweaverCrashNoteActivity(const char*) {}
 void lightweaverCrashNoteSave(bool) {}

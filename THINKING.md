@@ -660,3 +660,27 @@ an incomplete rollout, not an owner-sign-in task.
 **Honest cost.** Anyone who can load an allowed page while on the card's network can now save or delete a project, load a recording, stream frames or start a signed update without being in the room. That was already true of the ordinary look save (`/api/config`), which never used the owner permission. Future Claude: do not re-add a touch, a button press or a "confirm on the card" step to any owner action. If stronger protection is ever wanted, it has to be something a person standing away from a wall-mounted piece can do.
 
 **Open:** Studio still shows "touch a physical control" prompts and sends a confirmation step; those lines belong to the Studio writer and are listed in the pull request. A card on older firmware still needs the touch, so Studio must keep working against both until the card update is out.
+
+## 2026-11-25 — After a crash the card comes back to its saved look
+
+**Topic:** Since the 2026-06 hardening, any panic, watchdog or brownout reset
+started the card in warm white at 0.65 brightness, and raised the brightness
+limit to 0.65 if the owner's was lower, until someone restarted it or chose a
+look. The real card crashed once after 7.57 hours idle (2026-11-24) and would
+have sat white all night.
+
+**Decision (Adrian, 2026-11-25):** after an abnormal reset the card boots its
+saved look at its saved brightness. Only a crash loop keeps warm white: the
+start-up that just crashed had itself begun right after a crash, and crashed
+again within 60 s (`lwCrashLoopDetected`, LightweaverCrashRecord.h). Firmware
+1.2.8.
+
+**Also settled, no change needed:** "a freeze should record where it froze" was
+already true since 1.2.7. The loop task is on the task watchdog with
+`trigger_panic`, so a stall goes through the wrapped panic handler, which
+writes task, fault and backtrace into the crash record. The 7.57 h reset left
+nothing only because it ran on 1.2.5, before the recorder.
+
+**Left alone:** `runtimeRecoverLights` still lifts the limit to 0.65. It is also
+the owner's own Recover lights button, where a visible light is the point; it
+now only runs on a crash loop at boot.
