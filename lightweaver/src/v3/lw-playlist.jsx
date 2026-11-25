@@ -17,6 +17,7 @@ import { getCardPatternById } from '../lib/cardPatternBank.js';
 import { DEFAULT_CARD_PATTERN_BANK } from '../lib/cardRuntimeContract.js';
 import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry, CARD_READ_RETRY } from '../lib/cardPushClient.js';
 import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
+import { recordingStoreWords } from '../lib/recordingStore.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
@@ -178,6 +179,8 @@ function realPatternShape(patternId) {
 }
 
   function PlaylistScreen({ connected, cardLink, cardLifecycle, currentProject, go }) {
+    // Where recordings play from on this card: microSD, its own memory, or unsaid.
+    const recordingStore = recordingStoreWords(cardLink?.readiness);
     const {
       projectId,
       projectName,
@@ -1281,7 +1284,7 @@ function realPatternShape(patternId) {
                         {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
                         <div className="pl-copy">
                           <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag pl-look-kind">Look</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
-                          {item.type !== 'pattern' && <span className="pl-row-summary">{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : `${stackSummary?.sectionCount || 0} ${stackSummary?.sectionCount === 1 ? 'section' : 'sections'}`}</span>}
+                          {item.type !== 'pattern' && <span className="pl-row-summary">{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback${recordingStore ? ` · ${recordingStore}` : ''}` : `${stackSummary?.sectionCount || 0} ${stackSummary?.sectionCount === 1 ? 'section' : 'sections'}`}</span>}
                           {recorded && <RecordedSequenceChoice asset={recorded} />}
                         </div>
                         <div className="pl-actions">

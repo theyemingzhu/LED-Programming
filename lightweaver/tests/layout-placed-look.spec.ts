@@ -270,6 +270,11 @@ test('Save as a look records it into the project, and Save changes updates the s
   await expect.poll(async () => ((await saved(page))?.devices?.standaloneController?.playlist || [])
     .find((item: { type: string }) => item.type === 'sequence'))
     .toMatchObject({ type: 'sequence', sequenceAssetId: firstId, label: 'Placed look 1' });
+  // No card is connected, so the row names no store: it used to say microSD
+  // on every card, including cards that have none.
+  const row = page.locator('.pl-copy').filter({ hasText: 'Placed look 1' });
+  await expect(row).toContainText('recorded playback');
+  await expect(row).not.toContainText('microSD');
 });
 
 test('on a phone the frame, the dials and the record line stay inside the screen', async ({ page }) => {

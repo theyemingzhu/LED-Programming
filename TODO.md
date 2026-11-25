@@ -36,7 +36,6 @@ In order. Inventory and log: shared note `ship-coordinator-inventory-2026-11-24.
   - **Live preview, done 2026-11-25.** Show it on the lights in the Placed look control streams `placedLookPhysicalFrame` through the Pattern Lab preview session (the card's own look comes back on untick, None or leaving Layout). Tested on the practice card only.
   - **Remaining.** Strips under the frame cannot be selected while the look is on.
   - **Real card, 2026-11-25 (lw-b0fe81f61b44).** Show it on the lights streamed to all 5 strips (41 lights) on 1.2.7. On 1.2.8, a saved placed look went through the Playlist and Save to card: the card stored the 59,104-byte recording in its own memory, read it back, saved the project (revision 2) and played it as look 7 (`placed-look-1`) with no error. The card was then restored from a USB copy of its settings and file area; zones, looks, wiring and project identity read back identical.
-  - **Found.** The Playlist row labels the recording "microSD" on a card that has none (it went to the card's own memory). Fix the wording in `lw-playlist.jsx`.
 
 - [ ] Finish the look designer: pick, bend, touch and tune-it-yourself now play on the owner's own strips in Layout as a Studio-only try-out, and it still has to be saved as a real look and reach the card _(band: agent-runnable)_ _(effort: deep)_
   - **Branch and PR.** `claude/look-designer-d7b509`, draft PR stacked on #493 (placed look) and #486 (symmetry). Design approved from the sketch `pick-bend-touch.html` (https://claude.ai/artifact/Ecz3rd9vEtQwPrgpR3mKJx).
