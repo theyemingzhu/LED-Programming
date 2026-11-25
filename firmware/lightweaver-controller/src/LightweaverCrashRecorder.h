@@ -23,5 +23,8 @@ void lightweaverCrashReportSummary(JsonObject crash);
 // The newest record as raw JSON text ("null" if the card has never crashed),
 // in the shape Studio's reader expects for /api/status "lastCrash".
 String lightweaverCrashLastCrashJson();
+// True when this start-up follows a crash loop (lwCrashLoopDetected): the
+// only abnormal reset that still starts in warm-white recovery.
+bool lightweaverCrashLoopDetected();
 // Read-only GET /api/crash-log: the last three records in full.
 void registerLightweaverCrashRecorder(WebServer& server);

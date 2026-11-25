@@ -321,6 +321,26 @@ inline void lwCrashAppendAddress(LwCrashText& text, uint32_t address) {
   lwCrashAppend(text, piece);
 }
 
+// ---- Crash loop: the one case that still starts in warm white ------------
+//
+// After an abnormal reset the card comes back to its saved look (Adrian,
+// 2026-11-25): one crash in hours of running should not leave a gallery piece
+// white until someone restarts it. Only a crash LOOP keeps the low, visible
+// warm-white fallback: the start-up that just crashed had itself begun right
+// after a crash, and crashed again within LW_CRASH_LOOP_WINDOW_MS. Records are
+// newest first, and `bootCount` names which start-up crashed.
+static constexpr uint32_t LW_CRASH_LOOP_WINDOW_MS = 60000;
+
+inline bool lwCrashLoopDetected(const LwCrashRing& ring, uint32_t currentBootCount) {
+  const uint8_t kept = ring.count > LW_CRASH_RING_SIZE ? LW_CRASH_RING_SIZE : ring.count;
+  if (kept < 2) return false;
+  const LwCrashRecord& last = ring.records[0];
+  const LwCrashRecord& before = ring.records[1];
+  if (last.bootCount + 1 != currentBootCount) return false;  // not the start that just ended
+  if (last.uptimeMs >= LW_CRASH_LOOP_WINDOW_MS) return false;
+  return before.bootCount + 1 == last.bootCount;
+}
+
 // ---- "lastCrash" on /api/status -------------------------------------------
 //
 // The shape Studio's reader (lightweaver/src/lib/cardCrashReport.js, contract
