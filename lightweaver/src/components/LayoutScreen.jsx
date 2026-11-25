@@ -9,6 +9,8 @@ import { WireHoverDescription } from './layout/shared/WireHoverDescription.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
 import { WirePlanTools } from './layout/modes/WirePlanTools.jsx';
 import { WireBuildSheet } from './layout/wire/WireBuildSheet.jsx';
+import { InstallerWiringSheetButton } from './layout/wire/InstallerWiringSheet.jsx';
+import { InstallerSetupProgress } from './card/InstallerSetupProgress.jsx';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -86,6 +88,9 @@ function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }
 
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
+  const setupRoute = new URLSearchParams(window.location.hash.slice(1));
+  const installerSetup = setupRoute.get('installer') === '1';
+  const showInstallerSheet = installerSetup && setupRoute.get('sheet') === '1';
   // Card Home's Lights row hands a new total here (lib/ledCountHandoff.js):
   // apply it with Layout's own setter, then, once the counted strips have
   // rendered, continue to Save to card exactly as the button below does.
@@ -116,6 +121,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const previewTrigger = useRef(null);
   const shapesTrigger = useRef(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  useEffect(() => {
+    if (showInstallerSheet) setInspectorCollapsed(false);
+  }, [showInstallerSheet]);
   const specsDeepLink = typeof window !== 'undefined' && isLayoutSpecsRoute(window.location.hash);
   const [specsOpen, setSpecsOpen] = useState(specsDeepLink);
   const [specsAttention, setSpecsAttention] = useState(false);
@@ -456,7 +464,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
   return (
     <div className="screen">
-      <div className={`la mode-${mode}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
+      <div className={`la mode-${mode}${installerSetup ? ' installer-setup' : ''}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
 
         <input ref={fileRef} type="file" accept=".svg" hidden onChange={handleFile}/>
 
@@ -593,16 +601,23 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
       {/* ── Right panel (mockup .side) ─────────────────────────────── */}
       <aside className={`side${inspectorCollapsed ? ' is-collapsed' : ''}`}>
-        <WireHoverDescription className="la-mode-nav">
+        <WireHoverDescription className={`la-mode-nav${installerSetup ? ' la-installer-nav' : ''}`}>
+          {installerSetup && <div className="la-installer-title">
+            <InstallerSetupProgress step={showInstallerSheet ? 'done' : 'strips'} compact />
+          </div>}
           <button
             type="button"
             className="la-sheet-handle"
             data-testid="layout-sheet-handle"
-            aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+            aria-label={installerSetup
+              ? (inspectorCollapsed ? 'Show strip list' : 'Hide strip list')
+              : (inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector')}
+            aria-controls="layout-inspector-content"
             aria-expanded={!inspectorCollapsed}
             onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
-            <span aria-hidden="true"/>
-            <strong>Inspector</strong>
+            {installerSetup
+              ? <InstallerSetupProgress step={showInstallerSheet ? 'done' : 'strips'} compact />
+              : <><span aria-hidden="true"/><strong>Inspector</strong></>}
           </button>
           <div className="la-install-actions">
             <button
@@ -626,11 +641,11 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               aria-describedby={showRefreshWarning ? 'layout-refresh-warning' : undefined}
               title="Check the lights and install this project on the connected card."
               data-tooltip="Check the lights and install this project on the connected card."
-              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
+              onClick={() => openCardFlow('install-project', { startProjectInstall: true, installerSetup })}
             >
               Save to card
             </button>
-            {layoutChangeKind && (
+            {!installerSetup && layoutChangeKind && (
               <details className="la-change-help" data-testid="layout-change-help">
                 <summary
                   aria-label="Installation info"
@@ -649,6 +664,10 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               </details>
             )}
           </div>
+          {showInstallerSheet && <div className="la-installer-complete">
+            <InstallerWiringSheetButton openOnMount />
+            <a className="btn" href="#screen=pattern">Open patterns</a>
+          </div>}
           {showRefreshWarning && (
             <p className="la-refresh-warning" id="layout-refresh-warning" data-testid="layout-refresh-warning" role="status">
               <strong>Estimated maximum of {maximumFps.toFixed(1)} fps.</strong>{' '}
@@ -658,9 +677,10 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
             </p>
           )}
         </WireHoverDescription>
-        <div className="la-mode-content is-draw">
+        <div className="la-mode-content is-draw" id="layout-inspector-content">
           <div className={`la-inspector-main${shapesOpen && !state.starterLayoutActive ? ' is-choosing-shape' : ''}`} hidden={specsOpen}>
             <DrawModePanel state={state}
+                         installerSetup={installerSetup}
                          addChooserOpen={shapesOpen}
                          setAddChooserOpen={setShapesOpen}
                          onCloseShapes={closeShapes}

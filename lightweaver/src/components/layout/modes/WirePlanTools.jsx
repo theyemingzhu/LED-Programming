@@ -7,6 +7,7 @@ import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
 import { WiringAssemblyMap } from '../wire/WiringAssemblyMap.jsx';
+import { InstallerWiringSheetButton } from '../wire/InstallerWiringSheet.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
 import { CardPinMap } from '../../card/CardPinMap.jsx';
 import { activeBoardGpios, assignWiringRunToPin, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
@@ -346,6 +347,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
       {tooManyOutputs && <p className="wire-capacity-line" role="alert">
         This design uses {wiring.outputs.length} LED outputs. The connected card supports up to {outputCapacity.maxOutputs}.
       </p>}
+      <InstallerWiringSheetButton />
 
       <details ref={advancedToolsRef} className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
         <summary className="panel-head">

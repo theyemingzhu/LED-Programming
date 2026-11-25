@@ -41,15 +41,18 @@
   border-bottom: 1px solid var(--border-soft);
 }
 .lw-board-swap-feedback {
-  display: grid;
-  align-content: center;
-  gap: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-basis: 100%;
   min-width: 0;
   height: 36px;
   line-height: 1.2;
   color: var(--text-mid);
 }
+.lw-board-swap-feedback > [role=status] { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.lw-board-drag-preview { display: flex; gap: 6px; min-width: 0; }
+.lw-board-drag-preview > span { flex: 1; min-width: 0; }
 .lw-board-swap-feedback strong { color: var(--text-hi); }
 .lw-board-swap-feedback span {
   overflow: hidden;
@@ -58,8 +61,7 @@
   font-size: 0.75rem;
 }
 .lw-board-toolbar > label { flex: 1 1 300px; max-width: 440px; }
-.lw-board-draft-name { width: min(100%, 440px); }
-.lw-board-draft-name,
+.lw-board-draft-fields { width: min(100%, 540px); }
 .lw-board-toolbar label,
 .lw-board-fields label { display: grid; gap: 4px; min-width: 0; color: var(--text-hi); }
 .lw-board-manager :is(input:not([type=file]), select, textarea) {
@@ -109,6 +111,7 @@
 .lw-board-wiring { grid-template-columns: minmax(0, 1fr); }
 .lw-board-drawing,
 .lw-board-map-set { display: grid; gap: 8px; min-width: 0; }
+.lw-board-map-orientation { text-align: center; font-weight: 600; font-size: 0.75rem; color: var(--text-mid); }
 .lw-board-map {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -248,6 +251,8 @@
   border-radius: var(--r-sm);
   background: var(--bg-canvas);
 }
+.lw-board-move-preview dd { display: grid; gap: 2px; }
+.lw-board-move-preview small { color: var(--text-mid); }
 .lw-board-edit-message { flex-basis: 100%; }
 @media (max-width: 700px) {
   .lw-board-pin-dialog { margin: auto auto max(12px, env(safe-area-inset-bottom)); }
@@ -306,4 +311,14 @@
   background: var(--bg-canvas);
 }
 .lw-board-led-summary strong { color: var(--text-hi); }
+.lw-board-led-status { display: grid; gap: 5px; margin: 0; }
+.lw-board-led-status dt { color: var(--text-hi); font-weight: 600; }
+.lw-board-led-status dd { margin: 0; }
+.lw-board-free-pins { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 3px 0 1px; }
+.lw-board-free-pins li {
+  padding: 2px 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  color: var(--text-hi);
+}
 .lw-board-pad-capable { color: var(--accent-hi, var(--accent)); }

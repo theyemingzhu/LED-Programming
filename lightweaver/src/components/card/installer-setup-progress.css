@@ -1,0 +1,27 @@
+.installer-setup-progress {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.installer-setup-progress li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  padding: 5px 4px;
+  border-block-end: 2px solid var(--border-soft);
+  color: var(--text-mid);
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.installer-setup-progress li[data-state='done'] { color: var(--text-hi); }
+.installer-setup-progress li[data-state='current'] {
+  color: var(--text-hi);
+  border-color: var(--accent);
+  font-weight: 700;
+}

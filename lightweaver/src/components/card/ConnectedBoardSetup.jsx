@@ -24,20 +24,50 @@ function readMatchingBoard(info, cardId) {
 function liveLedPins(profile, info, outputPins) {
   if (!outputPins || !Array.isArray(info.outputs) || !info.controls) return null;
   const { encoder, previous, next, blackout, statusLed, brightnessAnalog } = info.controls;
-  const controls = [encoder?.a, encoder?.b, encoder?.press, encoder?.effectiveAlternatePress,
-    previous, next, blackout, statusLed, brightnessAnalog];
-  const possible = selectBoardLedPins({ profile, firmwarePins: outputPins, controlPins: controls });
+  const controls = [
+    [encoder?.a, 'Used by the dial'], [encoder?.b, 'Used by the dial'],
+    [encoder?.press, 'Used by the dial'],
+    [encoder?.effectiveAlternatePress ?? encoder?.configuredAlternatePress ?? encoder?.alternatePress, 'Used by the dial'],
+    [previous, 'Used by the Previous button'], [next, 'Used by the Next button'],
+    [blackout, 'Used by the Stop button'], [statusLed, 'Used by the status light'],
+    [brightnessAnalog ?? info.controls.brightness, 'Used by the brightness control'],
+  ].filter(([pin]) => Number.isInteger(pin) && pin >= 0);
+  const possible = selectBoardLedPins({ profile, firmwarePins: outputPins, controlPins: controls.map(([pin]) => pin) });
   const wired = new Set(info.outputs.map(output => output?.pin ?? output?.gpio)
     .filter(pin => Number.isInteger(pin) && pin >= 0));
   const shared = new Set(profile.groups.flatMap(group => group.pins)
     .filter(pin => pin.role === 'led' || pin.role === 'jtag').map(pin => pin.gpio));
   const unused = possible.filter(pin => !wired.has(pin));
+  const blocked = new Map();
+  for (const [pin, reason] of controls) {
+    if (!outputPins.includes(pin) || wired.has(pin)) continue;
+    if (!blocked.has(reason)) blocked.set(reason, new Set());
+    blocked.get(reason).add(pin);
+  }
   return {
     free: unused.filter(pin => !shared.has(pin)),
     shared: unused.filter(pin => shared.has(pin)),
     wired: [...wired],
     check: [...wired].filter(pin => !possible.includes(pin)),
+    blocked: [...blocked].map(([reason, pins]) => [reason, [...pins]]),
   };
+}
+
+function RevisionGuide() {
+  // Espressif publishes the revision on the back silkscreen of both reference
+  // DevKitC-1 boards. The front silkscreen marks RGB@IO48 or RGB@IO38.
+  return (
+    <figure className="connected-board-setup__revision" aria-label="Where to find the board revision">
+      <div className="connected-board-setup__back" aria-hidden="true">
+        <small>Example marking</small>
+        <span>ESP32-S3-DevKitC-1 <strong>v1.1</strong></span>
+      </div>
+      <figcaption>
+        Turn the board over. Look between the two rows of pins for the version after the board name.
+        If the back is hard to read, compare the RGB marking on the front.
+      </figcaption>
+    </figure>
+  );
 }
 
 export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, onOpenBoardManager, onSetUpLights }) {
@@ -102,6 +132,7 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
   const choices = new Set(match.candidates.map(candidate => candidate.profile.id));
   const exact = match.status === 'reported' && !browse;
   const conflict = match.reason === 'hardware-readings-conflict';
+  const showRevisionGuide = !conflict && match.candidates.some(({ profile }) => profile.id.startsWith('espressif-devkitc-1-'));
   const recent = new Set(Object.values(library.confirmations).map(choice => choice?.id));
   const search = query.toLowerCase().split(/\s+/).filter(Boolean);
   const visibleProfiles = profiles.filter(profile => {
@@ -142,7 +173,7 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
           const compatible = choices.has(profile.id);
           const rgb = compatible && profile.groups.flatMap(group => group.pins)
             .find(pin => pin.detail?.startsWith('Onboard RGB'));
-          const hint = compatible ? rgb && `Onboard RGB · ${formatGpio(rgb.gpio)}` : 'Different hardware';
+          const hint = compatible ? rgb && `Look for RGB@IO${rgb.gpio} on the front` : 'Different hardware';
           const hintId = `connect-board-${profile.id}-hint`;
           return (
             <button key={profile.id} type="button" className="btn connected-board-setup__option"
@@ -161,21 +192,32 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
   if (board) {
     const { maxOutputs, outputPins } = readCardOutputCapabilities(info);
     const pins = liveLedPins(board, info, outputPins ?? CARD_HARDWARE_CONTRACT.outputPins);
+    const positions = new Map(board.groups.filter(group => group.kind === 'header').flatMap(group => group.pins.map(
+      (pin, index) => [pin.gpio, `${group.name} pin ${group.start + index * group.step}`],
+    )));
     return (
       <section className="connected-board-setup" data-testid="connect-board-setup" aria-label="Board and LED pins">
         <h3 ref={boardHeading} tabIndex={-1}>{boardTitle(board)}</h3>
         {pins ? <dl className="connected-board-setup__pins">
-          <div><dt>Free for LEDs</dt><dd>{pins.free.map(formatGpio).join(', ') || 'None'}</dd></div>
+          <div><dt>Free for LED data</dt><dd>{pins.free.length ? pins.free.map(pin => (
+            <span className="connected-board-setup__pin" key={pin}>
+              {positions.has(pin) && <span>{positions.get(pin)} · </span>}<span>{formatGpio(pin)}</span>
+            </span>
+          )) : 'None'}</dd></div>
           {pins.shared.length > 0 && <div><dt>Shared with board functions</dt><dd>{pins.shared.map(formatGpio).join(', ')}</dd></div>}
           {pins.wired.length > 0 && <div><dt>LEDs already set up</dt><dd>{pins.wired.map(formatGpio).join(', ')}</dd></div>}
           {pins.check.length > 0 && <div><dt>Check these LED pins</dt><dd>{pins.check.map(formatGpio).join(', ')}</dd></div>}
+          {pins.blocked.map(([reason, blocked]) => <div key={reason}><dt>{reason}</dt><dd>{blocked.map(formatGpio).join(', ')}</dd></div>)}
         </dl> : <p>The card did not report its LED and control wiring.</p>}
         {pins && !outputPins && <p>Pin choices use the standard Lightweaver list for this firmware.</p>}
-        <p>This card supports up to {maxOutputs} LED outputs.</p>
+        <p>{pins && pins.wired.length >= maxOutputs
+          ? 'This card is already using all its LED outputs. You can move an existing strip to a free pin.'
+          : `This card supports up to ${maxOutputs} LED outputs.`}</p>
         <div className="card-connection-actions">
-          <button type="button" className="btn primary" onClick={onSetUpLights}>Set up lights</button>
+          <button type="button" className="btn primary" onClick={onSetUpLights}>Connect strips</button>
+          <button type="button" className="btn" onClick={() => onOpenBoardManager?.({ profileId: board.id })}>See all pins</button>
           <button type="button" className="btn" onClick={browseBoards}>Change board</button>
-          <button type="button" className="btn" onClick={openEditor}>Map looks wrong</button>
+          <button type="button" className="btn" onClick={openEditor}>My board looks different</button>
         </div>
       </section>
     );
@@ -187,7 +229,8 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
       {conflict ? <p role="alert">USB and Wi-Fi reported different hardware. Reconnect this card and check again.</p>
         : exact ? <p>Your card reports <strong>{boardTitle(selected)}</strong>. Check the name printed on your board.</p>
           : match.status === 'no-match' ? <p>No saved board matches this card. Make a board profile to continue.</p>
-            : <p>Check the name and revision printed on your board. Choose the one that matches.</p>}
+            : <p>Which version is printed on your board? Choose the one that matches.</p>}
+      {showRevisionGuide && <RevisionGuide />}
       {!conflict && (browse ? <>
         <label className="connected-board-setup__search">
           Search board profiles
@@ -201,7 +244,7 @@ export function ConnectedBoardSetup({ cardId, host, transport, bootId, buildId, 
       <div className="card-connection-actions">
         {!conflict && <button type="button" className="btn primary" disabled={!selected} onClick={confirmBoard}>Use this board</button>}
         {!conflict && !browse && <button type="button" className="btn" onClick={browseBoards}>Browse boards</button>}
-        {!conflict && <button type="button" className="btn" onClick={openEditor}>{selected ? 'Map looks wrong' : 'Make a board profile'}</button>}
+        {!conflict && <button type="button" className="btn" onClick={openEditor}>{selected ? 'My board looks different' : 'Make a board profile'}</button>}
       </div>
     </section>
   );

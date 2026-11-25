@@ -114,7 +114,7 @@ function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
     <div className="lw-worker-start" data-testid="public-worker-start" role="group" aria-label="Start">
       <button type="button" className="lw-worker-start-path btn primary is-primary" data-testid="setup-connect-card" onClick={onSetUpCard}>
         <span>Card</span>
-        <strong>Set up the card</strong>
+        <strong>Set up this card</strong>
       </button>
       <button type="button" className="lw-worker-start-path" onClick={onStartLayout}>
         <span>Design</span>
@@ -970,7 +970,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, boardSetupEntry, onReturnToBoardSetup, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenInstallerConnection = onOpenConnectionCenter, boardSetupEntry, onReturnToBoardSetup, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -1086,13 +1086,16 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     : new URLSearchParams();
   const installIntentOpen = cardRoute.get('next') === 'patterns';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
+  const editInstallWiring = () => {
+    window.location.hash = `#screen=layout&mode=draw${cardRoute.get('installer') === '1' ? '&installer=1' : ''}`;
+  };
   let content;
   const installAction = installIntentOpen ? (
     <CardInstallAction
       connected={connected}
       cardHost={cardHost}
       yieldPrimary={ladderOwnsPrimary}
-      onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+      onEditInWire={editInstallWiring}
     />
   ) : null;
   // Card Home: the guided journey, the one install action, evidence panels,
@@ -1126,7 +1129,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       <BoardManagerEntry
         cardId={['connected-direct', 'connected-bridge'].includes(cardLink?.state) ? cardLink.card?.id : ''}
         onOpen={() => onOpenSection('boards')}
-        onConnect={onOpenConnectionCenter}
+        onConnect={showPublicWorkerStart || installIntentOpen ? undefined : onOpenInstallerConnection}
       />
       <SetupScreen
         {...cardProps}
@@ -1135,7 +1138,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           <PublicWorkerStart
             onStartLayout={() => go('layout')}
             onOpenProjects={onOpenProjects}
-            onSetUpCard={onOpenConnectionCenter}
+            onSetUpCard={onOpenInstallerConnection}
           />
         ) : null}
         onOpenConnectionCenter={onOpenConnectionCenter}
@@ -1153,7 +1156,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
             cardHost={cardHost}
             yieldPrimary={ladderOwnsPrimary}
             demote={sharedJourney.setupComplete === true}
-            onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+            onEditInWire={editInstallWiring}
           />
         ) : null}
         currentProject={currentProject}

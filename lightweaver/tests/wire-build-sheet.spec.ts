@@ -109,6 +109,48 @@ test('the schedule fits its column on a phone', async ({ page }) => {
   expect(overflow.page).toBeLessThanOrEqual(0);
 });
 
+test('the installer can reopen and print a checked wiring sheet on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await freshLayout(page);
+  await addLine(page);
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.layout?.wiring?.runs.some(run => run.type === 'strip');
+  })).toBe(true);
+  await page.evaluate(async () => {
+    const cardId = 'lw-000000000001';
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const { REFERENCE_BOARDS, rememberBoard, updateBoardLibrary } = await import('/src/lib/boardProfiles.js');
+    const { recordInstallerWiringConfirmation } = await import('/src/lib/installerWiringSheet.js');
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
+    updateBoardLibrary(localStorage, library => rememberBoard(library, cardId, REFERENCE_BOARDS[1]));
+    recordInstallerWiringConfirmation({ cardId, projectId: saved.id, wiring: saved.layout.wiring,
+      confirmedRunIds: saved.layout.wiring.runs.map(run => run.id) });
+  });
+
+  await page.getByTestId('layout-specs-trigger').click();
+  const trigger = page.getByRole('button', { name: 'Wiring sheet', exact: true });
+  await trigger.click();
+  const sheet = page.getByRole('dialog', { name: 'Wiring sheet', exact: true });
+  await expect(sheet).toContainText('ESP32-S3-DevKitC-1 N16R8 v1.1');
+  await expect(sheet.getByRole('listitem')).toContainText('Line');
+  await expect(sheet.getByRole('listitem')).toContainText('J1 pin 9 · GPIO 16');
+  await expect(sheet.getByRole('listitem')).toContainText('44 LEDs');
+  await expect(sheet.getByRole('listitem')).toContainText('Checked in person');
+  expect(await sheet.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+
+  await page.evaluate(() => { window.print = () => { document.body.dataset.printRequested = 'true'; }; });
+  await sheet.getByRole('button', { name: 'Print or save as PDF' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'true');
+  await page.emulateMedia({ media: 'print' });
+  await expect(sheet.getByRole('listitem')).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Print or save as PDF' })).toBeHidden();
+  await expect(page.getByTestId('layout-specs-panel')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(trigger).toBeFocused();
+});
+
 
 test('wiring and build references start collapsed while power warnings stay visible', async ({ page }) => {
   await freshLayout(page);

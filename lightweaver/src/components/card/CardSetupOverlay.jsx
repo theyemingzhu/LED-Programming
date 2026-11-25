@@ -16,6 +16,7 @@ function focusableElements(root) {
 export function CardSetupOverlay({
   cardHost = '',
   cardLink = null,
+  discoveryHash = '',
   onDismiss,
   onDisconnect,
   onComplete,
@@ -23,6 +24,10 @@ export function CardSetupOverlay({
   onMinimizedChange,
   go,
 }) {
+  const route = new URLSearchParams(discoveryHash.slice(1));
+  const installerSetup = route.get('installer') === '1';
+  const pinParam = route.get('pin') || '';
+  const preferredPin = installerSetup && /^\d{1,2}$/.test(pinParam) ? Number(pinParam) : null;
   const dialogRef = useRef(null);
   const restoreButtonRef = useRef(null);
   const restoreFocusRef = useRef(null);
@@ -212,6 +217,8 @@ export function CardSetupOverlay({
           <StripDiscoveryPanel
             cardHost={cardHost}
             cardLink={cardLink}
+            installerSetup={installerSetup}
+            preferredPin={preferredPin}
             go={go}
             embedded
             onLifecycleChange={setLifecycle}

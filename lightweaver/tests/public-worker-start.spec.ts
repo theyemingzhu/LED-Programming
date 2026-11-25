@@ -24,13 +24,14 @@ test('a fresh worker sees physical card setup first, before design and saved wor
   const paths = start.locator('.lw-worker-start-path');
   await expect(paths).toHaveCount(3);
   await expect(paths.nth(0)).toHaveClass(/primary/);
-  await expect(paths.nth(0)).toContainText('Set up the card');
-  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(paths.nth(0)).toContainText('Set up this card');
+  await expect(start.getByRole('button', { name: /set up this card/i })).toBeVisible();
   await expect(page.getByTestId('setup-identity-row')).toBeVisible();
 
-  await start.getByRole('button', { name: /set up the card/i }).click();
+  await start.getByRole('button', { name: /set up this card/i }).click();
   const connect = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(connect.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+  await expect(connect.getByTestId('installer-setup-progress').locator('[aria-current="step"]')).toHaveText('1Connect');
   await expect(connect.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
   await page.keyboard.press('Escape');
 
@@ -56,7 +57,7 @@ test('the fresh-worker start remains usable at phone width', async ({ page }) =>
   await expect(start).toBeVisible();
   await expect(start.getByRole('button', { name: 'Start a layout' })).toBeVisible();
   await expect(start.getByRole('button', { name: 'Open saved work' })).toBeVisible();
-  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(start.getByRole('button', { name: /set up this card/i })).toBeVisible();
 });
 
 test('a worker can import artwork, count and split it, choose a pattern, save, and reopen after reload', async ({ page }) => {
@@ -76,19 +77,25 @@ test('a worker can import artwork, count and split it, choose a pattern, save, a
   await total.press('Enter');
   await expect(total).toHaveValue('60');
 
-  await page.locator('.la-strip-row').click();
-  await page.getByTestId('connected-add-split').click();
-  await expect(page.getByTestId('connected-section-editor').getByTestId('connected-child')).toHaveCount(2);
-  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['30 LEDs', '30 LEDs']);
+  await page.locator('.la-strip-row .layer-name').click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('2');
+  await page.getByRole('button', { name: /^Divide .+ into 2 sections$/ }).click();
+  const sections = page.getByLabel(/^Worker route [12] · 30 LEDs$/);
+  await expect(sections).toHaveCount(2);
 
   await page.getByTestId('project-name-edit').click();
   await page.getByLabel('Project name').fill('Worker sample');
   await page.getByLabel('Project name').press('Enter');
 
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
-  await expect(page.getByText('2 section · card limit 12', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '+ New look' }).click();
+  await page.getByRole('tab', { name: 'Patterns', exact: true }).click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
-  await page.getByTestId('look-save-preset').click();
+  await page.getByTestId('stack-return-save').click();
+  await page.getByRole('textbox', { name: 'Look name' }).fill('Ocean sample');
+  await page.getByRole('button', { name: 'Save look', exact: true }).click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved');
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
@@ -111,5 +118,5 @@ test('a worker can import artwork, count and split it, choose a pattern, save, a
   await expect(projects).not.toBeVisible();
   await expect(page.getByTestId('project-name-edit')).toContainText('Worker sample');
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
-  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['30 LEDs', '30 LEDs']);
+  await expect(sections).toHaveCount(2);
 });

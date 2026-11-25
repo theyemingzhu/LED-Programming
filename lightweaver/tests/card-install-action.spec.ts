@@ -20,7 +20,7 @@ test('install-project keeps card setup first when Studio has no card', async ({ 
 
   await expect(page.getByTestId('public-worker-start')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
-  await expect(page.getByTestId('public-worker-start').getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(page.getByTestId('public-worker-start').getByRole('button', { name: /set up this card/i })).toBeVisible();
   await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
   // Home carries no kicker; the status module is its name-plate.

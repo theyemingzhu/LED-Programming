@@ -50,6 +50,10 @@ import { setLightTestActivity } from '../../../lib/lightTestActivity.js';
 import { mergeCardLooksIntoController, readCardLooksController } from '../../../lib/lookLossGuard.js';
 import { getCardLinkState, noteCardCheckHold, noteCardCheckRelease, noteCardRestartPlanned, noteCardRestartSettled, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
+import { formatGpio } from '../../../lib/cardPinout.js';
+import { recordInstallerWiringConfirmation } from '../../../lib/installerWiringSheet.js';
+import { displayStripName } from '../../../lib/stripLabels.js';
+import { InstallerSetupProgress } from '../../card/InstallerSetupProgress.jsx';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
   'mixed-content',
@@ -164,6 +168,7 @@ export function CardPushControl({
   disabled = false,
   autoStart = false,
   resumeCandidate = false,
+  installerSetup = false,
   replaceProjectIntent = false,
   onInstalled,
   // True while a Setup ladder above this control already owns the page's
@@ -234,6 +239,14 @@ export function CardPushControl({
   const [pushFallbackPackage, setPushFallbackPackage] = useState(null);
   const [wiringCandidate, setWiringCandidate] = useState(null);
   const [wiringTestState, setWiringTestState] = useState('idle');
+  const trial = wiringCandidate?.attempt.mediaProject?.compiledWiring;
+  const trialStrips = wiringCandidate?.attempt.mediaProject?.strips || [];
+  const trialLabels = (trial?.outputs || []).flatMap(({ id, pin }) => {
+    const sourceIds = new Set(trial.runs.filter(run => run.outputId === id && run.type === 'strip').map(run => run.source.stripId));
+    const names = trialStrips.filter(strip => sourceIds.has(strip.id))
+      .map(strip => displayStripName(strip, wiringCandidate.attempt.mediaProject.sectionFamilies));
+    return names.length ? [{ id, pin, names }] : [];
+  });
   const [candidateConflict, setCandidateConflict] = useState(null);
   const [writeOwnerConflict, setWriteOwnerConflict] = useState(null);
   const [installAlreadyCurrent, setInstallAlreadyCurrent] = useState(false);
@@ -434,6 +447,7 @@ export function CardPushControl({
           && !prepared.runtimePackage?.mediaAssets?.length;
         attempt = {
           host: cleanHost,
+          projectId,
           readOnlyCandidate,
           revision: projectLifecycle.editedRevision,
           generation: projectLifecycle.generation,
@@ -877,7 +891,9 @@ export function CardPushControl({
         await rollbackCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
         failedAttemptRef.current = wiringCandidate.attempt;
         dispatchAction({ type: 'fail', error: 'Wiring test rolled back.' });
-        setPushStatus('Restored the last working setup. Use Find my LED wire before trying again.');
+        setPushStatus(installerSetup
+          ? 'Restored the last working setup. Check the strip’s connection before testing again.'
+          : 'Restored the last working setup. Use Find my LED wire before trying again.');
         setWiringTestState('rolled-back');
       }
       setWiringCandidate(null);
@@ -891,6 +907,9 @@ export function CardPushControl({
     if (!confirmedAttempt) return;
     try {
       await publishVerifiedReadiness(confirmedAttempt.prepared, confirmedAttempt.host);
+      const { mediaProject, prepared } = confirmedAttempt;
+      const confirmedRunIds = (mediaProject?.compiledWiring?.runs || []).filter(run => run.type === 'strip').map(run => run.id);
+      recordInstallerWiringConfirmation({ cardId: prepared.cardId, projectId: confirmedAttempt.projectId, wiring: mediaProject?.wiring, confirmedRunIds });
       onInstalled?.();
     } catch (error) {
       dispatchAction({ type: 'fail', error: 'The confirmed card status did not reach Studio.' });
@@ -1044,7 +1063,7 @@ export function CardPushControl({
           </div>
         </div>
       )}
-      {pushStatus && (
+      {pushStatus && !(installerSetup && wiringTestState === 'testing') && (
         <div
           className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}
           {...(installAlreadyCurrent
@@ -1069,6 +1088,8 @@ export function CardPushControl({
           )}
           {candidateConflict?.activationId ? (
             <button className="btn" data-testid="discard-candidate-and-retry" title="Discard the unfinished card light test and keep the working setup." data-tooltip="Discard the unfinished card light test and keep the working setup." onClick={() => void discardOldCandidateAndRetry()}>{candidateConflict.readOnlyCandidate ? 'Discard staged change' : 'Discard old test and retry'}</button>
+          ) : installerSetup && wiringTestState === 'rolled-back' ? (
+            <a className="btn" href="#screen=layout&mode=draw&installer=1">Back to strips</a>
           ) : action.status === 'failed' && (
             <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => void retryAfterCardRestart()}>Retry</button>
           )}
@@ -1084,22 +1105,34 @@ export function CardPushControl({
         </div>
       )}
       {wiringCandidate && (
-        <section className="lw-wiring-candidate" aria-label="Wiring safety check">
+        <section className="lw-wiring-candidate" aria-label="Wiring safety check" data-installer-setup={installerSetup || undefined}>
           {/* This is the SECOND time the owner is asked to look at the lights,
               and it is not Studio repeating itself: the card is holding its
               previous working wiring and will put it back on its own unless a
               human confirms. Saying which ask this is stops it reading as the
               same question twice. */}
-          <strong>{wiringTestState === 'testing' ? 'Last look — do the lights still look right?' : 'One last check on the card itself'}</strong>
-          <p>{wiringTestState === 'testing'
+          {installerSetup && <InstallerSetupProgress step="test" />}
+          <strong>{installerSetup
+            ? (wiringTestState === 'testing' ? 'Are all the lights steady?' : 'Test the lights')
+            : (wiringTestState === 'testing' ? 'Last look — do the lights still look right?' : 'One last check on the card itself')}</strong>
+          <p>{installerSetup
+            ? (wiringTestState === 'testing'
+              ? 'Look at each strip below. If one is dark or flickers, restore the previous setup.'
+              : 'The card keeps your previous setup until you confirm the lights. If a strip is dark, check the connector and power, then try again.')
+            : (wiringTestState === 'testing'
             ? 'The card is running your new wiring now. Confirming makes it permanent; if you say nothing, the card puts its old setup back by itself.'
-            : 'The card keeps its last working setup until you confirm this one on the real lights. Nothing is permanent yet.'}</p>
+            : 'The card keeps its last working setup until you confirm this one on the real lights. Nothing is permanent yet.')}</p>
+          {installerSetup && wiringTestState === 'testing' && trialLabels.length > 0 && (
+            <ul className="lw-installer-test-strips" aria-label="Strips to check">
+              {trialLabels.map(({ id, pin, names }) => <li key={id}><strong>{formatGpio(pin)}</strong> {names.join(', ')}</li>)}
+            </ul>
+          )}
           {wiringTestState === 'staged' || wiringTestState === 'failed' ? (
             <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-testid="wiring-test-start" onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." data-testid="wiring-test-cancel" onClick={() => finishWiringTest(false)}>Cancel change</button></div>
           ) : wiringTestState === 'testing' ? (
-            <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." data-testid="wiring-test-confirm" onClick={() => finishWiringTest(true)}>The lights look correct</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>No, restore working setup</button></div>
+            <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." data-testid="wiring-test-confirm" onClick={() => finishWiringTest(true)}>{installerSetup ? 'Keep this setup' : 'The lights look correct'}</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>{installerSetup ? 'Restore previous setup' : 'No, restore working setup'}</button></div>
           ) : wiringTestState === 'unverified' ? (
-            <div><button className="btn" data-testid="wiring-test-check-outputs" onClick={() => void showActiveWiringTest(wiringCandidate.attempt)}>Check outputs again</button><button className="btn primary" data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>Restore working setup</button></div>
+            <div><button className="btn" data-testid="wiring-test-check-outputs" onClick={() => void showActiveWiringTest(wiringCandidate.attempt)}>Check outputs again</button><button className="btn primary" data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>{installerSetup ? 'Restore previous setup' : 'Restore working setup'}</button></div>
           ) : <p>Working…</p>}
         </section>
       )}

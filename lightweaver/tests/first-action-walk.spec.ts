@@ -187,7 +187,7 @@ test('[FA-unplugged] no card answering: Find my card is first', async ({ page })
   await expect(page.getByTestId('setup-connect-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   const report = await captureStep(page, 'fa-unplugged');
   expect(report.heading).toMatch(/start lightweaver|set up your lightweaver/i);
-  expectOneFirstAction(report, /set up the card|plug in and find card|find my card/i, 'unplugged');
+  expectOneFirstAction(report, /set up this card|plug in and find card|find my card/i, 'unplugged');
 });
 
 test('[FA-plugged-blank] a plugged-in empty card offers one-tap pairing before find the lights', async ({ page }) => {

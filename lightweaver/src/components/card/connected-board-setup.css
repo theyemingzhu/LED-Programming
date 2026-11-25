@@ -86,6 +86,47 @@
   color: var(--text-hi);
 }
 
+.connected-board-setup__pins > div:first-child {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.connected-board-setup__pins > div:first-child dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+}
+
+.connected-board-setup__pin {
+  padding: 2px 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+}
+
+.connected-board-setup__revision {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 106px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.connected-board-setup__back {
+  padding: 10px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  text-align: center;
+  font: 10px/1.2 var(--font-mono);
+  overflow-wrap: anywhere;
+  background:
+    radial-gradient(circle at 3px 3px, var(--text-lo) 1px, transparent 1.2px) top left / 6px 6px repeat-x,
+    radial-gradient(circle at 3px 3px, var(--text-lo) 1px, transparent 1.2px) bottom left / 6px 6px repeat-x,
+    var(--bg-app);
+}
+
+.connected-board-setup__back strong { color: var(--accent-hi); }
+.connected-board-setup__back small { display: block; color: var(--text-mid); margin-block-end: 2px; }
+
 .connected-board-setup .card-connection-actions {
   margin-top: 4px;
 }

@@ -58,7 +58,7 @@ test('first-run card setup leads with USB inspection and keeps Wi-Fi paths secon
 test('a blind background probe cannot replace fresh USB setup with a connecting dead end', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Set up the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up this card' })).toBeVisible();
   await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     const button = document.querySelector('[data-testid="setup-connect-card"]');

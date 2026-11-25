@@ -523,6 +523,8 @@
 .lw-wiring-candidate p { margin: 0; color: var(--text-mid); font-size: 11px; line-height: 1.45; }
 .lw-wiring-candidate > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .lw-wiring-candidate .btn { min-height: 38px; }
+.lw-installer-test-strips { display: grid; gap: 3px 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); margin: 0; padding: 0; list-style: none; color: var(--text-mid); font-size: 12px; }
+.lw-wiring-candidate .lw-installer-test-strips strong { margin-inline-end: 4px; font: 11px var(--font-mono); }
 .la-card-push-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .la-card-push-btn {
   flex: 0 1 auto;

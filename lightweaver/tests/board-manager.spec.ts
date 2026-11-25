@@ -19,7 +19,8 @@ async function dragPin(page: Page, handle: Locator, contact: Locator, touch: boo
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [to] });
       await expect(contact.locator('..')).toHaveAttribute('data-swap-target', 'true', { timeout: 3000 });
       await expect(page.getByText('Release to swap', { exact: true })).toBeVisible();
-      await expect(page.getByText('J1 pin 2 (GPIO 16) ↔ J1 pin 1 (GROUND)', { exact: true })).toBeVisible();
+      await expect(page.getByText('From J1 pin 2 (GPIO 16) · Planned strip data', { exact: true })).toBeVisible();
+      await expect(page.getByText('To J1 pin 1 (GROUND) · Ground', { exact: true })).toBeVisible();
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     } else {
       await page.mouse.move(from.x, from.y);
@@ -27,7 +28,8 @@ async function dragPin(page: Page, handle: Locator, contact: Locator, touch: boo
       await page.mouse.move(to.x, to.y, { steps: 8 });
       await expect(contact.locator('..')).toHaveAttribute('data-swap-target', 'true', { timeout: 3000 });
       await expect(page.getByText('Release to swap', { exact: true })).toBeVisible();
-      await expect(page.getByText('J1 pin 2 (GPIO 16) ↔ J1 pin 1 (GROUND)', { exact: true })).toBeVisible();
+      await expect(page.getByText('From J1 pin 2 (GPIO 16) · Planned strip data', { exact: true })).toBeVisible();
+      await expect(page.getByText('To J1 pin 1 (GROUND) · Ground', { exact: true })).toBeVisible();
       await page.mouse.up();
     }
   } finally {
@@ -45,6 +47,8 @@ for (const width of [1280, 390]) {
 
     const profile = page.getByRole('combobox', { name: 'Board profile', exact: true });
     await profile.selectOption(v10);
+    await expect(page.getByTestId('board-antenna-end')).toHaveText('Antenna end · pin 1');
+    await expect(page.getByTestId('board-usb-end')).toHaveText('USB end');
     await expect(page.getByRole('button', { name: /GPIO 48 · Onboard RGB/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /GPIO 38 · Onboard RGB/ })).toHaveCount(0);
     await profile.selectOption(v11);
@@ -53,22 +57,27 @@ for (const width of [1280, 390]) {
     const pinTop = (await rgbPin.boundingBox())!.y;
     await rgbPin.click();
     const inspector = page.getByRole('dialog', { name: 'Pin details' });
-    await expect(inspector.getByText('Can carry LED data. Check that the pin is free before wiring.')).toBeVisible();
+    await expect(inspector.getByRole('heading', { name: 'J3 pin 10 · GPIO 38' })).toBeVisible();
+    await expect(inspector.getByText(/Shared with Onboard RGB/)).toBeVisible();
     expect(Math.abs((await rgbPin.boundingBox())!.y - pinTop)).toBeLessThan(2);
     await inspector.getByRole('button', { name: 'Done' }).click();
     expect(Math.abs((await rgbPin.boundingBox())!.y - pinTop)).toBeLessThan(2);
     await expect(rgbPin).toBeFocused();
     for (const [gpio, signal] of [[10, 'CS'], [11, 'MOSI'], [12, 'SCK'], [13, 'MISO']]) {
-      await expect(page.getByRole('button', { name: new RegExp(`GPIO ${gpio} · General-purpose pin · Lightweaver microSD ${signal}`) })).toBeVisible();
+      const storage = page.getByRole('button', { name: new RegExp(`GPIO ${gpio} · General-purpose pin · Lightweaver microSD ${signal}`) });
+      await expect(storage).toBeVisible();
+      await expect(storage).toHaveAccessibleDescription(`Reserved for microSD ${signal}.`);
     }
 
     await profile.selectOption('espressif-esp32-s3-usb-otg-v1.0');
+    await expect(page.getByTestId('board-antenna-end')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'J5 odd' }).getByRole('button', { name: /J5 odd 3: GPIO 39/ })).toBeVisible();
     await expect(page.getByRole('region', { name: 'microSD' }).getByRole('button', { name: /CMD · SDIO/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Lightweaver microSD/ })).toHaveCount(0);
     await profile.selectOption(v11);
     await page.getByRole('button', { name: 'Copy this board' }).click();
     await expect(page.getByLabel('Board name')).toHaveValue('ESP32-S3-DevKitC-1 N16R8 copy');
+    await expect(page.getByLabel('Printed revision (if shown)')).toHaveValue('');
     const paired = await Promise.all(['J1', 'J3'].map(group =>
       page.getByRole('button', { name: new RegExp(`^${group} 10:`) }).boundingBox()));
     expect(Math.abs(paired[0]!.y - paired[1]!.y)).toBeLessThan(1);
@@ -100,9 +109,9 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole('button', { name: /GPIO 10 · General-purpose pin · Lightweaver microSD CS/ })).toBeVisible();
     await page.getByRole('button', { name: 'Start blank' }).click();
     await page.getByLabel('Board name').fill('Supplier variant');
+    await page.getByLabel('Printed revision (if shown)').fill('B');
     await page.getByRole('button', { name: 'Board details' }).click();
     await page.getByLabel('Manufacturer').fill('Example Maker');
-    await page.getByLabel('PCB revision').fill('B');
     await page.getByLabel('Supplier or listing').fill('Example Store');
     await page.getByLabel('Chip', { exact: true }).fill('ESP32-S3');
     await page.getByLabel('Module marking').fill('ESP32-S3-WROOM-1-N16R8');
@@ -124,21 +133,25 @@ for (const width of [1280, 390]) {
       page.getByRole('button', { name: /^J1 1: GROUND/ }), width === 390);
     await expect(page.getByRole('button', { name: /^J1 1: DATA/ })).toBeVisible();
     await expect(page.getByText('Swapped · Save profile to keep the change')).toBeVisible();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^J1 2: DATA/ })).toBeVisible();
+    await expect(page.getByText('Change undone')).toBeVisible();
+    await dragPin(page, page.getByRole('button', { name: 'Swap J1 2: DATA', exact: true }),
+      page.getByRole('button', { name: /^J1 1: GROUND/ }), width === 390);
     await page.getByRole('button', { name: 'Swap J1 1: DATA', exact: true }).press('Enter');
     await page.getByRole('button', { name: /^J1 2: GROUND/ }).press('Enter');
     const move = page.getByRole('dialog', { name: 'Move or swap pin' });
     await expect(move.getByText('J1 pin 1 (GPIO 16)', { exact: true })).toBeVisible();
     await expect(move.getByRole('definition').filter({ hasText: 'J1 pin 2 (GROUND)' })).toBeVisible();
+    await expect(move.getByText('Planned strip data', { exact: true })).toBeVisible();
     await expect(page.locator('[data-board-pin="0:0"]')).toContainText('DATA');
     await move.getByRole('button', { name: 'Apply swap' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByRole('button', { name: /^J1 2: DATA/ })).toBeVisible();
     await page.getByRole('button', { name: /^J1 2: DATA/ }).click();
     await page.getByRole('button', { name: 'Move or swap pin' }).click();
     await move.getByRole('combobox', { name: 'Move to' }).selectOption('0:0');
     await expect(move.getByText('J1 pin 1', { exact: true })).toBeVisible();
     await move.getByRole('button', { name: 'Apply move' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByRole('button', { name: /^J1 1: DATA/ })).toBeVisible();
     await page.getByRole('button', { name: 'Add pin group' }).click();
     await page.getByLabel('Group name').fill('J2');
@@ -148,7 +161,6 @@ for (const width of [1280, 390]) {
     await move.getByRole('combobox', { name: 'Move to' }).selectOption({ label: 'End of J2' });
     await expect(move.getByText('J2 pin 1', { exact: true })).toBeVisible();
     await move.getByRole('button', { name: 'Apply move' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByRole('button', { name: /^J2 1: GROUND/ })).toBeVisible();
     await page.getByRole('button', { name: 'Save profile' }).click();
     await expect(page.getByText('Saved in this browser · profile revision 1.')).toBeVisible();
@@ -180,7 +192,7 @@ for (const width of [1280, 390]) {
       });
       await expect(importPage.getByText('Imported and saved in this browser.')).toBeVisible();
       await importPage.getByRole('button', { name: /^J1 1: DATA/ }).click();
-      await expect(importPage.getByText('This pin is outside the LED pin list.')).toBeVisible();
+      await expect(importPage.getByText('Confirm this board on a connected card to check this pin.')).toBeVisible();
       await expect(importPage.getByRole('dialog').getByText('Planned strip data')).toBeVisible();
       expect(await importPage.evaluate(() => {
         const region = document.querySelector('.lw-board-manager')!;
@@ -199,6 +211,7 @@ for (const exact of [false, true]) test(`checks a connected card automatically a
     app: 'Lightweaver', provisioningContractVersion: 1, cardId, firmwareVersion: '1.2.8',
     buildId: 'a'.repeat(40), bootId: 'boot-1', runtimePhase: 'ready', commandReady: true,
     outputReady: true, playbackReady: true, configValid: true, knownGoodProject: true,
+    limits: { outputs: exact ? 1 : 4 },
     ...(exact ? { boardProfile: { id: v10, revision: 1 } } : {}),
     outputs: [{ pin: 15, pixels: 40 }],
     controls: { encoder: { a: 16 } },
@@ -229,8 +242,15 @@ for (const exact of [false, true]) test(`checks a connected card automatically a
   }
   await page.getByRole('button', { name: 'Use this board' }).click();
   const ledPins = page.getByRole('region', { name: 'LED pins' });
-  await expect(ledPins.getByText(/Free now.*GPIO 17/)).toBeVisible();
-  await expect(ledPins.getByText(/In use.*GPIO 15.*GPIO 16/)).toBeVisible();
+  await expect(ledPins.getByText('Free for LED data', { exact: true })).toBeVisible();
+  if (exact) {
+    await expect(ledPins.getByText('No free LED pins.')).toBeVisible();
+    await expect(ledPins.getByText(/This card’s only LED output is in use/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^J1 10: GPIO 17/ })).toHaveAccessibleDescription(/already uses all its LED outputs/);
+  } else {
+    await expect(ledPins.getByText(/J1 pin 10 · GPIO 17/)).toBeVisible();
+  }
+  await expect(ledPins.getByText(/GPIO 15 · LED output assigned.*GPIO 16 · Used by Dial A/)).toBeVisible();
   await expect(ledPins.getByRole('link', { name: 'Open Wiring' })).toBeVisible();
   await page.getByRole('button', { name: 'Back to Card' }).click();
   await expect(page.getByText('Saved for this card')).toBeVisible();
