@@ -85,7 +85,7 @@ test('spanning strip inventory and mapping include inactive address gaps', async
   await expect(firstOutput.getByTestId('layout-output-inventory')).toContainText('1 section');
   await expect(secondOutput.getByTestId('layout-output-inventory')).toContainText('1 section');
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
-  await expect(page.locator('.la-strip-routes')).toContainText('GPIO 16 + 17');
+  await expect(page.getByRole('button', { name: /^Change pin for / })).toContainText('GPIO 16 + 17');
   const firstCount = Number((await firstOutput.getByTestId('layout-output-inventory').textContent())?.match(/(\d+) LEDs/)?.[1]);
   const secondCount = Number((await secondOutput.getByTestId('layout-output-inventory').textContent())?.match(/(\d+) LEDs/)?.[1]);
   expect(firstCount + secondCount).toBeGreaterThan(3);
