@@ -364,3 +364,21 @@ test('bake refuses what the card could not take', () => {
   assert.equal(big.fits, false);
   assert.throws(() => bakePlacedLook(look({ speed: 0.01 }), strips, many, { seconds: 20, fps: 24 }), RangeError);
 });
+
+test('placedLookPhysicalFrame is the recording frame as hex, in wired order', async () => {
+  const { placedLookPhysicalFrame } = await import('./placedLook.js');
+  const strips = [row('a', [10, 20, 30, 40]), row('b', [60, 70, 80, 90])];
+  const compiled = wired(strips);
+  const still = look({ speed: 0 });
+  const live = placedLookPhysicalFrame(still, strips, compiled, 0);
+  assert.equal(live.length, compiled.pixels.length);
+  assert.ok(live.every(colour => /^[0-9a-f]{6}$/.test(colour)));
+  const bake = bakePlacedLook(still, strips, compiled, { seconds: 1 });
+  const first = [];
+  for (let index = 0; index < compiled.pixels.length; index += 1) {
+    const at = 64 + index * 3;
+    first.push([bake.bytes[at], bake.bytes[at + 1], bake.bytes[at + 2]].map(v => v.toString(16).padStart(2, '0')).join(''));
+  }
+  assert.deepEqual(live, first);
+  assert.deepEqual(placedLookPhysicalFrame(still, strips, null, 0), []);
+});
