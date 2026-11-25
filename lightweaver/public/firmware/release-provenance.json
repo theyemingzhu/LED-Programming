@@ -1,36 +1,36 @@
 {
   "schemaVersion": 2,
-  "sourceRevision": "9d774713c271ec3d246b297e3ddd1c001a40fcc7",
-  "workflowRun": "45362909879",
+  "sourceRevision": "3d1b77422cb95042efa1602eba15c0633689098c",
+  "workflowRun": "45528883647",
   "target": "esp32-s3-n16r8",
-  "firmwareVersion": "1.2.7",
-  "buildId": "9d774713c271ec3d246b297e3ddd1c001a40fcc7",
-  "buildNumber": 2895,
+  "firmwareVersion": "1.2.8",
+  "buildId": "3d1b77422cb95042efa1602eba15c0633689098c",
+  "buildNumber": 2925,
   "image": {
-    "url": "/firmware/releases/1.2.7/9d774713c271ec3d246b297e3ddd1c001a40fcc7/lightweaver-controller-esp32s3-factory.bin",
-    "size": 2579856,
-    "sha256": "dd9fdb256d3c56060ae61b99ef4415c15af42126edf414713d1f0a327c199b73",
+    "url": "/firmware/releases/1.2.8/3d1b77422cb95042efa1602eba15c0633689098c/lightweaver-controller-esp32s3-factory.bin",
+    "size": 2583568,
+    "sha256": "3189ff3d17815d1bc176a6b76344052d113dbcd7e377bd21df9bce4ad43b220a",
     "cardStudioReadback": {
       "offset": 0,
-      "size": 2579856,
-      "sha256": "dd9fdb256d3c56060ae61b99ef4415c15af42126edf414713d1f0a327c199b73"
+      "size": 2583568,
+      "sha256": "3189ff3d17815d1bc176a6b76344052d113dbcd7e377bd21df9bce4ad43b220a"
     }
   },
   "update": {
     "image": {
-      "url": "/firmware/releases/1.2.7/9d774713c271ec3d246b297e3ddd1c001a40fcc7/lightweaver-controller-esp32s3-app.bin",
-      "size": 2514320,
-      "sha256": "020776f6adf6563091e95c1d57f97665ba7143a02933d695018528499f3eb08c"
+      "url": "/firmware/releases/1.2.8/3d1b77422cb95042efa1602eba15c0633689098c/lightweaver-controller-esp32s3-app.bin",
+      "size": 2518032,
+      "sha256": "221376932f73cf05487a0d93fbe6e60095fe3bb01b38667e461cebe480d820a1"
     },
     "ticket": {
-      "url": "/firmware/releases/1.2.7/9d774713c271ec3d246b297e3ddd1c001a40fcc7/firmware-update-ticket.json",
+      "url": "/firmware/releases/1.2.8/3d1b77422cb95042efa1602eba15c0633689098c/firmware-update-ticket.json",
       "size": 740,
-      "sha256": "158aa44555dae12075c739e4219f404c6df4aba2566821a625e9e9419c747cbe"
+      "sha256": "be96239ff4b369139246fa20b22e9b614f6419169ae192e3432db72c9a6cce5b"
     },
     "signature": {
-      "url": "/firmware/releases/1.2.7/9d774713c271ec3d246b297e3ddd1c001a40fcc7/firmware-update-ticket.sig",
+      "url": "/firmware/releases/1.2.8/3d1b77422cb95042efa1602eba15c0633689098c/firmware-update-ticket.sig",
       "size": 87,
-      "sha256": "faab84cfbfcf0bbbf117a42e2c2b34ad7d0f93dee67492e6c49e77a599491221"
+      "sha256": "0d4a170e73909f31d66febe822b2705e878ba35d6338cec79bf150933eba83ca"
     },
     "partition": {
       "layout": "default_16MB.csv",
@@ -41,8 +41,8 @@
     }
   },
   "cardStudio": {
-    "buildId": "9d774713c271ec3d246b297e3ddd1c001a40fcc7",
-    "buildNumber": 2895,
+    "buildId": "3d1b77422cb95042efa1602eba15c0633689098c",
+    "buildNumber": 2925,
     "projectSchema": {
       "min": 3,
       "max": 3
@@ -51,32 +51,32 @@
       "min": 2,
       "max": 2
     },
-    "totalSize": 990373,
-    "bundleSha256": "92e6c4d54690b962e610394201659edf4028329f51d589328eb8c8734019077b",
+    "totalSize": 993953,
+    "bundleSha256": "986a24a480fad6de6a2b764e358051b6cc7e01f82cab9efff947add497f3ead7",
     "releaseMetadata": {
       "size": 32217,
-      "sha256": "0b7a036a34ca3643bd126d0daa8b37a15d2164f984a884d1dda91a835b9886e1"
+      "sha256": "3a51117a104babb7ff777ac880fec4bfdb3deddcd4c3f85cba74145d2a377864"
     },
     "assets": [
+      {
+        "path": "/studio/assets/card-Bsd3tILk.js",
+        "size": 469520,
+        "sha256": "6464181d5ea6e19ededb34a277687d689c836c8cb401bcf9aa4b0c8dd7660e62"
+      },
       {
         "path": "/studio/assets/card-BWV1udcl.css",
         "size": 37665,
         "sha256": "761dd21d5898088b0388fd67b9748389679d5bc1afce7d0bac4d0b5f9fe61308"
       },
       {
-        "path": "/studio/assets/card-CIrPkyuU.js",
-        "size": 467163,
-        "sha256": "edf9289413c145adfe2aff70cb1f4cac4ef454a44e8f8ec23b05215a595df1b4"
+        "path": "/studio/assets/cardClearProject-Dds4ztfz.js",
+        "size": 638,
+        "sha256": "88960679e8be92a8fe9ca19a69ffeac9079dac0ecc3021c95b6d417538515a38"
       },
       {
-        "path": "/studio/assets/cardClearProject-jbJwYv0O.js",
-        "size": 639,
-        "sha256": "18291005f867e8c491a3f293f3dad1d537eb339c4f574511090bd9e47b63ef91"
-      },
-      {
-        "path": "/studio/assets/CardSetupOverlay-2H7FT7pv.js",
-        "size": 21821,
-        "sha256": "8b323e67915f6610b38d95441e6388803be5c2b9df3479f1bcd80cf2a352ead9"
+        "path": "/studio/assets/CardSetupOverlay-CXrvzGJq.js",
+        "size": 21804,
+        "sha256": "432b5ea13a8e6da6fbabb359ce509db33bfc807db43efdbfb9a769ca05441a0f"
       },
       {
         "path": "/studio/assets/CardSetupOverlay-tF1vbA0Z.css",
@@ -84,54 +84,59 @@
         "sha256": "a0d3307c3a1402fb3f7d5b7cc54a19bf73c8675d404ca1ea268d19cac8df37d6"
       },
       {
-        "path": "/studio/assets/esp32-B7bPIbhq.js",
-        "size": 1465,
-        "sha256": "4ed4b7ddca6ccc009d8dbca6c5ac7f7312ea724184766bd4565f53759fa91011"
+        "path": "/studio/assets/esp32-QBLGpPe-.js",
+        "size": 1459,
+        "sha256": "a343f228c706a9cbf80a03b41bcd8ccf05f639ced7205731d1f862a7623bbc75"
       },
       {
-        "path": "/studio/assets/esp32c2-DMYouU4S.js",
+        "path": "/studio/assets/esp32c2-B-wHqODQ.js",
         "size": 988,
-        "sha256": "b33729dd40111d5868a6c2502032d2e6695dc738523dec9d09fb90793acedb9c"
+        "sha256": "b766122304ea134576af27496780b2588a23008952e99c66cfc894ad5619c903"
       },
       {
-        "path": "/studio/assets/esp32c3-B1MHmifW.js",
-        "size": 1139,
-        "sha256": "04f5b293aea0bcf4149cb2c9e43de57bd4beb9b62ed8dd591a730f17290cffa4"
+        "path": "/studio/assets/esp32c3-Cnjtr0ED.js",
+        "size": 1134,
+        "sha256": "e662ad8817c2accb6238f2052b8fc6dc4e160cb09baf504afc481a2c112d1833"
       },
       {
-        "path": "/studio/assets/esp32c5-pQg12l37.js",
-        "size": 1830,
-        "sha256": "90135c3528cc7ac42c0606b398c002a55db755592736d0160ec544b6cb959103"
+        "path": "/studio/assets/esp32c5-BRtgHI4q.js",
+        "size": 1823,
+        "sha256": "6404a147b0d8f604ca8f58497a044e4a8ee0666c7fefcc61d859e612fd2c7744"
       },
       {
-        "path": "/studio/assets/esp32c6-BFdCUIRe.js",
-        "size": 913,
-        "sha256": "d76263cc29db62bbf6d35017ac57f51689c5f61da8628986ae676e9e37f942ab"
+        "path": "/studio/assets/esp32c6-U1qRzMPs.js",
+        "size": 906,
+        "sha256": "c6d17298e5b38383b52c93814c3db5abdc926e040587ceacb79249e35b303ce0"
       },
       {
-        "path": "/studio/assets/esp32c61-CxHcfgUX.js",
-        "size": 1099,
-        "sha256": "5db86249be5026d5aa70c0724b3b76b94227f487a8b838b634b217d7a69a3200"
+        "path": "/studio/assets/esp32c61-CyY7BVsb.js",
+        "size": 1104,
+        "sha256": "7050ab55383b18947be6d778458a3d23db56b28f2eedf68b188c1f6f57fe6b62"
       },
       {
-        "path": "/studio/assets/esp32h2-BP271GcZ.js",
-        "size": 1024,
-        "sha256": "9db0c022097f94464cb670238a8e3fad8fcf1e3a488254ff74bec6efc52f52da"
+        "path": "/studio/assets/esp32h2-TDsv6Q6K.js",
+        "size": 1025,
+        "sha256": "1f98a681abcbb88a217c63af9b458b975553c8394451f5e8cf2c505ac71da366"
       },
       {
-        "path": "/studio/assets/esp32p4-DNcHvdiI.js",
-        "size": 2362,
-        "sha256": "e7b11a0c2306a93f7b6a0435348d694dc81d1290474b2e32242af48a3243d12f"
+        "path": "/studio/assets/esp32p4-CFAAIdz6.js",
+        "size": 2359,
+        "sha256": "aea074086ce60c9fa91bdaefa5a44a5f6ff8e76c7230f1fdcb347172b140fa10"
       },
       {
-        "path": "/studio/assets/esp32s2-D7_L_Ljc.js",
-        "size": 1837,
-        "sha256": "679fe5d6c8bc9534273c26ee1f39f48ff81b3c0bfa2a17b2cdcd840c8b0156a1"
+        "path": "/studio/assets/esp32s2-D-YWYHVo.js",
+        "size": 1817,
+        "sha256": "7a575d71e1d538a48d3b53621436fde61a4a3995cb00fd33eb51fa232584fde7"
       },
       {
-        "path": "/studio/assets/esp32s3-DvxyEu3S.js",
+        "path": "/studio/assets/esp32s3-B-omE_tr.js",
         "size": 1384,
-        "sha256": "1731e306c6cec5c1715c59a1a1ef38208838d7bc0c6d54a138f42f11bd5ca7e7"
+        "sha256": "158f921f71d236dbcec38db5e0d7918bb72626faeddec2d62ddc1e27809450d2"
+      },
+      {
+        "path": "/studio/assets/lw-card-_f_GKfho.js",
+        "size": 119723,
+        "sha256": "b236641a44007e9fefa7a82f44eb47268b294289c7ebffc1f8a6716672e297ca"
       },
       {
         "path": "/studio/assets/lw-card-CK_fyBjv.css",
@@ -139,14 +144,9 @@
         "sha256": "403bb7f20c05ef88785c296ec128b4d0e58a360342604f1eeff95afb79916af5"
       },
       {
-        "path": "/studio/assets/lw-card-t4L1wmTQ.js",
-        "size": 118922,
-        "sha256": "bdc041463406fb86650d4aeac32eb1745db2eaf21920d5b5450df87411877c10"
-      },
-      {
-        "path": "/studio/assets/lw-pattern-C4CFYmwr.js",
-        "size": 27006,
-        "sha256": "150fe182d9818ead5099347753df567c2dd62c9e6a03c3ea704c32f6fc27e7f4"
+        "path": "/studio/assets/lw-pattern-C9cWqNw8.js",
+        "size": 27048,
+        "sha256": "10fbdb27e4d360c60b94c90753c4fdf2a4d19fb5f5a7fa267f1ca60d7469e665"
       },
       {
         "path": "/studio/assets/lw-pattern-ks6-H4H6.css",
@@ -154,9 +154,9 @@
         "sha256": "11d48a9ebd754b6f1c7d4234cc6fa5329cee26c2be15fd1b4117c1434b29c901"
       },
       {
-        "path": "/studio/assets/lw-playlist-BPyIVVYJ.js",
-        "size": 10308,
-        "sha256": "6004ab77989aac34742753478ea7d1eccbfec42102a5494b4323c69f5bab8311"
+        "path": "/studio/assets/lw-playlist-BQTm_c4k.js",
+        "size": 10311,
+        "sha256": "bc82b9f3580caf3c89a705f4cb26fb57bef2625613e5161240712b4de30da0cd"
       },
       {
         "path": "/studio/assets/lw-playlist-DtpSiHQe.css",
@@ -164,14 +164,14 @@
         "sha256": "efdf0e75385cdd41eaaaeeca04d7cf8d102fe6a0f7213ee40645a5d96a18b907"
       },
       {
+        "path": "/studio/assets/lw-show-Big5CiT1.js",
+        "size": 34145,
+        "sha256": "497cca050f23bda6f164d48aefaeb8b780b5d3e6e83954d1c1821bae76634e6e"
+      },
+      {
         "path": "/studio/assets/lw-show-DLy77nSG.css",
         "size": 422,
         "sha256": "a76f019228d6396e7fde834280dc6d20fb13b404444877bfda7ea2bfa90accda"
-      },
-      {
-        "path": "/studio/assets/lw-show-w2ziOr4Y.js",
-        "size": 34190,
-        "sha256": "333db6973c6b710f392e7dad14ac4a0c648de12c08fc186b89995b941b923854"
       },
       {
         "path": "/studio/assets/patternEditSession-CHlky7hy.js",
@@ -189,9 +189,9 @@
         "sha256": "86b6eb2ea6443ccaa6330ce226b927e82ca92925e882d95a9bb0e71eab0555d7"
       },
       {
-        "path": "/studio/assets/PatternLabScreen-B0JxMe6p.js",
-        "size": 46769,
-        "sha256": "4cdb1b54dff3cd2a5efff53a921b679ba4b7d4e59001a05104716b3c462c4c76"
+        "path": "/studio/assets/PatternLabScreen-Bnl5mFkz.js",
+        "size": 47031,
+        "sha256": "4637a4ab640be2eb879a9a399560fe6a062cbc1929eed03c858969094fdb38c7"
       },
       {
         "path": "/studio/assets/PatternLabScreen-Do_ykxlF.css",
@@ -199,9 +199,9 @@
         "sha256": "6ab4ab167181fabfb5c790ae297ab63939289ba7e5b328535035f28043d4eb70"
       },
       {
-        "path": "/studio/assets/RecordedSequenceChoice-C_l9O9KA.js",
-        "size": 2498,
-        "sha256": "cd31ee14e1e8ebd7137c8f2e58510349369190da1ae50fa8654ea67ab8afba0d"
+        "path": "/studio/assets/RecordedSequenceChoice-BI5XZWlN.js",
+        "size": 2745,
+        "sha256": "084fa60f2d18fc3c7a34523498df289260acbedb254fa12ba89175bdf8d4344b"
       },
       {
         "path": "/studio/assets/RecordedSequenceChoice-Ey6mO_nV.css",
@@ -209,24 +209,24 @@
         "sha256": "87d1948ad664ec8f9eb16c68463aea99f99e1699c03ce726ea137b277910baa6"
       },
       {
+        "path": "/studio/assets/SceneExpressionEditor-Cz7zYCdp.js",
+        "size": 8710,
+        "sha256": "5cf4a8be4ee8eae7344e51c04f90f7ed63f610213dd520f6e86768b36e90cfd4"
+      },
+      {
         "path": "/studio/assets/SceneExpressionEditor-DG30f7mi.css",
         "size": 2225,
         "sha256": "846c40819050d713dd030ec5cd6735981a94d4f7dd7086fe16af5bf49cc35a4f"
       },
       {
-        "path": "/studio/assets/SceneExpressionEditor-P60UEmsZ.js",
-        "size": 8720,
-        "sha256": "b11b24cc7f6ae616dcfbb48b1d040626e947726643a8533843475c2d3d89422b"
+        "path": "/studio/assets/SetupJourneyChip-DorVYPvp.js",
+        "size": 472,
+        "sha256": "ea785e679aafe469d9da82a7cf9263c972cb4c5d40107825df8ffd4adebe9810"
       },
       {
-        "path": "/studio/assets/SetupJourneyChip-C3KPZKxc.js",
-        "size": 475,
-        "sha256": "34d28a8081617027250375b3045086b53fbbbd0f52ab99f16ea38659d2173623"
-      },
-      {
-        "path": "/studio/assets/StripColorOrderCheck-CwXXDmyT.js",
-        "size": 1987,
-        "sha256": "a8a0a5325f812f9312651af6e1d9b26836f981955a1b193008a7a12bc3614587"
+        "path": "/studio/assets/StripColorOrderCheck-BV74wdpj.js",
+        "size": 1979,
+        "sha256": "94f3ec1028050877df59da25b7b690bb6f48b79f1919afced8ff250a68e2aea1"
       },
       {
         "path": "/studio/assets/StripColorOrderCheck-DlQRFnOR.css",
@@ -295,8 +295,8 @@
       },
       {
         "path": "/studio/",
-        "size": 204,
-        "sha256": "333cd1f284ed93722bc30945ad8d302061bc62ffb31d856ac05577e58f018605"
+        "size": 198,
+        "sha256": "41740c96fb521f10615e127f2b991b0974ebfd0be12ef960534c3dbd125bc7e6"
       },
       {
         "path": "/studio/fonts/general-sans-latin.woff2",
@@ -326,7 +326,7 @@
     ]
   },
   "toolchain": {
-    "sourceRevision": "9d774713c271ec3d246b297e3ddd1c001a40fcc7",
+    "sourceRevision": "3d1b77422cb95042efa1602eba15c0633689098c",
     "platformio": "6.1.19",
     "platform": "espressif32@7.0.1",
     "framework": "framework-arduinoespressif32@3.20017.241212+sha.dcc1105b",
