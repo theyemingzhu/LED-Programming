@@ -27,7 +27,7 @@
 // Every function here is pure: it returns new objects and never mutates input.
 
 import { applySymmetrySides } from './mirrorFrame.js';
-import { LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
+import { LWSEQ_HEADER_BYTES, LWSEQ_MAX_PIXELS, assertLwseqPixelCount, toLwseqBytes } from './standaloneController.js';
 
 // The same two limits the other recorders use. Kept as literals so this file
 // does not pull the Pattern Lab baker or the asset store into Layout;
@@ -35,7 +35,7 @@ import { LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
 // or recordedSequenceAsset.js (MAX_STORED_SEQUENCE_BYTES).
 export const PLACED_LOOK_MAX_FPS = 24;
 export const PLACED_LOOK_MAX_BYTES = 16 * 1024 * 1024;
-export const PLACED_LOOK_MAX_PIXELS = 4096;
+export const PLACED_LOOK_MAX_PIXELS = LWSEQ_MAX_PIXELS;
 
 export const PLACED_LOOK_PALETTES = Object.freeze({
   ember: Object.freeze([Object.freeze([255, 196, 96]), Object.freeze([214, 72, 30])]),
@@ -266,6 +266,7 @@ function bakeOutputs(compiledWiring) {
   if (!compiledWiring?.ok || !Array.isArray(compiledWiring.pixels) || !compiledWiring.pixels.length) {
     throw new TypeError('A recording needs the wiring: it follows the order the lights are wired in.');
   }
+  assertLwseqPixelCount(compiledWiring.pixels.length);
   const outputs = (compiledWiring.outputs || []).map(output => ({
     id: String(output.id),
     pin: Number(output.pin),
@@ -273,9 +274,6 @@ function bakeOutputs(compiledWiring) {
   })).filter(output => output.pixels > 0);
   if (!outputs.length || outputs.reduce((sum, output) => sum + output.pixels, 0) !== compiledWiring.pixels.length) {
     throw new TypeError('The wiring does not account for every light, so a recording cannot follow it.');
-  }
-  if (compiledWiring.pixels.length > PLACED_LOOK_MAX_PIXELS) {
-    throw new RangeError(`A recording holds up to ${PLACED_LOOK_MAX_PIXELS} lights.`);
   }
   return outputs;
 }

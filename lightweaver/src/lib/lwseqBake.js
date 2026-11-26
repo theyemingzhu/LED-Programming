@@ -15,6 +15,7 @@ import { getPatternById, isBuiltInPattern } from './patternRegistry.js';
 import {
   DEFAULT_STANDALONE_OUTPUTS,
   LWSEQ_HEADER_BYTES,
+  assertLwseqPixelCount,
   estimateLwseqBytes,
   toLwseqBytes,
 } from './standaloneController.js';
@@ -358,6 +359,7 @@ function prepareBake(input = {}) {
     { requireSendReady: true },
   );
   if (!physicalPixels.length) throw new TypeError('Physical wiring contains no pixels to bake');
+  assertLwseqPixelCount(physicalPixels.length);
   const outputs = outputLayout(input.wiring, physicalPixels);
   if (!outputs.length) throw new TypeError('Physical wiring contains no active outputs');
   const pixelCount = physicalPixels.length;

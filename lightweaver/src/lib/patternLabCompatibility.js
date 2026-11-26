@@ -1,7 +1,7 @@
 import { CARD_HARDWARE_CAPABILITIES } from './cardRuntimeContract.js';
 import { CORE_CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { CARD_CONFIG_STORAGE_LIMIT_BYTES } from './cardStoragePayload.js';
-import { estimateLwseqBytes } from './standaloneController.js';
+import { estimateLwseqBytes, LWSEQ_MAX_PIXELS, lwseqPixelLimitMessage } from './standaloneController.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 
 export const PATTERN_LAB_COMPATIBILITY_VERSION = 1;
@@ -640,12 +640,16 @@ function evaluatePatternLabCompatibility(recipe, descriptor, metrics, options) {
     && Object.keys(nativeBudgetRules).every(key => budgets[key].ok);
   const physicalEligible = budgets.pixelCount.known && budgets.pixelCount.ok;
   const bakeReasonsEligible = reasons.every(item => item.bakeable === true);
-  const bakeEligible = descriptor.delivery.lwseq
+  const canBake = descriptor.delivery.lwseq
     && descriptor.delivery.microSd
     && physicalEligible
     && bakeReasonsEligible
-    && budgets.fps.ok
-    && budgets.lwseqBytes.ok;
+    && budgets.fps.ok;
+  const fitsRecording = budgets.pixelCount.used <= LWSEQ_MAX_PIXELS;
+  if (!nativeEligible && canBake && !fitsRecording) {
+    reasons.push(reason('recording-pixel-limit', lwseqPixelLimitMessage(budgets.pixelCount.used)));
+  }
+  const bakeEligible = canBake && fitsRecording && budgets.lwseqBytes.ok;
 
   return {
     budgets,

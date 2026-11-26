@@ -37,6 +37,9 @@ import { discoveryProjectParts, layoutIsUncountedHeadroom, withDiscoveryPatternC
 import { auditionBenchPattern, requireBenchInstallReadback, requireBenchZoneMapping, restoreBenchPatternSnapshot } from '../../lib/benchPatternAudition.js';
 import { CardPinPicker } from './CardPinPicker.jsx';
 import { CardPinMap } from './CardPinMap.jsx';
+import { InstallerSetupProgress } from './InstallerSetupProgress.jsx';
+import { formatGpio } from '../../lib/cardPinout.js';
+import { activeBoardGpios } from '../../lib/gpioAssignments.js';
 import { confirmedBoardProfile, selectBoardLedPins } from '../../lib/boardLedPins.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../../lib/cardLiveControl.js';
 import { getCardWiringStatus } from '../../lib/cardWiringSafety.js';
@@ -290,6 +293,8 @@ function StripLights({ count = 12, lit = [], litCount = 0, lastPurple = false, t
 export function StripDiscoveryPanel({
   cardHost = '',
   cardLink = null,
+  installerSetup = false,
+  preferredPin = null,
   go = null,
   embedded = false,
   onLifecycleChange = null,
@@ -468,13 +473,14 @@ export function StripDiscoveryPanel({
   // light it — an owner who already knows their port should not be blocked by
   // a lighting attempt that may be slow or refused.
   const [selectedPort, setSelectedPort] = useState(null);
+  const suggestedPinRef = useRef(false);
   const [probeError, setProbeError] = useState('');
   const [probeUnlit, setProbeUnlit] = useState(false);
   const pinnedPortRef = useRef(null);
   pinnedPortRef.current = pinnedPort;
 
   const [pinMapEvidence, setPinMapEvidence] = useState(null);
-  const pinMapVisible = !phaseIsPastIdle && (profile || selectedPort !== null || pinnedPort !== null);
+  const pinMapVisible = !phaseIsPastIdle && (profile || preferredPin !== null || selectedPort !== null || pinnedPort !== null);
   const bootId = cardLink?.readiness?.bootId || '';
   const cardTransport = cardLink?.transport;
   const pinMapKey = `${host}|${cardId}|${bootId}`;
@@ -490,7 +496,7 @@ export function StripDiscoveryPanel({
     return () => { cancelled = true; };
   }, [pinMapVisible, host, cardId, bootId, cardTransport, pinMapKey]);
   const reportedControls = pinMapFirmware?.controls;
-  const pinMapControls = reportedControls?.encoder ? {
+  const pinMapControls = useMemo(() => reportedControls?.encoder ? {
     ...reportedControls,
     encoder: {
       ...reportedControls.encoder,
@@ -499,7 +505,7 @@ export function StripDiscoveryPanel({
         ?? reportedControls.encoder.alternatePress,
     },
     brightness: reportedControls.brightnessAnalog ?? reportedControls.brightness,
-  } : null;
+  } : null, [reportedControls]);
 
   useEffect(() => {
     if (phaseIsPastIdle) return undefined;
@@ -622,7 +628,7 @@ export function StripDiscoveryPanel({
   // owner presses "That's mine" when their strip lights. Nobody needs to know
   // a pin number. Two quiet rounds become "Nothing lit?"; a card that cannot
   // sweep (it already holds a setup) opens on tapping the card drawing.
-  const [findMode, setFindMode] = useState('watch');
+  const [findMode, setFindMode] = useState(preferredPin === null ? 'watch' : 'pick');
   const [sweepPin, setSweepPin] = useState(null);
   const sweepRef = useRef({ pin: null, previous: null, changedAt: 0 });
   // How many pins this watch has lit. Kept outside the effect: the effect
@@ -630,10 +636,23 @@ export function StripDiscoveryPanel({
   // there meant two quiet rounds never added up to "Nothing lit?".
   const sweepStepRef = useRef(0);
   const watchAgain = () => { sweepStepRef.current = 0; setFindMode('watch'); };
-  const sweepPins = useMemo(() => selectablePortRoles.map(entry => entry.pin), [selectablePortRoles]);
+  const sweepPins = useMemo(() => {
+    const controls = new Set(activeBoardGpios([], pinMapControls || {}).map(({ pin }) => pin));
+    return selectablePortRoles.map(entry => entry.pin).filter(pin => !controls.has(pin));
+  }, [selectablePortRoles, pinMapControls]);
   const sweepPinList = sweepPins.join(',');
   const portsKnown = probePortEvidence?.key === probePortKey;
   const canSweep = portsKnown && probePorts?.available === true && sweepPins.length > 0;
+  const suggestedPinUnavailable = preferredPin !== null && portsKnown && pinMapControls && !sweepPins.includes(preferredPin);
+  useEffect(() => {
+    if (phaseIsPastIdle || preferredPin === null || !cardId || !portsKnown || !pinMapControls || suggestedPinRef.current
+      || selectedPort !== null || !sweepPins.includes(preferredPin)) return;
+    const reported = probePorts?.available === true || cardOutputPins?.includes(preferredPin)
+      || observedCard?.outputs?.some(output => (output.pin ?? output.gpio) === preferredPin);
+    if (!reported) return;
+    suggestedPinRef.current = true;
+    setSelectedPort(preferredPin);
+  }, [phaseIsPastIdle, preferredPin, cardId, portsKnown, selectedPort, sweepPins, probePorts, cardOutputPins, observedCard, pinMapControls]);
   useEffect(() => {
     if (phaseIsPastIdle || findMode !== 'watch' || !portsKnown || canSweep) return;
     setFindMode('pick');
@@ -685,6 +704,7 @@ export function StripDiscoveryPanel({
     if (sweepRef.current.pin !== null) releaseBeaconPort(host, { bridgeVersion: getCardBridgeState().version }).catch(() => {});
   }, [host]);
   const pickPin = pin => {
+    suggestedPinRef.current = true;
     // The tapped pin replaces the sweep's pin on the card. Releasing the sweep
     // pin here raced the tap's own pin request and could leave the card dark
     // after the owner's tap (strip-discovery.spec "minimizing during an
@@ -1718,13 +1738,14 @@ export function StripDiscoveryPanel({
       testId="discovery-pin-map" cardId={cardId} outputCapabilities={observedCard ? benchOutputOptions : null}
       title={ground ? 'Check the ground pins' : 'Where the strip plugs in'} controls={pinMapControls}
       controlSource="Card controls" outputs={pinMapFirmware?.outputs || cardLink?.readiness?.outputs || []}
-      availablePins={selectablePortRoles.map(entry => entry.pin)} lit={lit === null ? [] : [{ pin: lit }]}
+      availablePins={sweepPins} lit={lit === null ? [] : [{ pin: lit }]}
       pickable={pickable} onPick={pickPin} disabled={busy || Boolean(probeBusy)}
     />
   );
 
   return (
     <div className={`${embedded ? '' : 'screen '}strip-discovery${embedded ? ' is-embedded' : ''}`} data-testid="strip-discovery">
+      {installerSetup && <InstallerSetupProgress step="strips" />}
       {/* Whether Studio is actually driving the strip right now. Without this a
           strip receiving nothing looks exactly like a strip that ends where the
           light stops, and every answer the owner gives from here on is a guess. */}
@@ -1779,6 +1800,9 @@ export function StripDiscoveryPanel({
           ) : selectedPort === null ? (
             <>
               <h3>Tap where your strip plugs in.</h3>
+              {suggestedPinUnavailable && <p className="strip-discovery-note" role="status">
+                {formatGpio(preferredPin)} is unavailable for LED data. Pick another pin.
+              </p>}
               {profile ? discoveryPinMap({ lit: pinnedPort }) : <CardPinPicker testId="discovery-pin-map" pickable={sweepPins} lit={pinnedPort} onPick={pickPin} disabled={busy || Boolean(probeBusy)} />}
               {canSweep && (
                 <div className="strip-discovery-actions">
@@ -1788,13 +1812,15 @@ export function StripDiscoveryPanel({
             </>
           ) : (
             <div className="strip-discovery-confirm">
-              <h3>{probeError || probeUnlit ? 'Count the strip on this pin?' : 'Did your strip light up?'}</h3>
+              <h3>{preferredPin === selectedPort && pinnedPort === null && !probeBusy
+                ? `Count the strip on ${formatGpio(selectedPort)}?`
+                : probeError || probeUnlit ? 'Count the strip on this pin?' : 'Did your strip light up?'}</h3>
               {discoveryPinMap({ lit: pinnedPort })}
               {probeBusy && (
                 <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">Lighting this pin…</p>
               )}
               <div className="strip-discovery-actions">
-                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= cardMaxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
+                <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || !sweepPins.includes(selectedPort) || overOutputLimit || (probeTargets.length >= cardMaxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ focusPin: selectedPort, selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Getting the card ready…' : 'Yes'}</button>
                 <button type="button" className="btn btn-ghost" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another pin</button>
               </div>
             </div>

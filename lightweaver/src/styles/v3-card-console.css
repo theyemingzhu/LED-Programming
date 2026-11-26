@@ -407,6 +407,26 @@
 .card-workspace-screen .lw-mod-todo .lw-setup-phase-body > p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-lo); max-width: 62ch; }
 .card-workspace-screen .lw-mod-todo .lw-setup-task { padding-left: 0; }
 
+@media (max-width: 600px) {
+  .card-workspace-screen:has(.lw-wiring-candidate[data-installer-setup]) .lw-mod-status,
+  .card-workspace-screen .lw-mod-todo:has(.lw-wiring-candidate[data-installer-setup]) > .lw-mod-head,
+  .card-workspace-screen .lw-setup-phase:has(.lw-wiring-candidate[data-installer-setup]) .lw-setup-phase-marker,
+  .card-workspace-screen .lw-setup-phase-body:has(.lw-wiring-candidate[data-installer-setup]) > :is(h2, .lw-setup-task) {
+    display: none;
+  }
+  .card-workspace-screen .lw-mod-todo .lw-setup-phase:has(.lw-wiring-candidate[data-installer-setup]) {
+    display: block;
+    padding: 0;
+  }
+  .card-workspace-screen .lw-setup-phase .lww-flow:has(.lw-wiring-candidate[data-installer-setup]) {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 /* facts: two modules side by side */
 .card-workspace-screen .lw-facts {
   display: grid;

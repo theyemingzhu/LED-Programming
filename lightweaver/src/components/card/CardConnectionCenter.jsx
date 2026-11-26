@@ -12,6 +12,7 @@ import {
   writeStoredCardHost,
 } from '../../lib/cardConnection.js';
 import { confirmedBoardProfile } from '../../lib/boardLedPins.js';
+import { InstallerSetupProgress } from './InstallerSetupProgress.jsx';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
 import { directConnectHeading, directConnectVerdictCopy } from '../../lib/cardLifecycle.js';
 import { locateReachableCard } from '../../lib/cardFind.js';
@@ -99,6 +100,7 @@ export function CardConnectionCenter({
   const hasKnownCard = Boolean(link.card?.id || link.expectedCard?.id || rememberedCard?.id);
   const hasSetupHost = [host, link.host, setupEvidence.host].includes(SETUP_HOST);
   const setupNetworkRequested = connectIntent === 'setup-network';
+  const installerSetup = connectIntent === 'installer';
   // The card's real hotspot name is derivable from its card id (same eFuse MAC
   // as the firmware's apSsid()). Nothing here is guaranteed to know the card
   // yet — a blank or unreachable card has no id — so this falls back to a
@@ -378,7 +380,8 @@ export function CardConnectionCenter({
     setPairingBusy(false);
     // Pairing leaves this panel open when the exact card still needs a board.
     const pairedCardId = link.discoveredCard?.id || link.card?.id || '';
-    if (result.ok && (!onOpenBoardManager || !exactCardId.test(pairedCardId) || confirmedBoardProfile(pairedCardId))) {
+    if (result.ok && (!onOpenBoardManager || !exactCardId.test(pairedCardId)
+      || (!installerSetup && confirmedBoardProfile(pairedCardId)))) {
       closeAndRestore();
     }
   };
@@ -662,6 +665,8 @@ export function CardConnectionCenter({
         </div>
         <button type="button" className="card-connection-close" onClick={closeAndRestore} aria-label="Close connection center">×</button>
       </header>
+
+      {(installerSetup || showBoardSetup) && <InstallerSetupProgress step={showBoardSetup ? 'board' : 'connect'} />}
 
       {usbInspection && (
         <div className="card-windowless-connect" data-testid="active-usb-inspection">

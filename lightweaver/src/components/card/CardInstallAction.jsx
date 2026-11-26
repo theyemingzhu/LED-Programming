@@ -165,6 +165,7 @@ export function CardInstallAction({
     if (firstInstallState.cardId && pairedCardId && pairedCardId !== firstInstallState.cardId) resetFirstInstallState();
   }, [firstInstallState.cardId, pairedCardId]);
   const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
+  const installerSetup = cardRoute.get('installer') === '1';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
   const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
   // The temporary find-my-strips setup is Studio's own scaffolding, not an
@@ -177,7 +178,7 @@ export function CardInstallAction({
   const differentProjectOnCard = Boolean(cardLink.card?.id && cardLink.readiness?.cardId === cardLink.card.id
     && cardProjectId && projectId && cardProjectId !== projectId && !cardHoldsTemporarySetup);
   const openProjectReplacement = () => {
-    window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&replace=project';
+    window.location.hash = `#screen=card&section=setup&task=install-project&next=patterns&replace=project${installerSetup ? '&installer=1' : ''}`;
   };
 
   const installedOutputs = cardLink.readiness?.outputs;
@@ -319,8 +320,11 @@ export function CardInstallAction({
               disabled={!installGate.allowed}
               autoStart={continueToPatterns}
               resumeCandidate={resumeCandidate}
+              installerSetup={installerSetup}
               replaceProjectIntent={replaceProjectIntent}
-              onInstalled={continueToPatterns ? () => { window.location.hash = '#screen=pattern'; } : undefined}
+              onInstalled={continueToPatterns ? () => {
+                window.location.hash = installerSetup ? '#screen=layout&mode=draw&installer=1&sheet=1' : '#screen=pattern';
+              } : undefined}
             />
           </section>
         </>

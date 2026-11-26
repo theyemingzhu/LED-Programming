@@ -106,8 +106,8 @@ test('recording rejects more than 4096 physical LEDs before rendering', async ()
   const oversized = { ...context, compiledWiring: {
     ...compiledWiring, pixels: [...compiledWiring.pixels, ...extra],
   } };
-  assert.throws(() => estimateSceneExpressionFlowRecording(oversized), /1 to 4096 physical LEDs/);
-  await assert.rejects(() => bakeSceneExpressionFlow(oversized), /1 to 4096 physical LEDs/);
+  assert.throws(() => estimateSceneExpressionFlowRecording(oversized), /recording has 4,097 LEDs.*up to 4,096 LEDs/);
+  await assert.rejects(() => bakeSceneExpressionFlow(oversized), /recording has 4,097 LEDs.*up to 4,096 LEDs/);
 });
 
 // A baked sequence plays on the card 1:1 and the card copies a mirrored side from

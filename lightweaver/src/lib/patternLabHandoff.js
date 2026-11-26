@@ -19,6 +19,7 @@ import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
   LWSEQ_HEADER_BYTES,
   LWSEQ_MAX_OUTPUTS,
+  LWSEQ_MAX_PIXELS,
   assertLwseqOutputTopology,
   buildStandaloneProfile,
   normalizeStandaloneOutputs,
@@ -177,7 +178,7 @@ function normalizeManifest(value) {
       || !SHA256_PATTERN.test(value.lwseqSha256)
       || !validPositiveInteger(value.fps, 24)
       || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
-      || !validPositiveInteger(value.pixelCount, 4096)) return null;
+      || !validPositiveInteger(value.pixelCount, LWSEQ_MAX_PIXELS)) return null;
     return clone(value);
   }
   if (record(value) && value.format === 'lightweaver-flow-lwseq-sidecar') {
@@ -187,7 +188,7 @@ function normalizeManifest(value) {
       || !SHA256_PATTERN.test(value.lwseqSha256)
       || !validPositiveInteger(value.fps, 24)
       || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
-      || !validPositiveInteger(value.pixelCount, 4096)) return null;
+      || !validPositiveInteger(value.pixelCount, LWSEQ_MAX_PIXELS)) return null;
     return clone(value);
   }
   if (!record(value)
@@ -205,7 +206,7 @@ function normalizeManifest(value) {
     || !(value.audioLanesSha256 === null || SHA256_PATTERN.test(value.audioLanesSha256))
     || !validPositiveInteger(value.fps, 24)
     || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
-    || !validPositiveInteger(value.pixelCount, 4096)
+    || !validPositiveInteger(value.pixelCount, LWSEQ_MAX_PIXELS)
     || !Number.isSafeInteger(value.seed)
     || !SHA256_PATTERN.test(value.lwseqSha256)) {
     return null;
@@ -242,7 +243,7 @@ function normalizeManifest(value) {
 
 // Two different ceilings meet here and they are not the same thing. An output's
 // pixel count is a statement about the card's wiring, so it tracks the hardware
-// contract. The manifest's `pixelCount` (normalizeManifest) stays a literal
+// contract. The manifest's `pixelCount` uses the recording limit
 // because it bounds a baked .lwseq FILE — pixelCount x frameCount x 3 bytes on
 // microSD — not how many LEDs the card can drive. Raising the wiring ceiling
 // must not quietly raise the storage budget with it.

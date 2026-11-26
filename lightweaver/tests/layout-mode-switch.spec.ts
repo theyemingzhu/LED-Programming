@@ -14,7 +14,7 @@ async function expectFreshCardInstallEntry(page: any) {
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
   const start = page.getByTestId('public-worker-start');
   await expect(start).toBeVisible();
-  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(start.getByRole('button', { name: /set up this card/i })).toBeVisible();
   // This fixture deliberately clears every remembered card. A fresh browser
   // must find a card before it can offer the project-writing control.
   await expect(page.getByTestId('commissioning-step')).toHaveCount(0);

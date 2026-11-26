@@ -1868,7 +1868,7 @@ test('disconnected Card Home names the state and offers the exact connect task o
   // the public start choice before the setup phases. Its Card action is the
   // single connect door.
   await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(0);
-  await page.getByRole('button', { name: /Card Set up the card/ }).click();
+  await page.getByRole('button', { name: /Card Set up this card/ }).click();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible();
 });
 
@@ -2268,7 +2268,7 @@ for (const cardState of [
     name: 'connecting',
     events: [{ type: 'connecting', via: 'bridge', host: 'lightweaver.local' }],
     status: 'Connecting',
-    action: 'Set up the card',
+    action: 'Set up this card',
     publicStart: true,
   },
   {
@@ -2309,7 +2309,7 @@ for (const cardState of [
     name: 'unreachable card',
     events: [{ type: 'direct-status', connected: false, reason: 'card-unreachable', host: 'lightweaver.local' }],
     status: 'Not connected',
-    action: 'Set up the card',
+    action: 'Set up this card',
     publicStart: true,
   },
   {

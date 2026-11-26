@@ -535,6 +535,32 @@ test('old firmware, canceled media, or card switch sends no Playlist config', as
   assert.equal(configCalls, 0);
 });
 
+test('oversized imported recordings report the playback limit before contacting the card', async () => {
+  const { next } = await recorded('too-many-recorded-leds');
+  const asset = structuredClone(next.sequenceAssets[0]);
+  const original = await verifyStoredSequenceAsset(asset);
+  const bytes = new Uint8Array(64 + 4097 * 3);
+  bytes.set(original);
+  const header = new DataView(bytes.buffer);
+  header.setUint32(12, 4097, true);
+  header.setUint16(34, 4094, true);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  asset.byteLength = bytes.byteLength;
+  asset.file = `/sequences/${hash}.lwseq`;
+  asset.outputs[0].pixels = 4094;
+  asset.manifest.pixelCount = 4097;
+  asset.manifest.lwseqSha256 = hash;
+  asset.mediaRef = await storeRecordedMedia(bytes, hash);
+  assert.deepEqual(await verifyStoredSequenceAsset(asset), bytes);
+  const calls = [];
+  await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimeFor([asset]), {
+    host: 'lightweaver.local', transport: 'bridge',
+    readEvidence: async () => { calls.push('evidence'); },
+    sendBridge: async verb => { calls.push(verb); },
+  }), /recording has 4,097 LEDs.*up to 4,096 LEDs/i);
+  assert.deepEqual(calls, []);
+});
+
 test('recordings: an old card is asked to be touched, a card that reports ownerNoTouch never is', async () => {
   const { next } = await recorded('touch-or-not');
   const runtimePackage = runtimeFor(next.sequenceAssets);

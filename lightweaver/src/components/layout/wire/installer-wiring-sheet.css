@@ -1,0 +1,53 @@
+.lw-installer-sheet {
+  box-sizing: border-box;
+  width: min(35rem, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  color: var(--text-hi);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.lw-installer-sheet[open] { display: flex; flex-direction: column; }
+.lw-installer-sheet::backdrop { background: rgb(0 0 0 / 60%); }
+.lw-installer-sheet .btn { min-height: var(--lw-tap, 44px); }
+/* The dialog uses native tooltips so a focused control cannot widen the sheet. */
+.lw-installer-sheet [data-tooltip]::after { content: none; }
+.lw-installer-sheet h2, .lw-installer-sheet p { margin: 0; }
+.lw-installer-sheet-header, .lw-installer-sheet-footer, .lw-installer-sheet-body { padding: 12px 16px; }
+.lw-installer-sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--border); }
+.lw-installer-sheet-header h2 { font-size: 1.15rem; }
+.lw-installer-sheet-header p, .lw-installer-sheet-part { color: var(--text-mid); }
+.lw-installer-sheet-header p, .lw-installer-sheet-board, .lw-installer-sheet-rows li > div { min-width: 0; overflow-wrap: anywhere; }
+.lw-installer-sheet-body { overflow: auto; }
+.lw-installer-sheet .lw-installer-sheet-board { margin-bottom: 10px; }
+.lw-installer-sheet-rows { list-style: none; padding: 0; margin: 0; }
+.lw-installer-sheet-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding-block: 8px; border-top: 1px solid var(--border); }
+.lw-installer-sheet-rows li > div { display: grid; gap: 2px; }
+.lw-installer-sheet-rows li > div:last-child { text-align: right; }
+.lw-installer-sheet-checked { color: var(--success, currentColor); }
+.lw-installer-sheet-footer { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); }
+
+@media print {
+  body:has(> .lw-installer-sheet[open]) > :not(.lw-installer-sheet[open]) { display: none !important; }
+  body:has(> .lw-installer-sheet[open]) { display: block !important; min-height: auto; height: auto; overflow: visible !important; background: white; }
+  .lw-installer-sheet[open], .lw-installer-sheet[open] * { visibility: visible !important; }
+  .lw-installer-sheet[open] {
+    position: static;
+    display: block;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    color: black;
+    background: white;
+    border: 0;
+  }
+  .lw-installer-sheet[open]::backdrop { display: none; }
+  .lw-installer-sheet :is(header, footer, .lw-installer-sheet-body) { padding-inline: 0; }
+  .lw-installer-sheet :is(.btn, footer) { display: none; }
+  .lw-installer-sheet-body { overflow: visible; }
+  .lw-installer-sheet-rows li { break-inside: avoid; border-color: #ccc; }
+  .lw-installer-sheet :is(.lw-installer-sheet-header p, .lw-installer-sheet-checked, .lw-installer-sheet-part) { color: black; }
+}

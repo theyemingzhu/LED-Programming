@@ -1,4 +1,4 @@
-import { lwseqTopologyVersion } from './standaloneController.js';
+import { assertLwseqPixelCount, lwseqTopologyVersion } from './standaloneController.js';
 import { sendCardBridgeRequest } from './cardBridge.js';
 import { readCardStatusEnvelope, readCardProjectEvidence } from './cardPushClient.js';
 import { cardNeedsTouch } from './cardNeedsTouch.js';
@@ -139,6 +139,7 @@ export async function installRecordedMediaForRuntimePackage(runtimePackage, {
   const config = runtimePackage?.config || runtimePackage;
   for (const asset of assets) {
     assertAssetMatchesConfig(asset, config);
+    assertLwseqPixelCount(asset.manifest.pixelCount);
     const bytes = await verifyStoredSequenceAsset(asset);
     await assertRecordedMediaCurrentLayout(asset, project, bytes);
   }

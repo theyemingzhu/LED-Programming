@@ -5,6 +5,16 @@ const LWSEQ_TOPOLOGY_OFFSET = 24;
 const LWSEQ_TOPOLOGY_MAGIC = [76, 87, 79, 80]; // LWOP
 const LWSEQ_V1_OUTPUTS = 4;
 export const LWSEQ_MAX_OUTPUTS = 8;
+// The signed firmware media upload validator sets a separate recording limit.
+export const LWSEQ_MAX_PIXELS = 4096;
+
+export function lwseqPixelLimitMessage(pixelCount) {
+  return `This recording has ${pixelCount.toLocaleString('en-US')} LEDs. Current card firmware supports up to ${LWSEQ_MAX_PIXELS.toLocaleString('en-US')} LEDs in one recording. Use a live pattern for this layout.`;
+}
+
+export function assertLwseqPixelCount(pixelCount) {
+  if (pixelCount > LWSEQ_MAX_PIXELS) throw new RangeError(lwseqPixelLimitMessage(pixelCount));
+}
 
 export function lwseqTopologyVersion(outputCount) {
   return outputCount > LWSEQ_V1_OUTPUTS ? 2 : 1;
@@ -186,9 +196,10 @@ export function toLwseqBytes(frames = [], { fps = 24, outputs = DEFAULT_STANDALO
   const expectedPixels = normalizedOutputs.reduce((sum, output) => sum + output.pixels, 0) || (frames[0]?.length || 0);
   const frameRate = Number(fps);
   if (!Number.isSafeInteger(frameRate) || frameRate < 1 || frameRate > 60
-    || !Number.isSafeInteger(expectedPixels) || expectedPixels < 1 || expectedPixels > 4096) {
+    || !Number.isSafeInteger(expectedPixels) || expectedPixels < 1) {
     throw new RangeError('LWSEQ frame rate or pixel total exceeds the card media parser limits.');
   }
+  assertLwseqPixelCount(expectedPixels);
   const headerOutputs = normalizedOutputs.length ? normalizedOutputs
     : [{ pin: DEFAULT_STANDALONE_OUTPUTS[0].pin, pixels: expectedPixels }];
   if (headerOutputs.length < 1 || headerOutputs.length > LWSEQ_MAX_OUTPUTS

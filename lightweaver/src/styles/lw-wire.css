@@ -88,6 +88,12 @@
 .lww-flow:has(.lw-wiring-candidate) > .lww-flow-heading {
   display: none;
 }
+.lww-flow:has(.lw-wiring-candidate[data-installer-setup]) > [data-testid='card-save-summary'] { display: none; }
+@media (max-width: 600px) {
+  .lw-wiring-candidate[data-installer-setup] .installer-setup-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lw-wiring-candidate[data-installer-setup] .btn { min-height: 44px; }
+  .lw-wiring-candidate[data-installer-setup] .lw-installer-test-strips { max-height: 22dvh; overflow-y: auto; }
+}
 
 /* ---------- advanced: quiet, specialist-only disclosure ---------- */
 

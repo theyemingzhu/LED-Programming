@@ -74,6 +74,15 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+test('recording estimate rejects a layout over the card recording limit before rendering', () => {
+  const input = fixture();
+  input.recipe.evolution.durationSeconds = 1;
+  input.wiring.runs[1].count = 4091;
+  assert.equal(estimatePatternLabBake({ ...input, fps: 1 }).pixelCount, 4096);
+  input.wiring.runs[1].count = 4092;
+  assert.throws(() => estimatePatternLabBake({ ...input, fps: 1 }), /recording has 4,097 LEDs.*up to 4,096 LEDs/i);
+});
+
 test('same canonical inputs produce byte-identical physical LWSEQ and hashes', async () => {
   const input = fixture();
   const first = await bakePatternLabRecipe({ ...input, fps: 1 });

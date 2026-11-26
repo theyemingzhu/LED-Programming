@@ -432,17 +432,24 @@ test('[J05] a slow reconnect settles unaided, and a lost reply after a real writ
 // J08 — two rapid clicks on the same tile are one owner intent, not two
 // commands, and neither raises an alert.
 // ---------------------------------------------------------------------------
-test('[J08] a double click on one pattern tile reaches the card exactly once', async ({ page }) => {
+test('[J08] rapid clicks on the same pattern tile reach the card exactly once', async ({ page }) => {
   const spec = cardState('installed-match');
-  const card = await boot(page, spec, '/#screen=pattern', seedKnownCard);
+  const exact = exactInstalledProjectCard(spec);
+  const card = await boot(
+    page, spec, '/#screen=pattern', p => seedReturningOwnerWithCompleteProject(p, spec, exact.project),
+    exact.card,
+  );
   await waitConnectedUnaided(page, 'J08 double click');
+  await expect(page.getByTestId('installed-project-chip')).toHaveText('On the card · Installed project');
 
   const target = MATRIX_PATTERNS.find(pattern => pattern.id !== spec.currentId) || MATRIX_PATTERNS[0];
   const tile = patternTile(page, target.id);
   await expect(tile).toHaveCount(1, { timeout: CONNECT_BUDGET_MS });
 
   await tile.click();
-  await tile.click();
+  // A fast card can acknowledge the first click before the second reaches Studio.
+  await expect(page.getByTestId('physical-preview-status')).toHaveText('Preview sent to card');
+  await tile.dispatchEvent('click');
   await card.waitForPlaying(target.id, 8000);
   // Let a stray second command land if the double click was going to send one.
   await page.waitForTimeout(1000);

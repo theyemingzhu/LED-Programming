@@ -79,6 +79,16 @@
   border: 0; border-radius: 0;
   background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 24px 1px no-repeat;
 }
+.la .la-mode-nav:has(> .la-refresh-warning) { flex-wrap: wrap; }
+.la .la-refresh-warning {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  margin: 2px 0 0;
+  padding: 5px 6px;
+  color: var(--text-mid);
+  font: 12px/1.35 var(--font-ui);
+}
+.la .la-refresh-warning strong { font-weight: 600; color: var(--warn); }
 .la .la-strip-pin-button {
   display: inline-flex;
   align-items: center;
@@ -97,6 +107,53 @@
 .la .la-strip-pin-button:hover { background: var(--bg-elev-2); }
 .la .la-strip-pin-button:focus-visible { outline: 2px solid var(--accent); }
 .la .la-strip-pin-button svg { width: 12px; height: 12px; }
+.la .la-mode-nav.la-installer-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 8px;
+}
+.la .la-installer-nav .la-install-actions { flex-wrap: nowrap; }
+.la .la-installer-nav .la-install-actions > .btn { white-space: nowrap; }
+.la .la-installer-nav > :is(.la-installer-complete, .la-refresh-warning) { grid-column: 1 / -1; }
+.la .la-installer-complete { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.installer-setup-current > span { display: grid; gap: 2px; color: var(--text-hi); line-height: 1.15; }
+.installer-setup-current small { color: var(--text-mid); font-size: 11px; }
+.installer-setup-current strong { font-size: 13px; }
+.la .la-installer-nav .la-sheet-handle > .installer-setup-current {
+  width: auto;
+  height: auto;
+  background: none;
+}
+.la .la-installer-strip-row { gap: 2px 8px; }
+.la .la-strip-pin-action { display: contents; }
+.la .la-installer-strip-actions { display: flex; flex: 0 0 auto; gap: 4px; margin-inline-start: auto; }
+.la .la-installer-strip-summary { color: var(--text-mid); font: 11px var(--font-mono); }
+.la .la-installer-count-link { display: inline-flex; align-items: center; min-height: 32px; padding-inline: 4px; color: var(--accent-hi); font-size: 11px; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .la.installer-setup:not(.inspector-collapsed) { --mobile-sheet-height: clamp(260px, 42dvh, 400px); }
+}
+@media (max-width: 600px) {
+  .la.installer-setup.inspector-collapsed { --mobile-sheet-height: 53px; }
+  .la .la-installer-nav .la-installer-title { display: none; }
+  .la .la-installer-nav .la-sheet-handle { justify-content: start; min-height: 44px; text-align: left; }
+  .la .la-installer-nav .la-sheet-handle::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    margin-inline: 3px;
+    border: solid currentColor;
+    border-width: 0 1px 1px 0;
+    transform: rotate(45deg);
+  }
+  .la .la-installer-nav .la-sheet-handle[aria-expanded='false']::after { transform: rotate(225deg); }
+  .la .la-installer-nav .la-install-actions > .btn { min-width: 44px; min-height: 44px; }
+  .la .side.is-collapsed .la-installer-complete { display: none; }
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .la .la-installer-strip-row :is(.la-strip-pin-button, .la-installer-count-link) { min-height: 44px; }
+}
 .la .la-strip-wiring-tools {
   display: flex;
   flex-wrap: wrap;

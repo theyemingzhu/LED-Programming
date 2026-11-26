@@ -113,9 +113,9 @@ async function persistAutosave(page: any, project: object) {
 // strip list renders immediately (the built-in default keeps the starter
 // picker up until the first physical edit). Wiring is bootstrapped by the
 // loader: one output on GPIO 16 with run-<stripId> runs.
-async function seedDefaultCircles(page: any, { needsReview = false, mode = 'draw' } = {}) {
+async function seedDefaultCircles(page: any, { needsReview = false, mode = 'draw', outerCount = 27 } = {}) {
   await page.goto(`/#screen=layout&mode=${mode}`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate((flag: boolean) => {
+  await page.evaluate(({ needsReview, outerCount }) => {
     const circle = (id: string, name: string, radius: number, pixelCount: number) => ({
       id,
       name,
@@ -133,7 +133,7 @@ async function seedDefaultCircles(page: any, { needsReview = false, mode = 'draw
       name: 'Seeded circle project',
       layout: {
         strips: [
-          circle('default-outer-circle', 'Outer circle', 144, 27),
+          circle('default-outer-circle', 'Outer circle', 144, outerCount),
           circle('default-inner-circle', 'Inner circle', 64, 17),
         ],
         viewBox: '0 0 640 400',
@@ -145,13 +145,13 @@ async function seedDefaultCircles(page: any, { needsReview = false, mode = 'draw
         // A patch board without an explicit dataWireCount is the legacy shape
         // that flags dataWireCountNeedsReview on load. A null board is also
         // treated as ambiguous, so the ordinary seed must declare the count.
-        patchBoard: flag
+        patchBoard: needsReview
           ? { physicalLocked: false, chains: [{ id: 'main', name: 'Main', rowIds: [] }], patches: [], groups: [] }
           : { physicalLocked: false, dataWireCount: 1, dataWireCountNeedsReview: false, chains: [{ id: 'main', name: 'Main', rowIds: [] }], patches: [], groups: [] },
         wiring: null,
       },
     }));
-  }, needsReview);
+  }, { needsReview, outerCount });
   await page.reload({ waitUntil: 'domcontentloaded' });
   if (mode === 'draw') await expect(page.locator('.la-strip-row')).toHaveCount(2);
   else await expect(page.getByTestId('commissioning-step')).toBeVisible();
@@ -268,6 +268,29 @@ test('Test & Install shows a compact count line and one next-action CTA instead 
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
 });
+
+for (const [device, viewport] of Object.entries({ desktop: { width: 1280, height: 800 }, phone: { width: 390, height: 844 } })) {
+  test(`the ${device} Save to card action shows a nonblocking refresh estimate for long runs`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await seedDefaultCircles(page);
+    const warning = page.getByTestId('layout-refresh-warning');
+    await expect(warning).toHaveCount(0);
+
+    await seedDefaultCircles(page, { outerCount: 1200 });
+    const save = page.getByTestId('layout-check-and-install');
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText('Estimated maximum of 27.4 fps');
+    await expect(warning).toContainText('Split the longest run across outputs');
+    await expect(save).toBeEnabled();
+    await expect(save).toHaveAccessibleDescription(/Estimated maximum of 27\.4 fps/);
+    const saveBox = (await save.boundingBox())!;
+    const warningBox = (await warning.boundingBox())!;
+    expect(warningBox.y - (saveBox.y + saveBox.height)).toBeGreaterThanOrEqual(0);
+    expect(warningBox.y - (saveBox.y + saveBox.height)).toBeLessThan(24);
+    expect(warningBox.x).toBeGreaterThanOrEqual(0);
+    expect(warningBox.x + warningBox.width).toBeLessThanOrEqual(viewport.width);
+  });
+}
 
 test('Test & Install owns neither wire count nor ordering and keeps specialist tools closed', async ({ page }) => {
   await gotoWire(page);

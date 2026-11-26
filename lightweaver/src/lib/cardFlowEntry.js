@@ -96,7 +96,7 @@ export function resolveCardIntent(intent, context = {}) {
       return context.resumableCommissioning === true
         ? route('#screen=card&section=install')
         : context.startProjectInstall === true
-          ? route(`${setupTaskRoute('install-project')}&next=patterns`)
+          ? route(`${setupTaskRoute('install-project')}&next=patterns${context.installerSetup ? '&installer=1' : ''}`)
         : route(setupTaskRoute('install-project'));
     case 'configure-wifi':
       // Wi-Fi is a JOIN problem unless an in-flight commissioning stage or

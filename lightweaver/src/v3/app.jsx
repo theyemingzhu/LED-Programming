@@ -109,7 +109,7 @@ import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
 import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
 import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
-import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate } from '../lib/cardFlowEntry.js';
+import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate, openCardFlow } from '../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { chooseCardResumePlace, rememberCardResumePlace } from '../lib/cardResumePlace.js';
@@ -761,11 +761,13 @@ function Shell({ offlineUpdateController = null }) {
   const view = useMemo(() => studioViewFromHash(routeHash, viewOptions()), [routeHash]);
   const cardRoute = useMemo(() => cardRouteFromHash(routeHash), [routeHash]);
   const cardSetupReturnHashRef = useRef('#screen=layout');
+  const cardSetupHashRef = useRef('#screen=discovery');
   // A minimized light check remains mounted while the owner visits another
   // Studio screen. Its in-memory counting and card lease must not restart.
   const [cardSetupPersistent, setCardSetupPersistent] = useState(false);
   useEffect(() => {
-    if (view !== 'discovery') cardSetupReturnHashRef.current = routeHash || '#screen=layout';
+    if (view === 'discovery') cardSetupHashRef.current = routeHash;
+    else cardSetupReturnHashRef.current = routeHash || '#screen=layout';
   }, [routeHash, view]);
   const [installActive, setInstallActive] = useState(false);
   const [hardwareOperationActive, setHardwareOperationActive] = useState(false);
@@ -1110,7 +1112,8 @@ function Shell({ offlineUpdateController = null }) {
   const completeCardSetup = useCallback(() => {
     flushProjectAutosave();
     setCardSetupPersistent(false);
-    routeStore.replace('#screen=layout&mode=draw');
+    const guided = new URLSearchParams(cardSetupHashRef.current.slice(1)).get('installer') === '1';
+    routeStore.replace(guided ? '#screen=layout&mode=draw&installer=1' : '#screen=layout&mode=draw');
   }, [flushProjectAutosave, routeStore]);
 
   // The light check's one primary: straight to the card write the owner came
@@ -1119,7 +1122,8 @@ function Shell({ offlineUpdateController = null }) {
   const saveCardSetupToCard = useCallback(() => {
     flushProjectAutosave();
     setCardSetupPersistent(false);
-    routeStore.replace('#screen=card&section=setup&task=install-project&next=patterns');
+    const guided = new URLSearchParams(cardSetupHashRef.current.slice(1)).get('installer') === '1';
+    routeStore.replace(`#screen=card&section=setup&task=install-project&next=patterns${guided ? '&installer=1' : ''}`);
   }, [flushProjectAutosave, routeStore]);
 
   const disconnectCardSetup = useCallback(async () => {
@@ -1461,6 +1465,12 @@ function Shell({ offlineUpdateController = null }) {
     setConnectPanelIntent('');
     setConnectionCenterOpen(true);
   }, []);
+  const openInstallerConnection = useCallback(() => {
+    connectCloseArmedRef.current = false;
+    setCardControlOpen(false);
+    setConnectPanelIntent('installer');
+    setConnectionCenterOpen(true);
+  }, []);
   const closeConnectionCenter = useCallback(() => {
     setConnectPanelIntent('');
     setConnectionCenterOpen(false);
@@ -1525,7 +1535,7 @@ function Shell({ offlineUpdateController = null }) {
   const returnToBoardSetup = () => {
     setBoardSetupEntry(null);
     openCardSection('overview');
-    openConnectionCenter();
+    openInstallerConnection();
   };
   const saveLedCountToCard = useCallback(async () => {
     if (cardSaveRef.current) return;
@@ -1540,6 +1550,7 @@ function Shell({ offlineUpdateController = null }) {
         const studioFingerprint = cardProjectFingerprint(snapshot);
         const result = await applyTypedLedCountToCard({
           host,
+          transport: cardLink.transport,
           project: {
             projectId: snapshot.id,
             projectName: snapshot.name,
@@ -1551,6 +1562,11 @@ function Shell({ offlineUpdateController = null }) {
             standaloneController: snapshot.devices?.standaloneController,
           },
         });
+        if (result.reason === 'requires-light-test' || result.reason === 'staged-candidate') {
+          flushProjectAutosave();
+          openCardFlow('install-project', { startProjectInstall: true });
+          return;
+        }
         if (!result.applied) return;
         const config = result.runtimePackage?.config || {};
         markProjectInstalled({
@@ -1579,8 +1595,10 @@ function Shell({ offlineUpdateController = null }) {
   }, [
     cardLink.card?.id,
     cardLink.host,
+    cardLink.transport,
     cardLink.readiness?.cardId,
     cardStatus.host,
+    flushProjectAutosave,
     markProjectInstalled,
     projectLifecycle.editedRevision,
     projectLifecycle.generation,
@@ -1690,6 +1708,13 @@ function Shell({ offlineUpdateController = null }) {
     const surface = ownEditPending
       ? (cardLifecycle.state === 'length-mismatch' ? 'length-save' : 'content-save')
       : cardSurfaceForLifecycle(cardLifecycle);
+    const route = new URLSearchParams(window.location.hash.slice(1));
+    if ((surface === 'length-save' || surface === 'content-save')
+        && route.get('screen') === 'layout' && route.get('installer') === '1') {
+      flushProjectAutosave();
+      openCardFlow('install-project', { startProjectInstall: true, installerSetup: true });
+      return;
+    }
     if (surface === 'length-save') {
       if (serializeProject()?.expressionScenes?.playbackSceneId) void saveProjectToCard();
       else void saveLedCountToCard();
@@ -1719,7 +1744,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, cardLink, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
+  }, [cardLifecycle, cardLink, flushProjectAutosave, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -2564,6 +2589,7 @@ function Shell({ offlineUpdateController = null }) {
               cardLifecycle={cardLifecycle}
               onConnectCard={onConnectCard}
               onOpenConnectionCenter={openConnectionCenter}
+              onOpenInstallerConnection={openInstallerConnection}
               boardSetupEntry={boardSetupEntry}
               onReturnToBoardSetup={returnToBoardSetup}
               onOpenProjects={onLoad}
@@ -2610,6 +2636,7 @@ function Shell({ offlineUpdateController = null }) {
           <CardSetupOverlay
             cardHost={cardLink.host || cardStatus.host}
             cardLink={cardLink}
+            discoveryHash={view === 'discovery' ? routeHash : cardSetupHashRef.current}
             go={next => {
               // A discovery completion explicitly leaves this flow. The rail
               // still uses navigateStudio so an idle dock can follow the owner.
@@ -2627,7 +2654,7 @@ function Shell({ offlineUpdateController = null }) {
                 // Keep the persistent flag until close/complete/disconnect so
                 // this route change cannot transiently unmount the live panel.
                 cardSetupReturnHashRef.current = routeStore.read();
-                routeStore.replace('#screen=discovery');
+                routeStore.replace(cardSetupHashRef.current);
               }
             }}
           />
@@ -2698,11 +2725,11 @@ function Shell({ offlineUpdateController = null }) {
           if (installActiveRef.current) return;
           closeConnectionCenter();
           if (cardLink.cardBlank) {
-            routeStore.push('#screen=discovery');
+            routeStore.push('#screen=discovery&installer=1');
             return;
           }
           flushProjectAutosave();
-          routeStore.push('#screen=layout&mode=draw');
+          routeStore.push('#screen=layout&mode=draw&installer=1');
         }}
         onConnectCard={onConnectCard}
         onLaunchBridge={onLaunchBridge}

@@ -79,9 +79,7 @@ async function startLightTest(page: Page) {
   await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
 }
 
-test('the demo card saves a board correction, installs a fifth output, and restores a rejected rewire', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const project = makeDemoProject();
+async function openDemoInstallation(page: Page, project: ReturnType<typeof makeDemoProject>) {
   const { config } = prepareCardDeployment({
     projectId: project.id, projectName: project.name, projectRevision: 0,
     strips: project.layout.strips, patchBoard: project.layout.patchBoard, wiring: project.layout.wiring,
@@ -119,6 +117,12 @@ test('the demo card saves a board correction, installs a fifth output, and resto
 
   await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-link-status')).toContainText('Connected');
+  return card;
+}
+
+for (const width of [320, 390, 1280]) test(`the installer chooses, corrects, tests and prints a wiring setup at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 320 ? 700 : 844 });
+  const card = await openDemoInstallation(page, makeDemoProject());
   const startStatus = await readCard(page);
   expect(startStatus.limits.outputs).toBe(8);
   expect(startStatus.capabilities.outputTopology).toEqual({
@@ -127,20 +131,42 @@ test('the demo card saves a board correction, installs a fifth output, and resto
   expect(startStatus.outputs).toHaveLength(4);
 
   await page.getByRole('button', { name: 'Card', exact: true }).click();
-  await page.getByRole('button', { name: 'Choose board', exact: true }).click();
+  await page.getByTestId('setup-connect-card').click();
   const boardSetup = page.getByTestId('connect-board-setup');
   await boardSetup.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.0', exact: true }).click();
   await boardSetup.getByRole('button', { name: 'Use this board' }).click();
-  await expect(boardSetup.getByText('Free for LEDs')).toBeVisible();
-  await expect(page.getByText('Check board and pins', { exact: true })).toHaveCount(1);
-  await boardSetup.getByRole('button', { name: 'Map looks wrong' }).click();
+  await expect(boardSetup.getByText('Free for LED data')).toBeVisible();
+  await boardSetup.getByRole('button', { name: 'My board looks different' }).click();
   await page.getByLabel('Board name').fill('Demo board correction');
+  await page.getByLabel('Printed revision (if shown)').fill('v1.0');
   await page.getByRole('button', { name: 'Save and use this board' }).click();
   await expect(boardSetup.getByRole('heading', { name: /Demo board correction/ })).toBeVisible();
-  await boardSetup.getByRole('button', { name: 'Set up lights' }).click();
-  await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
+  await boardSetup.getByRole('button', { name: 'Connect strips' }).click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw&installer=1$/);
+  const progress = page.locator('[data-testid="installer-setup-progress"]:visible');
+  await expect(progress.locator('[aria-current="step"]')).toContainText('Connect strips');
+  await expect(progress).toContainText('Step 3 of 4');
+  const save = page.getByTestId('layout-check-and-install');
+  const specs = page.getByTestId('layout-specs-trigger');
+  const [progressBox, specsBox, saveBox] = await Promise.all([progress.boundingBox(), specs.boundingBox(), save.boundingBox()]);
+  if (!progressBox || !specsBox || !saveBox) throw new Error('The installer toolbar and its two controls must be visible.');
+  expect(progressBox.x + progressBox.width).toBeLessThanOrEqual(specsBox.x);
+  expect(specsBox.x + specsBox.width).toBeLessThanOrEqual(saveBox.x);
+  expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(width);
+  expect(saveBox.y).toBe(specsBox.y);
+  if (width < 600) {
+    expect(Math.min(specsBox.height, saveBox.height)).toBeGreaterThanOrEqual(44);
+    await page.getByRole('button', { name: 'Hide strip list' }).click();
+    await expect(save).toBeHidden();
+    await page.getByRole('button', { name: 'Show strip list' }).click();
+    await expect(save).toBeInViewport({ ratio: 1 });
+  }
+  const outerRow = page.locator('.la-strip-row').filter({ hasText: 'Outer circle' }).first();
+  await expect(outerRow).toContainText('GPIO 15 · 600 LEDs');
+  await expect(outerRow.getByRole('button', { name: 'Change pin for Outer circle' })).toBeVisible();
+  await expect(outerRow.getByRole('link', { name: 'Count LEDs' })).toHaveAttribute('href', '#screen=discovery&installer=1&pin=15');
 
-  await page.getByTestId('layout-specs-trigger').click();
+  await specs.click();
   const tools = page.getByTestId('advanced-installation-tools');
   if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
     await tools.locator(':scope > summary').click();
@@ -152,13 +178,35 @@ test('the demo card saves a board correction, installs a fifth output, and resto
   await expect(map.locator('[data-pin="12"]')).toContainText('microSD SCK');
   await page.getByRole('button', { name: 'Back to inspector' }).click();
 
+  await page.getByRole('button', { name: 'Change pin for Ring 5' }).click();
+  await expect(page.getByLabel('GPIO output', { exact: true })).toBeVisible();
   await assignGpio(page, 'Ring 5', 21);
-  await startLightTest(page);
+  if (width === 1280) {
+    const footer = page.getByTestId('card-link-status');
+    await expect(footer).toHaveAccessibleName('Save to card');
+    await footer.click();
+    await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
+  } else await startLightTest(page);
+  const lightTest = page.getByRole('region', { name: 'Wiring safety check' });
+  await expect(lightTest.getByText('Are all the lights steady?')).toBeVisible();
+  await expect(lightTest.getByRole('list', { name: 'Strips to check' })).toContainText('Ring 5');
+  await expect(lightTest.getByRole('button', { name: 'Restore previous setup' })).toBeInViewport({ ratio: 1 });
+  await expect(lightTest.getByRole('button', { name: 'Keep this setup' })).toBeInViewport({ ratio: 1 });
   expect(card.state.bootId).not.toBe(startStatus.bootId);
   expect(card.state.wiringTestActive).toBe(true);
   expect(cardOutputs(card).map(output => [output.pin, output.pixels])).toEqual(expectedOutputs);
   expect(card.state.pixels).toBe(totalPixels);
-  await page.getByTestId('wiring-test-confirm').click();
+  await lightTest.getByRole('button', { name: 'Keep this setup' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Wiring sheet' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText('Demo board correction v1.0');
+  await expect(sheet).toContainText('J1 pin 8');
+  await expect(sheet.getByText('Checked in person', { exact: true })).toHaveCount(5);
+  await page.evaluate(() => { window.print = () => { document.body.dataset.printRequested = 'true'; }; });
+  await sheet.getByRole('button', { name: 'Print or save as PDF' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'true');
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('link', { name: 'Open patterns' }).click();
   await expect(page).toHaveURL(/#screen=pattern$/);
   const confirmed = await readCard(page);
   const confirmedTopology = cardOutputs(card);
@@ -180,7 +228,7 @@ test('the demo card saves a board correction, installs a fifth output, and resto
   expect(restarted.wiringDigest).toBe(confirmed.wiringDigest);
   expect(toTopology(restarted.outputs)).toEqual(confirmedTopology);
 
-  await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${LAYOUT_ROUTE}&installer=1`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-link-status')).toContainText('Connected');
   await assignGpio(page, 'Outer circle', 38);
   await startLightTest(page);
@@ -195,6 +243,75 @@ test('the demo card saves a board correction, installs a fifth output, and resto
   expect(restored.wiringDigest).toBe(confirmed.wiringDigest);
   expect(toTopology(restored.outputs)).toEqual(confirmedTopology);
   expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/rollback')).toHaveLength(1);
+  await page.getByRole('link', { name: 'Back to strips' }).click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw&installer=1$/);
+});
+
+test('a 3,500 LED run can be tested across two pins and restored to one output', async ({ page }) => {
+  const project = makeDemoProject();
+  const strips = createDefaultCircleLayout({ sectionPixelCounts: [1750, 1750] });
+  project.layout.strips = strips;
+  project.layout.patchBoard = createDefaultPatchBoard(strips);
+  project.layout.patchBoard.dataWireCount = 1;
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = [{ id: 'out1', pin: 15, name: 'Output 1', runIds: wiring.runs.map(run => run.id) }];
+  project.layout.wiring = wiring;
+
+  const card = await openDemoInstallation(page, project);
+  const before = await readCard(page);
+  expect(before.outputs.map(({ pin, pixels }) => [pin, pixels])).toEqual([[15, 3500]]);
+  const refresh = page.getByTestId('layout-refresh-warning');
+  await expect(refresh).toContainText('9.5 fps');
+
+  await assignGpio(page, 'Inner circle', 21);
+  await expect(refresh).toContainText('19.0 fps');
+  await startLightTest(page);
+  const split = await readCard(page);
+  expect(split.outputs.map(({ pin, pixels }) => [pin, pixels])).toEqual([[15, 1750], [21, 1750]]);
+  expect(split.bootId).not.toBe(before.bootId);
+  expect(split.wiringProbation.active).toBe(true);
+  expect(split.outputDriverReady).toBe(true);
+  expect(split.pixelCapacity.allocatedBoot).toBeGreaterThanOrEqual(3500);
+
+  await page.getByTestId('wiring-test-restore').click();
+  await expect(page.getByText(/Restored the last working setup/)).toBeVisible();
+  const restored = await readCard(page);
+  expect(restored.outputs).toEqual(before.outputs);
+  expect(restored.projectFingerprint).toBe(before.projectFingerprint);
+  expect(restored.wiringDigest).toBe(before.wiringDigest);
+  expect(restored.wiringProbation.active).toBe(false);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/confirm')).toHaveLength(0);
+});
+
+test('same-pin growth stages and restores when the test outputs fail to initialize', async ({ page }) => {
+  const project = makeDemoProject();
+  const card = await openDemoInstallation(page, project);
+  const before = await readCard(page);
+  Object.assign(card.state, { candidateOutputFailure: true });
+
+  const firstStrip = page.locator('[data-strip-id]').filter({
+    has: page.locator('.la-strip-row').filter({ hasText: project.layout.strips[0].name }),
+  }).first();
+  if (!await firstStrip.locator('.la-strip-detail').isVisible()) await firstStrip.locator('.la-strip-row').click();
+  const count = firstStrip.getByRole('spinbutton', { name: / LED count$/ });
+  await count.fill('3500');
+  await count.press('Enter');
+  const footer = page.getByTestId('card-link-status');
+  await expect(footer).toHaveAccessibleName('Save to card');
+  await footer.click();
+  await expect(page.getByTestId('wiring-test-restore')).toBeVisible();
+  await expect(page.getByText(/test candidate outputs did not initialize/)).toBeVisible();
+  await expect(page.getByTestId('wiring-test-confirm')).toHaveCount(0);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/config')).toHaveLength(0);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/candidate')).toHaveLength(1);
+
+  await page.getByTestId('wiring-test-restore').click();
+  await expect(page.getByText(/Restored the last working setup/)).toBeVisible();
+  const restored = await readCard(page);
+  expect(restored.outputs).toEqual(before.outputs);
+  expect(restored.projectFingerprint).toBe(before.projectFingerprint);
+  expect(restored.wiringProbation.active).toBe(false);
+  expect(card.requests.filter(({ path, method }) => method === 'POST' && path === '/api/wiring/confirm')).toHaveLength(0);
 });
 
 test('a simulated capacity or pin violation leaves the running project untouched', async ({ page }) => {

@@ -212,6 +212,7 @@ function flowSentence(names) {
 
 export function DrawModePanel({
   state,
+  installerSetup = false,
   firstLedPicker,
   firstLedError,
   onBeginFirstLedPicker,
@@ -1667,7 +1668,8 @@ export function DrawModePanel({
                            setStripGroupDragOver(null);
                            setSideDragActive(false);
                          } : undefined}>
-                  {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
+                  {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips)
+                    && !(installerSetup && groupedStrips.length === 1 && linkedStrips.length === 0) && <div className="la-gpio-group-head">
                     <span title={pinPlace(output.pin)} data-tooltip={pinPlace(output.pin)}>GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>}
@@ -1739,6 +1741,8 @@ export function DrawModePanel({
                   wiring.runs.some(candidateRun => candidateRun.id === runId && candidateRun.type === 'strip' && candidateRun.source?.stripId === s.id)))
                   .map(candidate => candidate.pin);
                 const stripPin = outputForStrip(s.id)?.pin ?? 16;
+                const pinLabel = formatGpio(routePins.length ? routePins.join(' + ') : stripPin);
+                const countRoute = `#${STRIP_DISCOVERY_ROUTE}${installerSetup ? '&installer=1' : ''}${installerSetup && routePins.length === 1 ? `&pin=${routePins[0]}` : ''}`;
                 const stripPinChoices = isOpen ? gpioChoicesForStrip(s.id) : [];
                 const pinEditLocked = Boolean(connectedFamily && (wiring.locked || !connectedStatus.ok));
                 const unavailableStripPin = unavailabilityForPin(stripPin);
@@ -1857,7 +1861,7 @@ export function DrawModePanel({
                     </div>
                   </div>}
                   <div
-                       className={`la-strip-row${connectedFamily ? ' la-part-row' : ''}${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
+                       className={`la-strip-row${installerSetup ? ' la-installer-strip-row' : ''}${connectedFamily ? ' la-part-row' : ''}${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
                        draggable
                        title={sideView ? 'Drag to another side, or up and down to change the order the pattern flows' : 'Drag to change physical wire order'}
                        onDragStart={e => {
@@ -1920,25 +1924,31 @@ export function DrawModePanel({
                         {flowPosition}
                       </span> : null}
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
-                                    className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0, color: s.color }}/>
+                                    className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: installerSetup ? '5rem' : 0, color: s.color }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
-                      <button type="button" className="la-strip-pin-button"
-                              aria-label={`Change pin for ${partName}`}
-                              title={`Change pin for ${partName}`}
-                              data-testid={sideView ? `strip-wire-${s.id}` : undefined}
-                              onClick={event => {
-                                event.stopPropagation();
-                                if (patternPicker) closePatternPicker(false);
-                                setGpioError('');
-                                selectStrip(s.id);
-                                setPanelStripId(s.id);
-                                setPinEditStripId(s.id);
-                              }}>
-                        <span>{formatGpio(routePins.length ? routePins.join(' + ') : stripPin)}</span>
-                        <ChevronDownIcon/>
-                      </button>
-                      {stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
-                      {stripTargets.map(target => {
+                      {installerSetup && <span className="la-installer-strip-summary">
+                        {routePins.length ? pinLabel : 'Choose a pin'} · {s.pixelCount.toLocaleString('en-US')} LEDs
+                      </span>}
+                      <span className={installerSetup ? 'la-installer-strip-actions' : 'la-strip-pin-action'}>
+                        <button type="button" className="la-strip-pin-button"
+                                aria-label={`Change pin for ${partName}`}
+                                title={`Change pin for ${partName}`}
+                                data-testid={sideView ? `strip-wire-${s.id}` : undefined}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  if (patternPicker) closePatternPicker(false);
+                                  setGpioError('');
+                                  selectStrip(s.id);
+                                  setPanelStripId(s.id);
+                                  setPinEditStripId(s.id);
+                                }}>
+                          <span>{installerSetup ? 'Change pin' : pinLabel}</span>
+                          <ChevronDownIcon/>
+                        </button>
+                        {installerSetup && <a className="la-installer-count-link" href={countRoute} onClick={event => event.stopPropagation()}>Count LEDs</a>}
+                      </span>
+                      {!installerSetup && stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
+                      {!installerSetup && stripTargets.map(target => {
                         const patternId = target.look?.patternId || 'aurora';
                         const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
                         const sideTarget = Boolean(target.mirroredSides) || Boolean(symmetry?.sides.some(side => side.id === target.id));
@@ -1969,7 +1979,7 @@ export function DrawModePanel({
                         </button>;
                       })}
                       {/* Keep the visibility action on the row's outside edge. */}
-                      <button className={`la-strip-row-eye${hidden[s.id] ? ' is-hidden' : ''}`}
+                      {!installerSetup && <button className={`la-strip-row-eye${hidden[s.id] ? ' is-hidden' : ''}`}
                               aria-label={hidden[s.id] ? `Show ${s.name}` : `Hide ${s.name}`}
                               data-caption={hidden[s.id] ? 'Show this strip on the canvas' : 'Hide this strip on the canvas'}
                               onClick={event => {
@@ -1977,7 +1987,7 @@ export function DrawModePanel({
                                 setHidden(h => ({ ...h, [s.id]: !h[s.id] }));
                               }}>
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
-                      </button>
+                      </button>}
                     </div>
                     {patternPicker?.stripId === s.id && (() => {
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
@@ -2025,7 +2035,7 @@ export function DrawModePanel({
                               </select>
                             </span>
                           </label>
-                          <a className="btn la-strip-count-action" href={`#${STRIP_DISCOVERY_ROUTE}`}>Count LEDs</a>
+                          {!installerSetup && <a className="btn la-strip-count-action" href={countRoute}>Count LEDs</a>}
                           {(pinEditLocked || pinChoiceProblem) && <p className="la-strip-pin-help" id={`strip-pin-help-${s.id}`}>
                             {pinEditLocked ? (wiring.locked ? 'Unlock wiring in Test & Install to change this part.' : 'Fix or detach the sections to change this pin.') : pinChoiceProblem}
                           </p>}

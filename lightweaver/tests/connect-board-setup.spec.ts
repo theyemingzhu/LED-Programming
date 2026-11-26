@@ -43,7 +43,11 @@ test('an ambiguous card can be matched to its printed revision without writing t
   const methods: string[] = [];
   const board = await connectCard(page, status, status, methods);
   const useBoard = board.getByRole('button', { name: 'Use this board' });
-  await expect(board.getByText(/Check the name and revision printed/)).toBeVisible();
+  await expect(board.getByText(/Which version is printed/)).toBeVisible();
+  const progress = page.getByTestId('installer-setup-progress');
+  await expect(progress.locator('[aria-current="step"]')).toHaveText('2Choose board');
+  await expect(board.getByRole('figure', { name: 'Where to find the board revision' })).toContainText('Turn the board over');
+  await expect(board.getByText('Look for RGB@IO38 on the front')).toBeVisible();
   await expect(useBoard).toBeDisabled();
   await board.getByRole('button', { name: 'Browse boards' }).click();
   const search = board.getByRole('searchbox', { name: 'Search board profiles' });
@@ -54,11 +58,12 @@ test('an ambiguous card can be matched to its printed revision without writing t
   await revision.click();
   await useBoard.click();
   await expect(board.getByRole('heading', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.1' })).toBeFocused();
-  await expect(board.getByText('Free for LEDs', { exact: true }).locator('..')).toHaveText('Free for LEDsGPIO 17');
+  await expect(board.getByText('Free for LED data', { exact: true }).locator('..')).toContainText('J1 pin 10 · GPIO 17');
   await expect(board.getByText('Shared with board functions', { exact: true }).locator('..')).toHaveText('Shared with board functionsGPIO 39');
   await expect(board.getByText('GPIO 15')).toBeVisible();
-  await expect(board.getByText('GPIO 16')).toHaveCount(0);
-  await expect(board.getByRole('button', { name: 'Set up lights' })).toBeVisible();
+  await expect(board.getByText('Used by the dial')).toBeVisible();
+  await expect(board.getByText('Used by the dial').locator('..')).toContainText('GPIO 16');
+  await expect(board.getByRole('button', { name: 'Connect strips' })).toBeVisible();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   expect(methods).toContain('GET');
@@ -76,7 +81,7 @@ test('a firmware reply from a different card stays unconfirmed', async ({ page }
   const board = await connectCard(page, status, { ...status, cardId: 'lw-aabbccddee00' });
   await expect(board.getByRole('alert')).toContainText('different card or firmware session');
   await expect(board.getByRole('button', { name: 'Use this board' })).toHaveCount(0);
-  await expect(board.getByRole('button', { name: 'Set up lights' })).toHaveCount(0);
+  await expect(board.getByRole('button', { name: 'Connect strips' })).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('lw-board-profiles-v1'))).toBeNull();
 });
 
@@ -85,8 +90,8 @@ test('current signed firmware without a pin list uses standard pins and excludes
   const board = await connectCard(page, legacy);
   await board.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.1' }).click();
   await board.getByRole('button', { name: 'Use this board' }).click();
-  await expect(board.getByText('Free for LEDs').locator('..')).toContainText('GPIO 17');
-  await expect(board.getByText('Free for LEDs').locator('..')).not.toContainText('GPIO 16');
+  await expect(board.getByText('Free for LED data').locator('..')).toContainText('GPIO 17');
+  await expect(board.getByText('Free for LED data').locator('..')).not.toContainText('GPIO 16');
   await expect(board.getByText('LEDs already set up').locator('..')).toContainText('GPIO 15');
   await expect(board.getByText('This card supports up to 4 LED outputs.')).toBeVisible();
 });
@@ -101,6 +106,30 @@ test('a blank card with an exact reported revision continues straight to finding
   await expect(board.getByText(/Your card reports/)).toContainText('ESP32-S3-DevKitC-1 N16R8 v1.1');
   await board.getByRole('button', { name: 'Use this board' }).click();
   await expect(board.getByText('This card supports up to 6 LED outputs.')).toBeVisible();
-  await board.getByRole('button', { name: 'Set up lights' }).click();
-  await expect(page).toHaveURL(/#screen=discovery/);
+  await board.getByRole('button', { name: 'Connect strips' }).click();
+  await expect(page).toHaveURL(/#screen=discovery&installer=1/);
+  await expect(page.getByTestId('strip-discovery').getByTestId('installer-setup-progress').locator('[aria-current="step"]')).toHaveText('3Connect strips');
+});
+
+test('the suggested pin waits for the worker to confirm before touching the card', async ({ page }) => {
+  const methods: string[] = [];
+  const board = await connectCard(page, status, status, methods);
+  await board.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.1' }).click();
+  await board.getByRole('button', { name: 'Use this board' }).click();
+  await board.getByRole('button', { name: 'Connect strips' }).click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw&installer=1/);
+  const liveControls = page.waitForResponse(response => response.url().endsWith('/firmware-info'));
+  await page.evaluate(() => { window.location.hash = '#screen=discovery&installer=1&pin=16'; });
+  await liveControls;
+  const discovery = page.getByTestId('strip-discovery');
+  await expect(discovery.getByText('GPIO 16 is unavailable for LED data. Pick another pin.')).toBeVisible();
+  await expect(discovery.getByRole('heading', { name: 'Count the strip on GPIO 16?' })).toHaveCount(0);
+  await expect(discovery.getByTestId('discovery-probe-17')).toBeVisible();
+  await expect(discovery.getByTestId('discovery-probe-16')).toHaveCount(0);
+  await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw&installer=1'; });
+  await expect(discovery).toHaveCount(0);
+  await page.evaluate(() => { window.location.hash = '#screen=discovery&installer=1&pin=17'; });
+  await expect(discovery.getByRole('heading', { name: 'Count the strip on GPIO 17?' })).toBeVisible();
+  await expect(discovery.getByRole('button', { name: 'Yes', exact: true })).toBeEnabled();
+  expect(methods.every(method => method === 'GET')).toBe(true);
 });

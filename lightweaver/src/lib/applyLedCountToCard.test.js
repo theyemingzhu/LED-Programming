@@ -78,6 +78,41 @@ test('does not write when the card already has that length', async () => {
   assert.deepEqual(result, { applied: false, reason: 'not-a-length-change' });
 });
 
+test('a count beyond the reported allocation is handed to the light test without writing', async () => {
+  const current = {
+    ...countedProjectCard,
+    pixelCapacity: { schemaLimit: 65535, allocatedBoot: 32, candidateRollback: true },
+    outputs: [{ id: 'o1', pin: 16, pixels: 30, segments: [{ id: 'a', count: 30, direction: 'forward' }] }],
+  };
+  const result = await applyTypedLedCountToCard({
+    host: '192.168.18.70', project,
+    readEvidence: async () => current,
+    pushConfig: async () => { throw new Error('must not write the working setup'); },
+  });
+  assert.deepEqual(result, { applied: false, reason: 'requires-light-test' });
+  const older = { ...current, pixelCapacity: { allocatedBoot: 32 } };
+  await assert.rejects(
+    applyTypedLedCountToCard({ host: '192.168.18.70', project,
+      readEvidence: async () => older, pushConfig: async () => { throw new Error('must not write'); } }),
+    { reason: 'allocation-test-needs-update' },
+  );
+});
+
+test('a direct count acknowledgement does not accept a failed output initialization after reboot', async () => {
+  const before = { ...countedProjectCard, cardId: 'lw-count', buildId: 'build', bootId: 'working',
+    pixelCapacity: { allocatedBoot: 512, candidateRollback: true } };
+  const after = { ...before, bootId: 'failed', led: { pixels: 41 }, outputReady: false,
+    outputInitialization: { ok: false, message: 'LED outputs failed to initialize' } };
+  let reads = 0;
+  await assert.rejects(
+    applyTypedLedCountToCard({ host: '192.168.18.70', project,
+      readEvidence: async () => ++reads === 1 ? before : after,
+      pushConfig: async () => ({ ok: true, requiresReboot: true }) }),
+    { reason: 'count-output-not-ready' },
+  );
+  assert.equal(reads, 2);
+});
+
 test('does not write a GPIO change as a length update', async () => {
   const result = await applyTypedLedCountToCard({
     host: '192.168.18.70',

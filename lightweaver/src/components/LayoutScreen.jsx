@@ -9,10 +9,13 @@ import { WireHoverDescription } from './layout/shared/WireHoverDescription.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
 import { WirePlanTools } from './layout/modes/WirePlanTools.jsx';
 import { WireBuildSheet } from './layout/wire/WireBuildSheet.jsx';
+import { InstallerWiringSheetButton } from './layout/wire/InstallerWiringSheet.jsx';
+import { InstallerSetupProgress } from './card/InstallerSetupProgress.jsx';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { classifyCardChanges, cardStatusAsConfig } from '../lib/cardDeployment.js';
+import { cardPixelAllocationNeedsTest } from '../lib/cardPushClient.js';
 import { getCardLinkState } from '../lib/cardLink.js';
 import {
   createDefaultKaleidoscope,
@@ -23,6 +26,7 @@ import {
 } from '../lib/kaleidoscope.js';
 import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibration.js';
 import { stripPitchMm } from '../lib/wireBuildSheet.js';
+import { estimateWiringFrameTiming } from '../lib/wiringFrameTiming.js';
 import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
 import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
@@ -84,6 +88,9 @@ function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }
 
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
+  const setupRoute = new URLSearchParams(window.location.hash.slice(1));
+  const installerSetup = setupRoute.get('installer') === '1';
+  const showInstallerSheet = installerSetup && setupRoute.get('sheet') === '1';
   // Card Home's Lights row hands a new total here (lib/ledCountHandoff.js):
   // apply it with Layout's own setter, then, once the counted strips have
   // rendered, continue to Save to card exactly as the button below does.
@@ -114,6 +121,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const previewTrigger = useRef(null);
   const shapesTrigger = useRef(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  useEffect(() => {
+    if (showInstallerSheet) setInspectorCollapsed(false);
+  }, [showInstallerSheet]);
   const specsDeepLink = typeof window !== 'undefined' && isLayoutSpecsRoute(window.location.hash);
   const [specsOpen, setSpecsOpen] = useState(specsDeepLink);
   const [specsAttention, setSpecsAttention] = useState(false);
@@ -140,6 +150,8 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // or null) — drives the ghost preview of the primitive on the canvas.
   const [starterPreview, setStarterPreview] = useState(null);
   const { wiring, compiledWiring, updateWiring, standaloneController, projectId, projectLifecycle } = useProject();
+  const { maximumFps, longestOutputSetsLimit } = estimateWiringFrameTiming(compiledWiring);
+  const showRefreshWarning = !inspectorCollapsed && maximumFps !== null && maximumFps < 30;
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const targetId = params.get('focusTarget');
@@ -171,17 +183,17 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // Reuses classifyCardChanges (src/lib/cardDeployment.js) — the same
   // function that decides `prepared.changes` for an actual push — purely to
   // choose which sentence to show, never to gate the button. hardwareFacts()
-  // inside it deliberately ignores pixel COUNT (only pin/segment identity,
-  // power, and colour count as hardware), so a length-only edit reads
-  // 'visual' here exactly as it does on the card (F14): applied and
-  // rebooted at once, no light test. Any pin/output/power/colour edit reads
-  // 'hardware': staged, and answered with a light test. `getCardLinkState()`
+  // inside it deliberately ignores pixel count. Use the same additional
+  // capacity check as the card save to describe a larger allocation as a
+  // light test. Ordinary length-only edits still save and reboot (F14).
+  // `getCardLinkState()`
   // is read as a plain snapshot (same pattern CardPushControl already uses
   // for its transport check) — stale by at most a render, which is fine for
   // an informational line that never decides anything.
   const layoutChangeKind = useMemo(() => {
     const readiness = getCardLinkState()?.readiness;
     if (!readiness || !standaloneController?.outputs?.length) return null;
+    if (cardPixelAllocationNeedsTest(readiness, { led: { outputs: compiledWiring.outputs } })) return 'hardware';
     const previousConfig = cardStatusAsConfig(readiness);
     const nextConfig = {
       led: {
@@ -197,7 +209,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
       },
     };
     return classifyCardChanges(previousConfig, nextConfig).kind;
-  }, [standaloneController]);
+  }, [compiledWiring, standaloneController]);
   const {
     // context passthroughs + composer-level derived (chrome + canvas only)
     strips, layers, hidden,
@@ -452,7 +464,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
   return (
     <div className="screen">
-      <div className={`la mode-${mode}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
+      <div className={`la mode-${mode}${installerSetup ? ' installer-setup' : ''}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
 
         <input ref={fileRef} type="file" accept=".svg" hidden onChange={handleFile}/>
 
@@ -589,16 +601,23 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
       {/* ── Right panel (mockup .side) ─────────────────────────────── */}
       <aside className={`side${inspectorCollapsed ? ' is-collapsed' : ''}`}>
-        <WireHoverDescription className="la-mode-nav">
+        <WireHoverDescription className={`la-mode-nav${installerSetup ? ' la-installer-nav' : ''}`}>
+          {installerSetup && <div className="la-installer-title">
+            <InstallerSetupProgress step={showInstallerSheet ? 'done' : 'strips'} compact />
+          </div>}
           <button
             type="button"
             className="la-sheet-handle"
             data-testid="layout-sheet-handle"
-            aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+            aria-label={installerSetup
+              ? (inspectorCollapsed ? 'Show strip list' : 'Hide strip list')
+              : (inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector')}
+            aria-controls="layout-inspector-content"
             aria-expanded={!inspectorCollapsed}
             onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
-            <span aria-hidden="true"/>
-            <strong>Inspector</strong>
+            {installerSetup
+              ? <InstallerSetupProgress step={showInstallerSheet ? 'done' : 'strips'} compact />
+              : <><span aria-hidden="true"/><strong>Inspector</strong></>}
           </button>
           <div className="la-install-actions">
             <button
@@ -619,13 +638,14 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               type="button"
               className="btn primary"
               data-testid="layout-check-and-install"
+              aria-describedby={showRefreshWarning ? 'layout-refresh-warning' : undefined}
               title="Check the lights and install this project on the connected card."
               data-tooltip="Check the lights and install this project on the connected card."
-              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
+              onClick={() => openCardFlow('install-project', { startProjectInstall: true, installerSetup })}
             >
               Save to card
             </button>
-            {layoutChangeKind && (
+            {!installerSetup && layoutChangeKind && (
               <details className="la-change-help" data-testid="layout-change-help">
                 <summary
                   aria-label="Installation info"
@@ -637,17 +657,30 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                 <div className="la-change-help-popover">
                   <p className="la-change-kind" data-testid="layout-change-kind">
                     {layoutChangeKind === 'hardware'
-                      ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
+                      ? 'The card keeps the previous setup while you test the lights.'
                       : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
                   </p>
                 </div>
               </details>
             )}
           </div>
+          {showInstallerSheet && <div className="la-installer-complete">
+            <InstallerWiringSheetButton openOnMount />
+            <a className="btn" href="#screen=pattern">Open patterns</a>
+          </div>}
+          {showRefreshWarning && (
+            <p className="la-refresh-warning" id="layout-refresh-warning" data-testid="layout-refresh-warning" role="status">
+              <strong>Estimated maximum of {maximumFps.toFixed(1)} fps.</strong>{' '}
+              {longestOutputSetsLimit
+                ? 'Split the longest run across outputs for smoother motion.'
+                : 'Use fewer LEDs per card for smoother motion.'}
+            </p>
+          )}
         </WireHoverDescription>
-        <div className="la-mode-content is-draw">
+        <div className="la-mode-content is-draw" id="layout-inspector-content">
           <div className={`la-inspector-main${shapesOpen && !state.starterLayoutActive ? ' is-choosing-shape' : ''}`} hidden={specsOpen}>
             <DrawModePanel state={state}
+                         installerSetup={installerSetup}
                          addChooserOpen={shapesOpen}
                          setAddChooserOpen={setShapesOpen}
                          onCloseShapes={closeShapes}

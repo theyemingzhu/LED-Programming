@@ -473,6 +473,7 @@ void setup() {
     fail(ERROR_CONFIG, "pixel buffer allocation failed");
     setOutputInitializationFailure("pixel-buffer-allocation",
                                    "pixel buffers could not be allocated for this boot");
+    if (loadResult.bootedCandidate) rollbackCandidateBeforeRestart("candidate pixel buffer allocation failed");
     return;
   }
   applyRuntimeConfig(runtimeConfig);
@@ -2994,6 +2995,7 @@ String runtimeFirmwareInfo() {
   doc["outputDriverReady"] = runtimeOutputDriverReady();
   doc["pixelCapacity"]["schemaLimit"] = LW_MAX_PIXELS;
   doc["pixelCapacity"]["allocatedBoot"] = runtimeAllocatedPixelCapacity();
+  doc["pixelCapacity"]["candidateRollback"] = true;
   doc["outputInitialization"]["ok"] = runtimeOutputDriverReady();
   doc["outputInitialization"]["code"] = runtimeOutputInitializationCode();
   doc["outputInitialization"]["message"] = runtimeOutputInitializationMessage();

@@ -3339,6 +3339,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["outputDriverReady"] = runtimeOutputDriverReady();
   doc["pixelCapacity"]["schemaLimit"] = LW_MAX_PIXELS;
   doc["pixelCapacity"]["allocatedBoot"] = runtimeAllocatedPixelCapacity();
+  doc["pixelCapacity"]["candidateRollback"] = true;
   doc["outputInitialization"]["ok"] = runtimeOutputDriverReady();
   doc["outputInitialization"]["code"] = runtimeOutputInitializationCode();
   doc["outputInitialization"]["message"] = runtimeOutputInitializationMessage();
