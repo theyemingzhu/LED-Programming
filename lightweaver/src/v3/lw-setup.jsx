@@ -879,6 +879,7 @@ export function SetupScreen({
   const onImportFile = event => {
     const file = event.target.files?.[0];
     if (!file) return;
+    ownerAskedToAdoptRef.current = true;
     setAdoptionError('');
     setAdoptionNotice('');
     // THE project-file import (lib/projectTransfer.js), through the shell's
@@ -891,9 +892,15 @@ export function SetupScreen({
       : file => importProjectFromPickedFile(file, { replaceProject: data => replaceProject?.(data) });
     importFile(file)
       .then(replacement => {
-        if (!replacement?.ok) reportAdoptionFailure(replacement?.reason);
+        if (replacement?.reason === 'invalid') {
+          reportAdoptionFailure('invalid', null, 'Could not open this project file. Choose a compatible Lightweaver project backup.');
+        } else if (!replacement?.ok && replacement?.reason !== 'cancelled') {
+          reportAdoptionFailure(replacement?.reason);
+        }
       })
-      .catch(error => reportAdoptionFailure('invalid', error));
+      .catch(error => reportAdoptionFailure('invalid', error, `Could not open this project file. ${
+        error instanceof SyntaxError ? 'Choose a valid Lightweaver project backup.' : error?.message || 'Try opening the file again.'
+      }`));
     event.target.value = '';
   };
 

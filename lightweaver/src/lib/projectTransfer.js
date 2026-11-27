@@ -26,7 +26,9 @@ import { canonicalProjectFileName } from './projectFiles.js';
 import { downloadJsonFile } from './downloadFile.js';
 import { importProjectFromFile } from './projectImportFile.js';
 import { storeRecordedMedia } from './recordedSequenceMedia.js';
-import { verifyStoredSequenceAsset } from './recordedSequenceAsset.js';
+import { verifySequenceAssetBytes, verifyStoredSequenceAsset } from './recordedSequenceAsset.js';
+import { migrateProject, PROJECT_VERSION } from './projectModel.js';
+import { PROJECT_ENVELOPE_SCHEMA_VERSION } from './projectRepository.js';
 
 function base64(bytes) {
   if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
@@ -70,6 +72,7 @@ export async function makePortableProject(project) {
 export async function importPortableProjectMedia(project, { onMissingLegacyMedia } = {}) {
   const copy = structuredClone(project);
   const assets = copy?.devices?.standaloneController?.sequenceAssets || [];
+  const verifiedMedia = [];
   for (const asset of assets) {
     if (!asset.portableMedia) {
       if (asset.mediaRef) {
@@ -87,8 +90,13 @@ export async function importPortableProjectMedia(project, { onMissingLegacyMedia
       || media.sha256 !== asset.manifest?.lwseqSha256) throw new Error('Portable recording metadata does not match the project.');
     const bytes = fromBase64(media.data);
     if (bytes.byteLength !== media.bytes) throw new Error('Portable recording is incomplete.');
-    asset.mediaRef = await storeRecordedMedia(bytes, media.sha256);
-    await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
+    const mediaRef = { sha256: media.sha256, byteLength: bytes.byteLength };
+    await verifySequenceAssetBytes({ ...asset, mediaRef }, bytes, { allowLegacyMultiOutput: true });
+    verifiedMedia.push({ asset, bytes, sha256: media.sha256 });
+  }
+  // Verify the whole portable bundle before committing any recording bytes.
+  for (const { asset, bytes, sha256 } of verifiedMedia) {
+    asset.mediaRef = await storeRecordedMedia(bytes, sha256);
     delete asset.portableMedia;
   }
   return copy;
@@ -149,7 +157,25 @@ export async function importProjectFromPickedFile(file, {
   clearSaveBlock,
   readProjectFile = importProjectFromFile,
 } = {}) {
-  const result = await readProjectFile(file, async data => replaceProject(await importPortableProjectMedia(unwrapProjectFileDocument(data))));
+  const result = await readProjectFile(file, async data => {
+    const document = unwrapProjectFileDocument(data);
+    if (Number(data?.envelopeVersion) > PROJECT_ENVELOPE_SCHEMA_VERSION || Number(document?.version) > PROJECT_VERSION) {
+      throw new Error('This project was saved by a newer Lightweaver Studio. Open it in a newer version.');
+    }
+    if (data?.envelopeVersion !== undefined
+      && (data === document || Number(data.envelopeVersion) !== PROJECT_ENVELOPE_SCHEMA_VERSION)) {
+      return { ok: false, reason: 'invalid' };
+    }
+    // Real flat exports and nested Studio backups always declare their strip
+    // list, including an empty one. Boot recovery separately tolerates sparse
+    // local snapshots so they can be completed by older layout data.
+    const strips = document?.version === PROJECT_VERSION ? document.layout?.strips : document?.strips;
+    if (!Array.isArray(strips)) return { ok: false, reason: 'invalid' };
+    let valid;
+    try { valid = migrateProject(document); } catch { valid = null; }
+    if (!valid) return { ok: false, reason: 'invalid' };
+    return replaceProject(await importPortableProjectMedia(document));
+  });
   if (result?.ok) {
     clearBrowserAssociation?.();
     detachCloudProject?.();

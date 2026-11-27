@@ -59,7 +59,7 @@
     "test:windowless:tooling": "node --test tests/windowless-*.test.mjs",
     "test:windowless:browser": "playwright test --config tests/windowless-playwright.config.ts",
     "test:projects": "node --test functions/api/firmware/update-grant.test.js scripts/check-firmware-update-service.test.mjs functions/api/account/passwordless.test.js functions/api/library/_shared/accountAuth.test.js functions/api/library/library-api.test.js tests/cloud-bindings.mjs src/lib/cloudLibraryClient.test.js src/lib/libraryBackup.test.js src/lib/workspaceAssets.test.js",
-    "test:projects:browser": "playwright test tests/cloud-project-library.spec.ts tests/project-portable-backup.spec.ts tests/studio-passwordless.spec.ts --project=chromium --workers=1",
+    "test:projects:browser": "playwright test tests/cloud-project-library.spec.ts tests/project-portable-backup.spec.ts tests/project-historical-compatibility.spec.ts tests/studio-passwordless.spec.ts --project=chromium --workers=1",
     "test:cloud-bindings": "node tests/cloud-bindings.mjs",
     "test:server": "node tests/ai-pattern-server.mjs",
     "test:ai": "npm run test:server && npm run test:core && npx playwright test tests/ai-pattern-assistant.spec.ts",

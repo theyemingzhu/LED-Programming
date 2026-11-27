@@ -66,17 +66,25 @@ function uniqueId(label, assets) {
   return id;
 }
 
-export async function verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput = false } = {}) {
+function assertSequenceAssetMediaRef(asset) {
   if (!asset?.mediaRef || asset.mediaRef.byteLength !== asset.byteLength
     || asset.mediaRef.sha256 !== asset.manifest?.lwseqSha256 || !HASH.test(asset.mediaRef.sha256)) {
     throw new Error('The recording has no verified media. Record it again.');
   }
-  const bytes = await readRecordedMedia(asset.mediaRef.sha256);
+}
+
+export async function verifySequenceAssetBytes(asset, bytes, { allowLegacyMultiOutput = false } = {}) {
+  assertSequenceAssetMediaRef(asset);
   if (bytes.byteLength !== asset.byteLength || await sha256(bytes) !== asset.mediaRef.sha256) {
     throw new Error('Recorded media differs from its saved SHA-256. Record it again.');
   }
   assertHeader(bytes, asset.manifest, asset.outputs, { allowLegacyMultiOutput });
   return bytes;
+}
+
+export async function verifyStoredSequenceAsset(asset, options = {}) {
+  assertSequenceAssetMediaRef(asset);
+  return verifySequenceAssetBytes(asset, await readRecordedMedia(asset.mediaRef.sha256), options);
 }
 
 export async function createRecordedSequenceAsset({ kind, bakeResult, controller = {}, label = '', sourceSnapshot = null, replaceId = '' } = {}) {

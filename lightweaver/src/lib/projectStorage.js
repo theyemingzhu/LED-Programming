@@ -219,7 +219,9 @@ export function readRestorableProjectJson(primaryKey, backupKey, options = {}) {
       if (role === 'primary') primaryFailure = { reason: 'parse-error', raw };
       continue;
     }
-    if (!migrateProject(parsed)) {
+    let restorable;
+    try { restorable = migrateProject(parsed); } catch { restorable = null; }
+    if (!restorable) {
       if (!failure) failure = { reason: classifyUnrestorableProject(parsed), raw };
       if (role === 'primary') primaryFailure = { reason: classifyUnrestorableProject(parsed), raw };
       continue;

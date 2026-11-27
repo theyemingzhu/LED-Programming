@@ -39,7 +39,7 @@ import {
   readAutosaveQuarantine,
   readProjectLifecycleRecord,
   readPreferredStartupProject,
-  readStorageJsonWithBackup,
+  readRestorableProjectJson,
   writeProjectLifecycleRecord,
   writeRestorableProjectJsonWithBackup,
 } from '../lib/projectStorage.js';
@@ -928,8 +928,8 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         setAutosaveQuarantine({ at: quarantineRecord.at, reason: quarantineRecord.reason });
       }
 
-      const legacyProject = savedProject ? null : readStorageJsonWithBackup(LS_AUTOSAVE_LEGACY_KEY, '');
-      const legacyLayoutProject = readStorageJsonWithBackup(LS_LAYOUT_LEGACY_KEY, '');
+      const legacyProject = savedProject ? null : readRestorableProjectJson(LS_AUTOSAVE_LEGACY_KEY).payload;
+      const legacyLayoutProject = readRestorableProjectJson(LS_LAYOUT_LEGACY_KEY).payload;
       const project = resolveStartupProject({
         savedProject,
         legacyProject,
