@@ -229,3 +229,48 @@ test('closing the light check preserves focus already moved outside the dialog',
   await expect(dialog).toHaveCount(0);
   await expectRestoredFocus(page, outside);
 });
+
+declare global {
+  interface Window {
+    releaseCardSectionFocusForTest?: () => void;
+  }
+}
+
+for (const width of [1440, 390]) {
+  test(`Card Home preserves Tab after the route focus frame is queued at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 780 });
+    const { card } = await installReplacementFixture(page);
+    await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Connect this card', exact: true }).press('Enter');
+    await page.evaluate(() => {
+      const requestFrame = window.requestAnimationFrame;
+      window.requestAnimationFrame = callback => {
+        // Delay the real Card section scroll/focus frame until Tab has moved.
+        // Every other frame keeps running, including card discovery.
+        const source = String(callback);
+        if (!/scrollTop\s*=\s*0/.test(source) || !source.includes('preventScroll')) return requestFrame(callback);
+        window.requestAnimationFrame = requestFrame;
+        window.releaseCardSectionFocusForTest = () => callback(performance.now());
+        return -1;
+      };
+    });
+    await page.goto('/#screen=card&section=overview');
+    await expect.poll(() => page.evaluate(() => Boolean(window.releaseCardSectionFocusForTest))).toBe(true);
+
+    const facts = page.getByTestId('fact-outputs');
+    const origin = facts.getByRole('link', { name: 'Change wiring', exact: true });
+    await facts.getByRole('link', { name: 'Open Layout', exact: true }).focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(origin).toBeFocused();
+    await page.evaluate(() => window.releaseCardSectionFocusForTest?.());
+    await expect(origin).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const dialog = page.getByRole('dialog', { name: 'Find my strips' });
+    await expect(dialog.getByRole('heading', { name: 'Configured pins', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expectRestoredFocus(page, origin);
+    expect(card.requests.filter(request => request.method === 'POST' && request.path.startsWith('/api/wiring/'))).toEqual([]);
+  });
+}

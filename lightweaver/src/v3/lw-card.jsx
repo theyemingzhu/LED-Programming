@@ -1024,7 +1024,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       mountedRef.current = true;
       if (!navigated) return undefined;
     }
+    const focusBeforeFrame = document.activeElement;
     const frame = requestAnimationFrame(() => {
+      const currentFocus = document.activeElement;
+      // A user may have already moved to a control in this section.
+      if (currentFocus !== focusBeforeFrame && bodyRef.current?.contains(currentFocus)) return;
       if (bodyRef.current) bodyRef.current.scrollTop = 0;
       headingRef.current?.focus({ preventScroll: true });
     });
