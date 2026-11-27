@@ -7,7 +7,7 @@ import {
   parsedVb,
   svgPt,
 } from '../../../lib/layoutGeometry.js';
-import { deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
+import { reflectionEditorPoints } from '../../../lib/reflectionEdit.js';
 import {
   activeLedCoreAlpha,
   ledCssColor,
@@ -174,7 +174,7 @@ export function LayoutCanvas({
   const offer = useMemo(() => {
     if (!offerPossible) return null;
     const box = svgText ? parsedVb(viewBox) : null;
-    const eligible = strips.filter(strip => strip.kaleidoscope?.enabled !== true);
+    const eligible = strips.filter(strip => !reflectionEditorPoints(strip).length);
     const suggestion = suggestSymmetry(eligible, 2, box ? { centre: { x: box.x + box.w / 2, y: box.y + box.h / 2 } } : null);
     return worthOffering(suggestion, id => connectedFamilyForStrip(sectionFamilies, id)?.id || null) ? suggestion : null;
   }, [offerPossible, strips, svgText, viewBox, sectionFamilies]);
@@ -254,7 +254,7 @@ export function LayoutCanvas({
   useEffect(() => { if (!symmetry && symmetryFocus) setSymmetryFocus(null); }, [symmetry, symmetryFocus]);
   const focusFold = focusActive ? symmetry.fold : 0;
   const focusStrips = useMemo(
-    () => (focusActive ? strips.filter(strip => !hidden[strip.id] && strip.kaleidoscope?.enabled !== true) : []),
+    () => (focusActive ? strips.filter(strip => !hidden[strip.id] && !reflectionEditorPoints(strip).length) : []),
     [focusActive, strips, hidden],
   );
   const focusHome = useMemo(() => {
@@ -411,7 +411,13 @@ export function LayoutCanvas({
             onDoubleClick={handleSvgDblClick}
             onPointerMove={handleSvgMouseMove}
             onPointerDown={firstLedPicker ? undefined : handleCanvasPointerDown}
-            onPointerDownCapture={firstLedPicker ? handleCanvasPointerDown : undefined}
+            onPointerDownCapture={firstLedPicker ? handleCanvasPointerDown : placedActive ? event => {
+              // The placed look leaves strip paths exposed. Space-drag through
+              // its frame still belongs to the camera, even over a strip.
+              if (!spaceRef.current) return;
+              event.stopPropagation();
+              handleSvgMouseDown(event);
+            } : undefined}
             onPointerUp={handleSvgMouseUp}
             onPointerLeave={handleSvgMouseLeave}
             onContextMenu={handleContextMenu}
@@ -890,8 +896,8 @@ export function LayoutCanvas({
 
             {kaleidoscopeEditor && !isEditingGesture && (() => {
               const strip = strips.find(item => item.id === kaleidoscopeEditor.stripId);
-              if (!strip?.kaleidoscope || hidden[strip.id]) return null;
-              const pointIndices = deriveReflectionPointIndices(strip.kaleidoscope, strip.pixelCount);
+              if (!reflectionEditorPoints(strip).length || hidden[strip.id]) return null;
+              const pointIndices = reflectionEditorPoints(strip);
               return (
                 <g className="lw-kaleidoscope-markers">
                   {pointIndices.map((ledIndex, pointIndex) => {
@@ -1054,25 +1060,26 @@ export function LayoutCanvas({
               const showChip = s.id === selStripId || s.id === hoverStripId;
               const chipText = place ? `${partName} · ${place.label}` : partName;
               const chipName = chipText.length > 24 ? `${chipText.slice(0, 23).trimEnd()}…` : chipText;
-              const chipWidth = Math.min(150, 14 + chipName.length * 6.4);
+              // Leave room for the selected chip’s stroke within the 150px painted limit.
+              const chipWidth = Math.min(148, 14 + chipName.length * 6.4);
               // Anchored just past the strip's outer end (the end farthest from the
               // piece centre), on the side away from the strip, kept inside the canvas.
               const anchor = stripOuterEnd(s, pieceCentre, annotationScale);
               let toRight = anchor.dx >= 0;
               if (toRight && anchor.x + (chipWidth + 6) * annotationScale > labelBounds.x + labelBounds.w) toRight = false;
               if (!toRight && anchor.x - (chipWidth + 6) * annotationScale < labelBounds.x) toRight = true;
-              const ax = (anchor.x - dot.x) / annotationScale;
-              const ay = (anchor.y - dot.y) / annotationScale;
-              const chipX = toRight ? ax + 4 : ax - 4 - chipWidth;
-              const topLimit = (labelBounds.y - dot.y) / annotationScale + 4;
-              const bottomLimit = (labelBounds.y + labelBounds.h - dot.y) / annotationScale - 24;
-              const chipY = Math.max(topLimit, Math.min(bottomLimit, ay - 10));
+              const preferredX = anchor.x + (toRight ? 4 : -4 - chipWidth) * annotationScale;
+              const leftLimit = labelBounds.x + 4 * annotationScale;
+              const rightLimit = labelBounds.x + labelBounds.w - (chipWidth + 4) * annotationScale;
+              const chipX = s.id === selStripId ? Math.max(leftLimit, Math.min(rightLimit, preferredX)) : preferredX;
+              const topLimit = labelBounds.y + 4 * annotationScale;
+              const bottomLimit = labelBounds.y + labelBounds.h - 24 * annotationScale;
+              const chipY = Math.max(topLimit, Math.min(bottomLimit, anchor.y - 10 * annotationScale));
               return (
                 <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
                    data-selected={s.id === selStripId || undefined}
                    aria-label={label}
-                   transform={`translate(${dot.x} ${dot.y}) scale(${annotationScale})`}
                    style={{ pointerEvents: canDragStrip ? 'all' : 'none', cursor: movingStripIds.includes(s.id) ? 'grabbing' : 'grab', userSelect: 'none' }}
                    onPointerDown={event => startStripMove(event, s)}
                    onPointerEnter={() => setHoverStripId(s.id)}
@@ -1085,15 +1092,18 @@ export function LayoutCanvas({
                    }}>
                   <title>{label}</title>
                   {showChip && (
-                    <g className="lw-strip-chip" data-testid={`strip-chip-${s.id}`}>
-                      <rect x={chipX} y={chipY} width={chipWidth} height="20" rx="4"
+                    <g className="lw-strip-chip" data-testid={`strip-chip-${s.id}`}
+                       transform={`translate(${chipX} ${chipY}) scale(${annotationScale})`}
+                       style={chipX !== preferredX ? { pointerEvents: 'none' } : undefined}>
+                      <rect width={chipWidth} height="20" rx="4"
                             fill="oklch(0.18 0.02 220 / 0.92)" stroke={tint} strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
-                      <text className="lw-strip-label-name" x={chipX + 7} y={chipY + 14} fontFamily="var(--font-ui, sans-serif)" fontSize="11"
+                      <text className="lw-strip-label-name" x="7" y="14" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
                             fontWeight={s.id === selStripId ? 600 : 400} fill={tint}>{chipName}</text>
                     </g>
                   )}
                   <g className="lw-strip-dot" data-testid={place ? `flow-mark-${s.id}` : `strip-dot-${s.id}`}
-                     data-flow-position={place ? place.position : undefined}>
+                     data-flow-position={place ? place.position : undefined}
+                     transform={`translate(${dot.x} ${dot.y}) scale(${annotationScale})`}>
                     <circle r="7.5" fill="oklch(0.18 0.02 220 / 0.88)" stroke={tint} strokeWidth={s.id === selStripId ? 1.6 : 1}/>
                     <text textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontFamily="var(--font-mono, monospace)"
                           fill={tint} style={{ userSelect: 'none' }}>{number}</text>
@@ -1238,7 +1248,7 @@ export function LayoutCanvas({
         {/* ── Canvas corner readouts (mockup .la-overlay) ── */}
         <div className="la-overlay tl">
           <div><span className="k">artwork</span><span className="v">{parsedVb(viewBox).w} × {parsedVb(viewBox).h}</span></div>
-          <div><span className="k">layers</span><span className="v">{layers.length} · {strips.length} strips</span></div>
+          <div><span className="k">layers</span><span className="v">{layers.length} · {strips.length} {strips.length === 1 ? 'strip' : 'strips'}</span></div>
           <div><span className="k">leds</span><span className="v">{totalLeds.toLocaleString()}</span></div>
         </div>
         <div className="la-overlay br">

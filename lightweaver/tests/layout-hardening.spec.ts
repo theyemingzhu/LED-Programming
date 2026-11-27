@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { MIN_TAP } from './harness/tapSize';
+import { DESKTOP_TAP, MIN_TAP } from './harness/tapSize';
 
 async function gotoLayout(page: any) {
   await page.addInitScript(() => localStorage.clear());
@@ -170,30 +170,44 @@ test('reduced motion disables the selected path marching animation', async ({ pa
   await expect(page.locator('.lw-selected-path-march')).toHaveCSS('animation-name', 'none');
 });
 
-test('coarse targets keep primary Layout and wire controls at least 44 pixels', async ({ browser }) => {
+test('Layout touch targets follow the 36px phone and 44px tablet contract', async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await keepCardDiscoveryOffline(page);
   await gotoLayout(page);
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
 
+  const install = page.getByTestId('layout-check-and-install');
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const control of [
+      page.getByTitle('Import an SVG to map LED strips'),
+      page.getByTitle('Draw a new LED strip path on the artwork.'),
+      install,
+    ]) {
+      const box = await control.boundingBox();
+      expect(box?.height, `${await control.getAttribute('title') || 'Save to card'} at ${width}px`).toBeGreaterThanOrEqual(MIN_TAP);
+      expect(box?.height, `phone target at ${width}px`).toBe(36);
+    }
+  }
+  await page.setViewportSize({ width: 768, height: 1024 });
   for (const control of [
     page.getByTitle('Import an SVG to map LED strips'),
     page.getByTitle('Draw a new LED strip path on the artwork.'),
+    install,
   ]) {
     const box = await control.boundingBox();
-    expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(box?.height, `${await control.getAttribute('title') || 'Save to card'} on tablet`).toBeGreaterThanOrEqual(DESKTOP_TAP);
+    expect(box?.height).toBe(44);
   }
-
-  const install = page.getByTestId('layout-check-and-install');
-  let box = await install.boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
+  await page.setViewportSize({ width: 390, height: 844 });
   await install.click();
   // Layout now hands the install to Card setup. With discovery explicitly
   // offline and no remembered card, the public start panel is the truthful
   // next step. Card discovery begins only after the owner chooses setup.
   const setup = page.getByTestId('public-worker-start')
     .getByRole('button', { name: /set up this card/i });
+  let box;
   box = await setup.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(MIN_TAP);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
@@ -207,8 +221,13 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
 });
 
 test('mobile Layout keeps a useful canvas and presents the inspector as a bottom sheet', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await gotoLayout(page);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(overflows, `Layout should not overflow horizontally at ${width}px`).toBe(false);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   const canvas = page.locator('.lw-viewport');
   const sheet = page.locator('.la .side');
   await expect(canvas).toBeVisible();

@@ -26,6 +26,7 @@
 //
 // Every function here is pure: it returns new objects and never mutates input.
 
+import { playbackSlotsInStripFrame } from './wiringCompiler.js';
 import { applySymmetrySides } from './mirrorFrame.js';
 import { LWSEQ_HEADER_BYTES, LWSEQ_MAX_PIXELS, assertLwseqPixelCount, toLwseqBytes } from './standaloneController.js';
 
@@ -288,22 +289,6 @@ export function estimatePlacedLookBake(look, compiledWiring, options = {}) {
   return { ...loop, pixelCount, totalBytes, maxBytes, fits: totalBytes <= maxBytes };
 }
 
-// For each physical pixel (compiledWiring.pixels order), the index of the
-// strip LED it shows in a frameAtPhase frame, or -1 for a dark pixel.
-function physicalSources(strips, compiledWiring) {
-  const slots = new Map();
-  let offset = 0;
-  for (const strip of strips) {
-    slots.set(strip.id, offset);
-    offset += strip.pixels?.length || 0;
-  }
-  return compiledWiring.pixels.map(pixel => {
-    if (pixel.inactive || pixel.stripId == null || !Number.isFinite(pixel.sourceLed)) return -1;
-    const start = slots.get(pixel.stripId);
-    return Number.isFinite(start) ? start + pixel.sourceLed : -1;
-  });
-}
-
 const hex2 = value => value.toString(16).padStart(2, '0');
 
 /**
@@ -315,7 +300,7 @@ const hex2 = value => value.toString(16).padStart(2, '0');
 export function placedLookPhysicalFrame(look, strips = [], compiledWiring = null, t = 0, options = {}) {
   if (!compiledWiring?.ok || !Array.isArray(compiledWiring.pixels) || !compiledWiring.pixels.length) return [];
   const { pixels } = frameAtPhase(look, strips || [], t * look.speed, { symmetry: options.symmetry || null });
-  return physicalSources(strips || [], compiledWiring).map(source => {
+  return playbackSlotsInStripFrame(compiledWiring, strips || []).map(source => {
     const colour = source >= 0 ? pixels[source] || BLACK : BLACK;
     return hex2(colour.r) + hex2(colour.g) + hex2(colour.b);
   });
@@ -324,9 +309,7 @@ export function placedLookPhysicalFrame(look, strips = [], compiledWiring = null
 /**
  * Record the look as an LWSEQ1 file in the card's physical pixel order.
  *
- * The order is `compiledWiring.pixels` (wiringCompiler.js): the one list every
- * other recorder writes from (lwseqBake.js through export.remapFrameToWiring,
- * sceneExpressionRecording.js through its frame mapping). Each physical pixel
+ * Use the same output permutation as procedural playback. Each physical pixel
  * names its strip and LED; a pixel with no strip is written dark. `strips` are
  * the project's strips (all of them: the card has no "hidden").
  * `options`: `{ seconds, fps, symmetry, maxBytes }`. Throws a RangeError when
@@ -340,7 +323,7 @@ export function bakePlacedLook(look, strips = [], compiledWiring = null, options
     throw new RangeError(`This recording would be ${estimate.totalBytes} bytes; a look can be up to ${estimate.maxBytes}.`);
   }
   const { frameCount, fps, passes, pixelCount } = estimate;
-  const order = physicalSources(strips, compiledWiring);
+  const order = playbackSlotsInStripFrame(compiledWiring, strips);
   // The header comes from the one LWSEQ writer; the frames are then written
   // straight into place, as the other recorders do.
   const template = toLwseqBytes([Array.from({ length: pixelCount }, () => BLACK)], { fps, outputs });

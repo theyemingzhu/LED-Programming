@@ -1,3 +1,4 @@
+import { OUTPUT_PLAYBACK_ORDER, pixelsInPlaybackOrder } from './wiringCompiler.js';
 // A placed look saved with the project: its LWSEQ1 recording plus a sidecar
 // that keeps the look itself, so the project's recording library, the card
 // install path and "Record again" treat it like any other recording.
@@ -33,14 +34,16 @@ async function sha256(input) {
 }
 
 /** What the bake read besides the look, in a stable form. */
-export function placedLookLayout({ look, strips = [], compiledWiring = null, symmetry = null } = {}) {
+export function placedLookLayout({ look, strips = [], compiledWiring = null, symmetry = null } = {}, { legacyLogicalPlayback = false } = {}) {
   const normalized = normalizePlacedLook(look);
+  const playbackOrderChanged = compiledWiring?.runs?.some(run => run.reversed && run.count > 1);
   return {
+    ...(!legacyLogicalPlayback && playbackOrderChanged ? { playbackOrder: OUTPUT_PLAYBACK_ORDER } : {}),
     strips: (strips || []).map(strip => ({
       id: String(strip?.id ?? ''),
       pixels: (strip?.pixels || []).map(point => [round(point?.x), round(point?.y)]),
     })),
-    order: (compiledWiring?.pixels || []).map(pixel => [
+    order: (legacyLogicalPlayback ? (compiledWiring?.pixels || []) : pixelsInPlaybackOrder(compiledWiring)).map(pixel => [
       String(pixel?.outputId ?? ''),
       pixel?.inactive ? null : (pixel?.stripId ?? null),
       pixel?.inactive ? null : (Number.isFinite(pixel?.sourceLed) ? pixel.sourceLed : null),
@@ -51,8 +54,8 @@ export function placedLookLayout({ look, strips = [], compiledWiring = null, sym
   };
 }
 
-export async function hashPlacedLookLayout(input = {}) {
-  return sha256(canonicalPlacedLookJson(placedLookLayout(input)));
+export async function hashPlacedLookLayout(input = {}, options) {
+  return sha256(canonicalPlacedLookJson(placedLookLayout(input, options)));
 }
 
 /**
@@ -96,7 +99,8 @@ export async function verifyPlacedLookRecording({ bytes, sidecar } = {}, { strip
   if (await sha256(canonicalPlacedLookJson(normalizePlacedLook(sidecar.look))) !== sidecar.lookSha256) {
     return { ok: false, reason: 'recording-invalid' };
   }
-  const hash = await hashPlacedLookLayout({ look: sidecar.look, strips, compiledWiring, symmetry });
-  if (hash !== sidecar.layoutPhysicalOrderSha256) return { ok: false, reason: 'recording-stale-layout' };
+  const input = { look: sidecar.look, strips, compiledWiring, symmetry };
+  const hashes = [await hashPlacedLookLayout(input), await hashPlacedLookLayout(input, { legacyLogicalPlayback: true })];
+  if (!hashes.includes(sidecar.layoutPhysicalOrderSha256)) return { ok: false, reason: 'recording-stale-layout' };
   return { ok: true };
 }

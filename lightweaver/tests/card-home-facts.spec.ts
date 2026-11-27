@@ -1,14 +1,16 @@
 // Card Home's facts: always on screen, each with one door to its editor.
 // The power limit is the one fact whose row used to read a path nothing
 // writes (power.maxMilliamps) and whose only editor lived in Layout → Wire;
-// this proves the row reads led.maxMilliamps and that the Hardware fold now
+// this proves the row reads led.maxMilliamps and that the Hardware settings now
 // carries the editor that writes it.
 import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, type CardStateSpec } from './harness/cardStates';
-import { BENCH_PROJECT_ID } from '../src/lib/benchConfig.js';
+import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from '../src/lib/benchConfig.js';
 
-async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<string, unknown>) {
+async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<string, unknown>, {
+  draftPixels = spec.pixels, withBenchPort = false,
+} = {}) {
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
@@ -34,7 +36,10 @@ async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<str
           }],
         },
       },
-      portRoles: [{ port: 'out1', role: 'strip', pin: s.pin, pixelCount: s.pixels }],
+      portRoles: [
+        { port: 'out1', role: 'strip', pin: s.pin, pixelCount: s.pixels },
+        ...(s.benchPortPixels ? [{ port: 'out2', role: 'strip', pin: 21, pixelCount: s.benchPortPixels }] : []),
+      ],
       devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB', ...s.led } } },
     }));
     localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
@@ -43,7 +48,10 @@ async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<str
       persistedDestination: 'browser',
       installation: null,
     }));
-  }, { projectId: spec.projectId, pixels: spec.pixels, pin: spec.pin, led });
+  }, {
+    projectId: spec.projectId, pixels: draftPixels, pin: spec.pin, led,
+    benchPortPixels: withBenchPort ? BENCH_DEFAULT_PORT_PIXELS : 0,
+  });
   return card;
 }
 
@@ -99,10 +107,51 @@ test('a card-reported GRB setting is not described as a color check on the strip
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByTestId('fact-color-order')).toContainText('Not confirmed');
-  await expect(page.getByTestId('fact-color-order')).not.toContainText('Confirmed on the strip');
-  await expect(page.getByRole('button', { name: /Lights 41 on GPIO 18/ }))
-    .toContainText('Configured on the card · physical checks kept separately');
+  await expect(page.getByTestId('fact-color-order')).not.toContainText(/confirmed on the strip/i);
+  const lights = page.getByRole('button', {
+    name: 'Lights 41 on GPIO 18 Configured on the card · physical checks kept separately Open light review',
+    exact: true,
+  });
+  await expect(lights).toBeVisible();
+  await lights.press('Enter');
+  const review = page.getByRole('button', { name: 'Review the connected lights', exact: true });
+  await expect(review).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#screen=discovery/);
 });
+
+for (const lastSeen of [false, true]) {
+  test(`the Lights summary reviews ${lastSeen ? 'last-seen card' : 'recorded draft'} counts offline`, async ({ page }) => {
+    // A draft with a different count must not replace the last-seen card count.
+    const card = await seedCardAndDraft(page, cardState('installed-match'), {}, { draftPixels: lastSeen ? 60 : 41, withBenchPort: !lastSeen });
+    if (!lastSeen) card.goOffline();
+    await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+    if (lastSeen) {
+      await expect(page.getByTestId('setup-progress')).toHaveText('Installed project');
+      card.goOffline();
+      await page.evaluate(async () => {
+        const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+        getSharedCardLink().dispatch({ type: 'direct-status', connected: false, reason: 'card-unreachable' });
+      });
+    }
+
+    const lights = page.getByTestId('setup-identity-lights');
+    const label = lastSeen ? 'Review last seen lights' : 'Review recorded lights';
+    await expect(lights).toHaveAccessibleName(new RegExp(`Lights .*41 on GPIO 18.*${label}`));
+    if (lastSeen) await expect(lights).toContainText('Last seen configuration · reconnecting');
+    await lights.press('Enter');
+    const review = page.getByTestId('setup-lights-review');
+    await expect(review.getByRole('heading', { name: lastSeen ? 'Last seen lights' : 'Recorded lights' })).toBeFocused();
+    await expect(review.getByRole('listitem')).toHaveText(['GPIO 18 · 41 lights']);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).toHaveURL(/#screen=card&section=overview$/);
+    await page.keyboard.press('Tab');
+    await expect(review.getByRole('button', { name: 'Open light checks', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#screen=discovery$/);
+    expect(card.requests.filter(request => request.method === 'POST')).toEqual([]);
+  });
+}
 
 test('a local look edit keeps the connected same-project card ready for Save', async ({ page }) => {
   const spec = cardState('installed-match');
@@ -131,6 +180,18 @@ test('a local look edit keeps the connected same-project card ready for Save', a
   const draft = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   expect(draft.id).toBe(card.state.projectId);
   expect(draft.devices.standaloneController.playlist.map(entry => entry.patternId)).toEqual(['aurora', 'plasma']);
+
+  await page.getByRole('button', { name: 'Control installed project', exact: true }).click();
+  const controls = page.getByRole('dialog', { name: / controls$/ });
+  await expect(controls.getByRole('combobox', { name: 'Pattern', exact: true })).toHaveValue(card.playingId());
+  expect(card.requests.filter(request => request.method === 'POST')).toEqual([]);
+  await controls.getByRole('button', { name: 'Close card controls' }).click();
+  const retainedDraft = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  expect(retainedDraft).toMatchObject({
+    id: draft.id,
+    name: draft.name,
+    devices: { standaloneController: { playlist: draft.devices.standaloneController.playlist } },
+  });
 
   await page.getByRole('button', { name: 'Review and save draft' }).click();
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project$/);
@@ -180,9 +241,9 @@ test('editing supply size saves the project limit without changing the current c
   await expect(power.getByTestId('fact-card-power-limit')).toHaveText('On card: 2000 mA');
   expect(card.requests.filter(request => request.method !== 'GET' && request.method !== 'OPTIONS')).toEqual([]);
 
-  // The Hardware fold no longer carries a second copy of these editors.
-  await page.getByTestId('card-hardware-fold').locator('summary').click();
-  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
+  // The Hardware settings no longer carries a second copy of these editors.
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Hardware' }).click();
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
   await expect(page.getByTestId('settings-power-supply')).toHaveCount(0);
   await expect(page.locator('.set-row', { hasText: 'Brightness limit' })).toHaveCount(0);
 });
@@ -222,13 +283,13 @@ test('an installed, matching project edits its count in the row, and the row but
 });
 
 for (const width of [1440, 390]) {
-  test(`Change wiring opens the actual Layout Specs controls at ${width}px`, async ({ page }) => {
+  test(`Open Layout opens the actual Specs controls at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const spec = cardState('installed-match');
     await seedCardAndDraft(page, spec, {});
     await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
-    await page.getByTestId('fact-outputs').getByRole('button', { name: 'Change wiring' }).click();
+    await page.getByTestId('fact-outputs').getByRole('link', { name: 'Open Layout' }).click();
     await expect(page).toHaveURL(/#screen=layout&mode=draw&panel=specs$/);
     await expect(page.getByTestId('layout-specs-panel')).toBeVisible();
     await expect(page.getByTestId('layout-specs-trigger')).toHaveAttribute('aria-expanded', 'true');
@@ -238,10 +299,8 @@ for (const width of [1440, 390]) {
     await expect(wiring.getByText('Advanced mapping')).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     if (width === 390) {
-      await expect.poll(async () => {
-        const box = await wiring.boundingBox();
-        return box !== null && box.y >= 0 && box.y < 900;
-      }).toBe(true);
+      await expect(page.getByTestId('layout-specs-panel')).toBeInViewport();
+      await expect(page.getByRole('combobox', { name: 'Pin for LED output' })).toBeVisible();
     }
   });
 }

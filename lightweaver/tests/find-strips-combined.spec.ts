@@ -68,7 +68,7 @@ async function blankCard(page: Page, timing: 'fast' | 'real') {
 
 async function pair(page: Page) {
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45_000 });
 }
 
 const configWrites = (card: { requests: { method: string; path: string }[] }) =>
@@ -170,7 +170,7 @@ for (const [label, vp] of [['phone', PHONE], ['desktop', DESKTOP]] as const) {
         await expect(plan).toHaveAttribute('data-find-mode', 'watch', { timeout: 30_000 });
         const lit18 = page.locator('[data-testid="discovery-pin-map"] .is-pulse[data-pin="18"]');
         await expect(lit18, 'the sweep reaches GPIO 18').toBeVisible({ timeout: 60_000 });
-        await expect(page.locator('[data-testid="discovery-pin-map"] .lw-pinpicker-label').filter({ hasText: /^\d+$/ }), 'no pin numbers while the card is lighting them').toHaveCount(0);
+        await expect(page.getByTestId('discovery-sweep-pin')).toHaveText('Testing GPIO 18');
         expect(card.state.beaconPinned).toBe(18);
         if (shots) await shot(page, `way2-${tag}-1-watch`);
         await page.waitForTimeout(700);

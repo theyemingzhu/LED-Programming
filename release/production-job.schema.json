@@ -7,12 +7,13 @@
   "$defs": {
     "strip": {
       "type": "object", "additionalProperties": false, "required": ["id", "name", "pixelCount"],
+      "not": { "required": ["reflectionPointDraft", "kaleidoscope"] },
       "properties": {
         "id": { "type": "string" }, "name": { "type": "string" }, "pixelCount": { "type": "integer", "minimum": 1, "maximum": 1024 },
         "angle": { "type": "number" }, "brightness": { "type": "number" }, "closed": { "type": "boolean" }, "color": { "type": "string" }, "emit": { "type": "string" },
         "generatedLayout": { "type": "string" }, "hueShift": { "type": "number" }, "kaleidoscope": { "$ref": "#/$defs/kaleidoscope" }, "layoutRole": { "type": "string" }, "pathData": { "type": "string" }, "patternId": { "type": ["string", "null"] },
         "pixels": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["x", "y", "index"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "index": { "type": "integer", "minimum": 0 } } } },
-        "reversed": { "type": "boolean" }, "sourceLayerId": { "type": "string" }, "sourcePathId": { "type": "string" }, "speed": { "type": "number" }, "svgLength": { "type": "number" }, "visible": { "type": "boolean" }, "x": { "type": "number" }, "y": { "type": "number" }
+        "reflectionPointDraft": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Single editor-only source LED; never a runtime reflection mapping." }, "reversed": { "type": "boolean" }, "sourceLayerId": { "type": "string" }, "sourcePathId": { "type": "string" }, "speed": { "type": "number" }, "svgLength": { "type": "number" }, "visible": { "type": "boolean" }, "x": { "type": "number" }, "y": { "type": "number" }
       }
     },
     "kaleidoscope": {

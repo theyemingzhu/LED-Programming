@@ -133,8 +133,10 @@ function renderFrame(canvas, t, p) {
   });
   // The mirror pass runs again inside this call, after the looks: a per-strip
   // look would otherwise recolour a twin that already holds its lead's colours.
-  applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000, { symmetry: symmetry || null, sidesMirrored });
-  const framePixels = smoothPixelFrame(frame.pixels, previousPixels, {
+  const paintedPixels = visibleStrips.some(strip => strip.playbackOrder)
+    ? frame.pixels.map(pixel => ({ ...pixel })) : frame.pixels;
+  applyPatternPreviewSegmentLooks(paintedPixels, visibleStrips, t * 1000, { symmetry: symmetry || null, sidesMirrored });
+  const framePixels = smoothPixelFrame(paintedPixels, previousPixels, {
     mode: motionSmoothing,
     dt: frameDt,
   });

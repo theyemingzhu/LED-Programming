@@ -133,7 +133,7 @@ for (const spec of HEALTHY) {
             const target = (await setup.count()) ? setup : page.getByTestId('card-link-status');
             if (await target.count()) { await target.first().click(); clicks = 1; }
             connected = await waitConnected(page, 5000);
-            // A first meeting off Setup goes through "Pair this card": the chip
+            // A first meeting off Setup goes through "Connect this card": the chip
             // opens the panel and its Connect is the owner's consent. Two
             // presses, both named, is the designed path, not a fault.
             const pair = page.locator('#card-connection-center').getByRole('button', { name: /^Connect$/ });

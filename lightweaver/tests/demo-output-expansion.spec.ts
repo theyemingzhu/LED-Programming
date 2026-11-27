@@ -131,7 +131,7 @@ for (const width of [320, 390, 1280]) test(`the installer chooses, corrects, tes
   expect(startStatus.outputs).toHaveLength(4);
 
   await page.getByRole('button', { name: 'Card', exact: true }).click();
-  await page.getByTestId('setup-connect-card').click();
+  await page.getByRole('button', { name: 'Set up this card', exact: true }).click();
   const boardSetup = page.getByTestId('connect-board-setup');
   await boardSetup.getByRole('button', { name: 'ESP32-S3-DevKitC-1 N16R8 v1.0', exact: true }).click();
   await boardSetup.getByRole('button', { name: 'Use this board' }).click();

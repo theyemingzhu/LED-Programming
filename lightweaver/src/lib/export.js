@@ -9,7 +9,7 @@
  */
 
 import { expandPatchBoard } from './patchBoard.js';
-import { compileWiring } from './wiringCompiler.js';
+import { compileWiring, pixelsInPlaybackOrder } from './wiringCompiler.js';
 
 /**
  * @typedef {{ x: number, y: number, index: number }} Pixel
@@ -110,7 +110,7 @@ export function pixelsFromWiring(wiring, strips = [], groups = [], capabilities,
   if (options.requireSendReady === true && compiled.sendReady !== true) {
     throw new Error('Compiled physical wiring is not send-ready; lock and verify every run before export.');
   }
-  return compiled.pixels;
+  return options.physicalPlaybackOrder ? pixelsInPlaybackOrder(compiled) : compiled.pixels;
 }
 
 export function remapFrameToPatchBoard(framePixels = [], patchPixels = [], strips = []) {

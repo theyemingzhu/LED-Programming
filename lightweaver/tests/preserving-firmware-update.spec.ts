@@ -795,9 +795,9 @@ test('preserving USB recovery reaches saved project playback on the same card', 
   // mutable card simulator via the production bridge transport.
   await page.evaluate(() => { (window as any).__LW_PRESERVING_UPDATE_FIXTURE__ = null; });
   await panel.getByRole('button', { name: 'Open card at 192.168.18.70' }).click();
-  await expect(panel.getByRole('button', { name: 'Pair this card' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Connect this card' })).toBeVisible();
   await page.screenshot({ path: '/tmp/setup-flow-gaps-pair-after-usb.png', fullPage: true });
-  await panel.getByRole('button', { name: 'Pair this card' }).click();
+  await panel.getByRole('button', { name: 'Connect this card' }).click();
   await expect.poll(() => page.evaluate(async () => {
     const { getCardLinkState } = await import('/src/lib/cardLink.js');
     const link = getCardLinkState();
@@ -861,7 +861,7 @@ test('preserving USB recovery refuses to pair a different card at the joined add
   await page.evaluate(() => { (window as any).__LW_PRESERVING_UPDATE_FIXTURE__ = null; });
   await panel.getByRole('button', { name: 'Open card at 192.168.18.70' }).click();
   await expect(panel.getByText('The card page answered with a different card or firmware build.')).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Pair this card' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Connect this card' })).toHaveCount(0);
   await expect(panel.getByTestId('preserving-update-continue')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
 });

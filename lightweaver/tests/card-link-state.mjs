@@ -590,6 +590,21 @@ const rebootRevalidated = reduceCardLink(differentBootRace, {
 });
 assert.equal(rebootRevalidated.state, 'connected-direct');
 assert.equal(isCardLinkConnected(rebootRevalidated), true);
+const lateReplyAfterRevalidation = reduceCardLink(rebootRevalidated, {
+  type: 'direct-status', connected: true, host: 'lightweaver.local',
+  card: rebootRevalidated.card, expectedCard: rebootRevalidated.expectedCard,
+  readiness: readyEnvelope('lw-001122aabbcc', { bootId: 'boot-1' }),
+});
+assert.equal(lateReplyAfterRevalidation, rebootRevalidated,
+  'a poll from the same card’s retired boot cannot demote the verified replacement, even at its other address');
+const wrongCardWithRetiredBoot = reduceCardLink(rebootRevalidated, {
+  type: 'direct-ping-ok', host: rebootRevalidated.host,
+  card: { ...rebootRevalidated.card, id: 'lw-000000000099' },
+  expectedCard: rebootRevalidated.expectedCard,
+  readiness: readyEnvelope('lw-000000000099', { bootId: 'boot-1' }),
+});
+assert.equal(wrongCardWithRetiredBoot.reason, 'wrong-card');
+assert.equal(isCardLinkConnected(wrongCardWithRetiredBoot), false);
 
 // A card that restarts twice in a row (boot-2, then boot-3) must not leave the
 // link validating boot-2 forever. One boot-3 reply is still a stray; boot-3
@@ -1093,6 +1108,64 @@ assert.equal(JSON.parse(storedValues.get('lw_card_identity_v1')).id, 'lw-001122a
 }
 assert.equal(isolatedDirectLink.getState().discoveredCard.id, 'lw-newer-b');
 assert.equal(isolatedDirectLink.getState().state, 'disconnected');
+
+// The owner confirms a discovery, while later polls may choose a different
+// address. Only a complete observation of the same identity and boot can
+// preserve that confirmation across an address change.
+for (const [label, host, evidence, pairs, changesBeforeClick] of [
+  ['same boot at a second address during pairing', '192.168.18.71', {}, true, false],
+  ['same boot at a second address before pairing', '192.168.18.71', {}, true, true],
+  ['different card at a second address', '192.168.18.71', { cardId: 'lw-pair-replacement' }, false, false],
+  ['new boot at the same address', '192.168.18.70', { bootId: 'next-boot' }, false, false],
+  ['new boot at a second address during pairing', '192.168.18.71', { bootId: 'next-boot' }, false, false],
+  ['new boot at a second address before pairing', '192.168.18.71', { bootId: 'next-boot' }, false, true],
+  ['changed build at a second address', '192.168.18.71', { buildId: 'b'.repeat(40) }, false, false],
+]) {
+  const cardId = 'lw-pair-original';
+  const firstHost = '192.168.18.70';
+  const pairingLink = createCardLink({ host: firstHost });
+  const initial = readyEnvelope(cardId);
+  const replacement = { ...initial, ...evidence };
+  function discover(address, readiness) {
+    pairingLink.dispatch({
+      type: 'direct-status', connected: true, host: address, readiness,
+      card: { id: readiness.cardId, buildId: readiness.buildId },
+    });
+  }
+  const priorRecord = storedValues.get('lw_card_identity_v1');
+  discover(firstHost, initial);
+  const observed = pairingLink.getState();
+  if (changesBeforeClick) discover(host, replacement);
+  let releaseRead;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const requests = [];
+  const adoption = adoptDiscoveredDirectCard({
+    link: pairingLink,
+    host: firstHost,
+    observedCardId: observed.discoveredCard.id,
+    observedBuildId: observed.discoveredCard.buildId,
+    observedBootId: observed.directDiscoveryBootId,
+    fetchImpl: async url => {
+      requests.push(new URL(url).hostname);
+      await readGate;
+      return { ok: true, json: async () => initial };
+    },
+  });
+  if (!changesBeforeClick) discover(host, replacement);
+  releaseRead();
+  if (pairs) {
+    assert.equal((await adoption).id, cardId, label);
+    assert.deepEqual(requests, Array(2).fill(changesBeforeClick ? host : firstHost), label);
+    assert.equal(pairingLink.getState().validatedBootId, initial.bootId, label);
+    assert.equal(JSON.parse(storedValues.get('lw_card_identity_v1')).id, cardId, label);
+    if (priorRecord === undefined) storedValues.delete('lw_card_identity_v1');
+    else storedValues.set('lw_card_identity_v1', priorRecord);
+  } else {
+    await assert.rejects(adoption, error => ['wrong-card', 'stale-discovery'].includes(error?.reason), label);
+    assert.equal(storedValues.get('lw_card_identity_v1'), priorRecord, label);
+    assert.equal(pairingLink.getState().state, 'disconnected', label);
+  }
+}
 
 async function assertPersistedAuthorityRace({ initialIdentity, nextIdentity, label }) {
   if (initialIdentity) {

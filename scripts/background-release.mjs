@@ -155,9 +155,10 @@ export function createGithubApi(repo, ghCall = gh) {
 function failed(run) { return run?.status === 'completed' && ['failure', 'timed_out', 'action_required', 'cancelled'].includes(run.conclusion); }
 function stepSucceeded(job, name) { return job?.steps?.some(step => step.name === name && step.conclusion === 'success'); }
 function workflowUrl(state, run) { return run?.html_url || (run?.id ? `https://github.com/${state.repo}/actions/runs/${run.id}` : undefined); }
-function actualPublish(jobs) {
+function actualPublish(jobs, signedChild) {
   const job = jobs.find(item => item.name === 'deploy' && item.conclusion === 'success');
-  return Boolean(job && stepSucceeded(job, 'Build and deploy to Cloudflare Pages') && stepSucceeded(job, 'Verify the live Production Setup release'));
+  return Boolean(job && (!signedChild || stepSucceeded(job, 'Verify the deployable signed artifacts'))
+    && stepSucceeded(job, 'Build and deploy to Cloudflare Pages') && stepSucceeded(job, 'Verify the live Production Setup release'));
 }
 function signerDeferred(jobs) {
   return jobs.some(job => job.name === 'deferred' && job.conclusion === 'success' && stepSucceeded(job, 'A deferral to the signer is only green once the signer publishes'));
@@ -183,18 +184,27 @@ export async function advanceRelease(state, api, proof, now = Date.now()) {
 
   const target = child || state.revision;
   if (child) {
+    // The signer pushes its artifact-only commit with github.token. That push
+    // doesn't start another Tests run. Its build job tests the signed commit
+    // before pushing and explicitly dispatches Deploy site for the child SHA.
+    const signingJob = (await api.jobs(signer.id)).find(job => job.name === 'build' && job.conclusion === 'success');
+    if (signer.conclusion !== 'success' || !stepSucceeded(signingJob, 'Verify signed release set')
+      || !stepSucceeded(signingJob, 'Commit the signed release if it changed')
+      || !stepSucceeded(signingJob, 'Trigger exact signed-revision deploy')) {
+      return { ...state, phase: 'blocked', deployRevision: child, signerUrl: workflowUrl(state, signer), reason: 'Protected signer did not verify and dispatch the signed release.', updatedAt: now };
+    }
     const childTests = (await api.workflows('test.yml', child))[0];
     if (childTests?.status === 'completed' && childTests.conclusion !== 'success') return { ...state, phase: 'blocked', deployRevision: child, testsUrl: workflowUrl(state, childTests), reason: `Signed child Tests failed: ${childTests.conclusion}`, updatedAt: now };
-    if (!childTests || childTests.status !== 'completed' || childTests.conclusion !== 'success') return { ...state, phase: 'checking', deployRevision: child, testsUrl: workflowUrl(state, childTests), reason: 'Waiting for signed child Tests.', updatedAt: now };
+    if (childTests && childTests.status !== 'completed') return { ...state, phase: 'checking', deployRevision: child, testsUrl: workflowUrl(state, childTests), reason: 'Waiting for signed child Tests.', updatedAt: now };
   }
-  const deploys = await api.workflows('deploy-site.yml', target);
+  const deploys = (await api.workflows('deploy-site.yml', target)).filter(run => !child || run.event === 'workflow_dispatch');
   let deploy = null;
   let deferred = false;
   let skipped = false;
   for (const run of deploys) {
     if (run.status !== 'completed') continue;
     const jobs = await api.jobs(run.id);
-    if (run.conclusion === 'success' && actualPublish(jobs)) { deploy = run; break; }
+    if (run.conclusion === 'success' && actualPublish(jobs, child)) { deploy = run; break; }
     if (signerDeferred(jobs)) deferred = true;
     else if (run.conclusion === 'success') skipped = true;
   }

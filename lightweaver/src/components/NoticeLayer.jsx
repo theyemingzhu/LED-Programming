@@ -119,8 +119,8 @@ function useBottomChromeHeight() {
 // Notices float, so a notice never moves a pixel of interface. On a phone that
 // alone was not enough: a full-width notice sat on top of whatever button was
 // at the bottom of the screen. So the layer also publishes the ground it
-// occupies, and the phone shell (styles/lw-phone.css) ends the screen and the
-// card setup sheet where the stack begins. Screens are top-anchored, so only
+// occupies, and the phone shell ends the screen and expanded light check
+// where the stack begins. Both are top-anchored, so only
 // their bottom edge rises; nothing under the finger moves.
 const GAP = 8;
 function usePublishedStackGround(ref, active, bottomChrome) {
@@ -153,8 +153,20 @@ function usePublishedStackGround(ref, active, bottomChrome) {
   }, [ref, active, bottomChrome]);
 }
 
+const isDiscoveryNotice = notice => notice.source === 'strip-discovery';
+
+export function DiscoveryNotices() {
+  const notices = useSyncExternalStore(subscribeToNotices, readNotices, readNotices).filter(isDiscoveryNotice);
+  if (!notices.length) return null;
+  return (
+    <div className="strip-discovery-notices" data-testid="discovery-notices">
+      {notices.map(notice => <NoticeCard key={notice.id} notice={notice} />)}
+    </div>
+  );
+}
+
 export function NoticeLayer() {
-  const notices = useSyncExternalStore(subscribeToNotices, readNotices, readNotices);
+  const notices = useSyncExternalStore(subscribeToNotices, readNotices, readNotices).filter(notice => !isDiscoveryNotice(notice));
   const bottomChrome = useBottomChromeHeight();
   const layerRef = useRef(null);
   usePublishedStackGround(layerRef, notices.length > 0, bottomChrome);

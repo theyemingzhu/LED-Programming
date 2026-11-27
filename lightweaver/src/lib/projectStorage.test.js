@@ -634,6 +634,51 @@ test('project library reads the backup copy when the primary entry is corrupt', 
   assert.ok(storage.getItem(PROJECT_LIBRARY_BACKUP_STORAGE_KEY), 'save should maintain a project library backup');
 });
 
+test('a conditional recovery write preserves an independently changed backup', () => {
+  const storage = memoryStorage();
+  const primary = JSON.stringify({ name: 'Base' });
+  const backup = JSON.stringify({ name: 'New recovery copy' });
+  storage.setItem('current', primary);
+  storage.setItem('backup', backup);
+
+  const saved = writeStorageJsonWithBackup('current', 'backup', { name: 'Pending' }, {
+    storage,
+    expectedCopies: { primary, backup: primary },
+  });
+
+  assert.equal(saved, false);
+  assert.equal(storage.getItem('current'), primary);
+  assert.equal(storage.getItem('backup'), backup);
+});
+
+test('a conditional recovery write skips mirroring if another writer supersedes its primary', () => {
+  const storage = memoryStorage();
+  const previous = JSON.stringify({ name: 'Base' });
+  const newer = JSON.stringify({ name: 'Newer other tab' });
+  storage.setItem('current', previous);
+  storage.setItem('backup', previous);
+  const realSetItem = storage.setItem;
+  storage.setItem = (key, value) => {
+    realSetItem(key, value);
+    if (key === 'current') {
+      realSetItem('current', newer);
+      realSetItem('backup', newer);
+    }
+  };
+  let mirrored = false;
+
+  const saved = writeStorageJsonWithBackup('current', 'backup', { name: 'Pending' }, {
+    storage,
+    expectedCopies: { primary: previous, backup: previous },
+    onMirrored: () => { mirrored = true; },
+  });
+
+  assert.equal(saved, false);
+  assert.equal(mirrored, false);
+  assert.equal(storage.getItem('current'), newer);
+  assert.equal(storage.getItem('backup'), newer);
+});
+
 test('readRestorableProjectJson restores the primary copy without a failure', () => {
   const storage = memoryStorage();
   const project = createDefaultProject();

@@ -26,7 +26,7 @@ test('a slow card that is testing the saved wiring reaches the light test, and S
   const { card } = practice;
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await expect.poll(() => linkState(page), { timeout: 30_000 }).toMatch(/^connected-/);
   await page.getByTestId('setup-lights-action').click();
   // The sweep ("That's mine"), the way the combined flow's main path finds a
@@ -49,7 +49,13 @@ test('a slow card that is testing the saved wiring reaches the light test, and S
   const confirm = page.getByTestId('wiring-test-confirm');
   await expect(confirm, 'the light test opens on the card that is testing the wiring').toBeVisible({ timeout: 240_000 });
   expect(await falseFailures(page), 'no failure wording about a save that landed').toEqual([]);
+  expect(card.state.wiringTestActive).toBe(true);
+  expect(card.requests.filter(r => r.method === 'POST' && r.path === '/api/wiring/confirm')).toHaveLength(0);
   await confirm.click();
-  await expect.poll(() => card.state.projectId, { timeout: 120_000, message: 'the card keeps the saved project' }).toBe(projectId);
+  await expect(page.getByText(/Wiring confirmed\. Revision \d+ is now the card’s working setup/)).toBeVisible({ timeout: 120_000 });
+  expect({ projectId: card.state.projectId, pixels: card.state.pixels, testing: card.state.wiringTestActive })
+    .toEqual({ projectId, pixels: 41, testing: false });
+  expect(card.requests.filter(r => r.method === 'POST' && r.path.startsWith('/api/wiring/') && !r.path.endsWith('/discover'))
+    .map(r => r.path)).toEqual(['/api/wiring/candidate', '/api/wiring/activate', '/api/wiring/confirm']);
   expect(await falseFailures(page)).toEqual([]);
 });

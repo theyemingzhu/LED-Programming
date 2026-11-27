@@ -23,7 +23,7 @@ import {
   normalizePatchBoard,
 } from './patchBoard.js';
 import { createDefaultCircleLayout, isDefaultCircleLayout } from './defaultCircleLayout.js';
-import { makeDefaultWiring, migrateWiring } from './wiringModel.js';
+import { makeDefaultWiring, migrateWiring, normalizeWiring } from './wiringModel.js';
 import { isClosedPathData } from './pathClosure.js';
 import {
   deriveLegacyPatternCycleIds,
@@ -529,10 +529,10 @@ function alignChainToStripOrder(project) {
     normalizePatchBoard(rawPatchBoard, layout.strips),
     layout.strips,
   );
-  layout.wiring = migrateWiring(layout.wiring, layout.strips, layout.patchBoard, {
+  layout.wiring = normalizeWiring(migrateWiring(layout.wiring, layout.strips, layout.patchBoard, {
     pin: project.devices?.standaloneController?.outputs?.[0]?.pin,
     outputs: project.devices?.standaloneController?.outputs,
-  });
+  }));
   // Wiring outputs are the canonical physical declaration. Keep the legacy
   // patch-board metadata synchronized for old saves without allowing a stale
   // duplicate count to recreate, remove, or repin an output.
@@ -547,11 +547,16 @@ function alignChainToStripOrder(project) {
 }
 
 export function migrateProject(data) {
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   if (FOREIGN_PROJECT_FORMATS.has(String(data.format || ''))) return null;
-  const candidateStrips = data.version === PROJECT_VERSION
-    ? data.layout?.strips
-    : (data.version === 1 || data.version === 2) ? data.strips : null;
+  const current = data.version === PROJECT_VERSION;
+  const legacy = data.version === 1 || data.version === 2;
+  if (!current && !legacy) return null;
+  const layout = current ? data.layout : data;
+  if (layout != null && (typeof layout !== 'object' || Array.isArray(layout))) return null;
+  if (layout?.strips !== undefined && !Array.isArray(layout.strips)) return null;
+  if (layout?.layers !== undefined && !Array.isArray(layout.layers)) return null;
+  const candidateStrips = layout?.strips;
   if (Array.isArray(candidateStrips)) {
     const ids = new Set();
     for (const strip of candidateStrips) {
@@ -679,11 +684,16 @@ export function resolveStartupProject({
 
   if (!legacyLayout?.layout) return project;
 
-  const projectHasLayout = Array.isArray(project.layout?.strips) &&
-    project.layout.strips.length > 0 &&
-    !isDefaultCircleLayout(project.layout.strips);
+  const savedArtwork = typeof project.layout?.svgText === 'string' && project.layout.svgText.trim();
+  const savedController = savedProject?.devices?.standaloneController;
+  const hasSavedContent = savedController?.looks?.length || savedController?.sequenceAssets?.length
+    || savedProject?.expressionScenes?.scenes?.length || (Array.isArray(savedController?.playlist)
+      && savedController.playlist.length > 0 && !isImplicitDefaultPatternPlaylist(savedController.playlist));
+  const projectHasWork = Boolean(savedArtwork) || savedProject?.layout?.starterPending === false || hasSavedContent
+    || (Array.isArray(project.layout?.strips) && project.layout.strips.length > 0
+      && !isDefaultCircleLayout(project.layout.strips));
   // A legacy layout made only of generated default-circle strips is a
-  // placeholder, not drawn work worth rescuing — the same rule projectHasLayout
+  // placeholder, not drawn work worth rescuing — the same rule projectHasWork
   // applies above. Rescuing it would also repeat on EVERY boot (the merged
   // strips stay generated, so projectHasLayout stays false), and each merge
   // clobbers the saved patch board with a legacy-migrated one whose
@@ -693,7 +703,7 @@ export function resolveStartupProject({
     legacyLayout.layout.strips.length > 0 &&
     !isDefaultCircleLayout(legacyLayout.layout.strips);
 
-  if (!projectHasLayout && legacyHasLayout) {
+  if (!projectHasWork && legacyHasLayout) {
     return {
       ...project,
       layout: {

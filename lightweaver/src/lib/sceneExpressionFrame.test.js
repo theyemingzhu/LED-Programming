@@ -72,7 +72,7 @@ test('honors a mandala group with a reversed, seam-rotated physical run without 
     compiledWiring,
   });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.pixels, ['030000', '040000', '020000', '010000']);
+  assert.deepEqual(result.pixels, ['030000', '040000', '010000', '020000']);
 });
 
 test('rejects incomplete or duplicate source maps and malformed preview RGB rather than padding or truncating', () => {

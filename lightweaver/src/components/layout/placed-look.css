@@ -79,7 +79,8 @@
 
 .lw-placed-look:focus-visible { outline: none; }
 .lw-placed-look:focus-visible .lw-placed-look-body { stroke: var(--text-hi); stroke-opacity: 1; }
-.lw-placed-look-body:active { cursor: grabbing; }
+.lw-placed-look-move { cursor: grab; touch-action: none; }
+.lw-placed-look-move:active { cursor: grabbing; }
 
 @media (pointer: coarse), (max-width: 600px) {
   .la-placed-dial,

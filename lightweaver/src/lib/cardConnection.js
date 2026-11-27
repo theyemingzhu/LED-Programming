@@ -495,17 +495,22 @@ export async function sweepKnownSubnetsForCard({
   batchSize = SUBNET_SWEEP_BATCH,
   fetchImpl = globalThis.fetch,
   onProgress = null,
+  signal,
+  persist = true,
 } = {}) {
   const subnets = subnetsFromKnownHosts(knownHosts);
   const expectedId = String(expectedCard?.id || '').trim().toLowerCase();
   for (const subnet of subnets) {
     for (let start = 1; start < 255; start += batchSize) {
+      if (signal?.aborted) return null;
       const addresses = [];
       for (let n = start; n < Math.min(start + batchSize, 255); n += 1) addresses.push(`${subnet}.${n}`);
       onProgress?.(`Looking for your card on ${subnet}.x …`);
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      const timer = setTimeout(abort, timeoutMs);
       const hits = await Promise.all(addresses.map(async host => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
           const response = await fetchImpl(`${cardHostToUrl(host)}/api/status`, {
             method: 'GET', cache: 'no-store', signal: controller.signal,
@@ -517,14 +522,17 @@ export async function sweepKnownSubnetsForCard({
           return { host, status };
         } catch {
           return null;
-        } finally {
-          clearTimeout(timer);
         }
       }));
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) return null;
       const found = hits.find(Boolean);
       if (found) {
-        rememberCardHost(found.host);
-        writeStoredCardHost(found.host);
+        if (persist) {
+          rememberCardHost(found.host);
+          writeStoredCardHost(found.host);
+        }
         return found;
       }
     }

@@ -47,7 +47,7 @@ test('scale setup', async ({ page }) => {
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await audit(page, 'setup-unpaired');
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45000 });
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45000 });
   await page.waitForTimeout(1500); await audit(page, 'setup-paired');
   await page.getByTestId('setup-lights-action').click({ timeout: 20000 });
   await audit(page, 'discovery-start');

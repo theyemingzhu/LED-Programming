@@ -69,7 +69,7 @@ test.describe(`${W}px`, () => {
     const card = createCardSimulator(cardState('factory-blank'));
     await card.install(page);
     await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 20_000 });
     await page.getByTestId('setup-lights-action').click({ timeout: 20_000 });
     await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
     await measure(page, 'light-check-probe');

@@ -673,3 +673,17 @@ test('a save whose reply was lost is recognised once the same card holds exactly
     assert.notEqual(lifecycleLabel(reverifyInstallation(edited, { ...evidence, ...override })), 'Installed on card', JSON.stringify(override));
   }
 });
+
+test('a replacement precondition is checked after async validation and before applying the project', async () => {
+  let current = true;
+  const result = await replaceProjectSafely({
+    candidate: { name: 'Incoming' },
+    validate: async candidate => {
+      current = false;
+      return candidate;
+    },
+    canApply: () => current,
+    apply: () => assert.fail('a superseded replacement must not apply'),
+  });
+  assert.deepEqual(result, { ok: false, reason: 'cancelled' });
+});

@@ -449,7 +449,7 @@
     display: flex;
     flex-direction: column;
   }
-  .pm .pm-main > .pm-browse > .pm-cards {
+  .pm .pm-pattern-bank > .pm-cards {
     flex: 1 1 auto;
     /* Three rows or it does not bound at all — a floor the flex parent cannot
        squeeze past, so the column overflows to the page scroll instead of

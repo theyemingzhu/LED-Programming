@@ -19,6 +19,7 @@ function legacyStatus(overrides = {}) {
     commandReady: true, outputReady: true, playbackReady: true,
     configValid: true, provisionalSetup: false, safeMode: false,
     projectId: PROJECT_ID, projectRevision: 0, projectFingerprint: '',
+    currentPatternId: 'aurora', lookCount: 2,
     piece: { id: PROJECT_ID, name: 'Legacy piece' },
     outputs: [{
       id: 'out1', pin: 18, pixels: 41, gpio: 18, count: 41,
@@ -52,8 +53,16 @@ test.beforeEach(async ({ page }) => {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, state: 'known-good', hasCandidate: false, outputs: status.outputs }) });
     }
-    // Patterns/zones readback is optional for adoption; a legacy card without
-    // them must still adopt from the status skeleton alone.
+    if (url.pathname === '/api/patterns') return route.fulfill({ json: {
+      currentId: 'aurora', currentIndex: 0,
+      patterns: [
+        { id: 'aurora', label: 'Installed Aurora', zones: [] },
+        { id: 'plasma', label: 'Installed Plasma', zones: [] },
+      ],
+    } });
+    if (url.pathname === '/api/zones') return route.fulfill({ json: {
+      zones: [{ id: 'run-strip-1', label: 'Installed strip', patternId: 'aurora', brightness: 0.5, blackout: false }],
+    } });
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
   });
   await page.addInitScript(({ cardId, firmwareVersion, buildId }) => {
@@ -86,10 +95,36 @@ test('a fresh Studio offers the legacy installed project without implicit adopti
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id);
   expect(before).not.toBe(PROJECT_ID);
   await page.getByTestId('installed-project-open').click();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id)).toBe(PROJECT_ID);
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return {
+      id: project.id,
+      labels: project.devices?.standaloneController?.looks?.map(look => look.label),
+    };
+  })).toEqual({ id: PROJECT_ID, labels: ['Installed Aurora', 'Installed Plasma'] });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
   await expectInstalledHome(page);
+});
+
+test('unreadable legacy looks block explicit adoption and preserve the open draft', async ({ page }) => {
+  await page.route('http://lightweaver.local/api/patterns', route =>
+    route.fulfill({ status: 404, json: { ok: false } }));
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expectInstalledHome(page);
+  const draft = () => page.evaluate(() => {
+    const { id, name, layout } = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return { id, name, strips: layout?.strips?.map(strip => strip.id) };
+  });
+  await expect.poll(async () => (await draft()).id).toBeTruthy();
+  const before = await draft();
+  expect(before.id).not.toBe(PROJECT_ID);
+
+  await page.getByTestId('installed-project-open').click();
+  await expect(page.getByTestId('setup-adoption-error')).toContainText('Studio could not read every look on this card');
+  expect(await draft()).toEqual(before);
+  await expect(page.getByTestId('installed-project-open')).toBeEnabled();
 });
 
 test('an older card revision cannot automatically replace a saved same-ID Studio layout', async ({ page }) => {
@@ -132,8 +167,10 @@ test('"Open installed project" explicitly opens the card copy when another proje
     project.id = 'my-other-piece';
     project.name = 'My other piece';
     project.layout.starterPending = false;
+    project.layout.svgText = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M0 0 L100 100" /></svg>';
     project.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
     localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({ version: 2, dirty: true, installation: null }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
@@ -142,7 +179,20 @@ test('"Open installed project" explicitly opens the card copy when another proje
   await expect(page.getByTestId('card-draft-difference'))
     .toContainText(/different project|draft/i, { timeout: 10000 });
   await page.getByTestId('installed-project-open').click();
+  const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  await expect.poll(async () => (await draft()).id).toBe(PROJECT_ID);
+  expect(await draft()).toMatchObject({
+    id: PROJECT_ID,
+    name: 'Legacy piece',
+    origin: { kind: 'card-partial', cardId: CARD_ID },
+    layout: { svgText: null },
+  });
   await expectInstalledHome(page);
+  await page.getByTestId('topbar-projects').click();
+  await expect(page.getByTestId('projects-association')).toContainText('Card copy (partial');
+  await page.getByRole('button', { name: 'Open My other piece', exact: true }).click();
+  await expect.poll(async () => (await draft()).id).toBe('my-other-piece');
+  expect((await draft()).layout.svgText).toContain('M0 0 L100 100');
 });
 
 // A truly older card without this API still has an explicit adoption path;
@@ -279,7 +329,7 @@ test('Card Home offers Resume Layout after light discovery and leaves installed 
   });
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('fact-artwork')).toBeVisible();
-  await page.evaluate(async () => {
+  const project = await page.evaluate(async () => {
     const { createDefaultProject } = await import('/src/lib/projectModel.js');
     const project = createDefaultProject();
     project.id = 'lotus-gate';
@@ -288,8 +338,13 @@ test('Card Home offers Resume Layout after light discovery and leaves installed 
     Object.assign(project.devices.standaloneController.led, {
       colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB',
     });
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    return project;
   });
+  await page.addInitScript(draft => {
+    const saved = JSON.stringify(draft);
+    localStorage.setItem('lw_autosave_v3', saved);
+    localStorage.setItem('lw_autosave_v3_backup', saved);
+  }, project);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
   await expectInstalledHome(page);

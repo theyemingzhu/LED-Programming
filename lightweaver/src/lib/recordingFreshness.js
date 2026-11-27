@@ -42,6 +42,9 @@ export function recordingBakeInput(asset, project) {
     render: project.render || { bpm: project.bpm, gammaEnabled: project.gammaEnabled,
       gammaValue: project.gammaValue, symSettings: project.symSettings } } };
 }
+const RECORDING_DIRECTION_CHANGED = Object.freeze({ state: 'stale', canRebake: true,
+  message: 'This recording keeps its saved playback direction. Record again to use the current direction.' });
+
 export async function recordedSequenceFreshness(asset, project) {
   let provenChange = false;
   try {
@@ -50,6 +53,8 @@ export async function recordedSequenceFreshness(asset, project) {
     if (kind === 'placed') {
       const { hashPlacedLookLayout } = await import('./placedLookRecording.js');
       const hash = await hashPlacedLookLayout(input);
+      if (hash !== manifest.layoutPhysicalOrderSha256
+        && await hashPlacedLookLayout(input, { legacyLogicalPlayback: true }) === manifest.layoutPhysicalOrderSha256) return RECORDING_DIRECTION_CHANGED;
       return hash === manifest.layoutPhysicalOrderSha256
         ? { state: 'current', canRebake: true, message: 'Recording matches the saved look and artwork.' }
         : { state: 'stale', canRebake: true, message: 'Artwork or wiring changed. Record again to update. Frozen playback is preserved.' };
@@ -59,7 +64,10 @@ export async function recordedSequenceFreshness(asset, project) {
       : canonicalPatternLabBakeJson(input.recipe) !== canonicalPatternLabBakeJson(recipeSource(manifest.recipe));
     provenChange = changedSource || (Object.hasOwn(asset, 'bakedSideMode')
       && asset.bakedSideMode !== recordingSourceSideMode(asset, project));
-    const hash = kind === 'flow' ? await hashSceneExpressionFlowLayout(input) : await hashPatternLabBakePhysicalOrder(input);
+    const hashLayout = kind === 'flow' ? hashSceneExpressionFlowLayout : hashPatternLabBakePhysicalOrder;
+    const hash = await hashLayout(input);
+    if (!changedSource && hash !== manifest.layoutPhysicalOrderSha256
+      && await hashLayout(input, { legacyLogicalPlayback: true }) === manifest.layoutPhysicalOrderSha256) return RECORDING_DIRECTION_CHANGED;
     if (changedSource || hash !== manifest.layoutPhysicalOrderSha256) return { state: 'stale', canRebake: true,
       message: 'Source or artwork changed. Record again to update. Frozen playback is preserved.' };
     if (!editable) return { state: 'unknown', canRebake: true,

@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "strips": [
+    {
+      "id": "wedge-0",
+      "name": "wedge-0",
+      "pathData": "M200,200 Q235,168 355,200 Q235,232 200,200 Z M296.6,174.1 m-12,0 a12,8 0 1,0 24,0 a12,8 0 1,0 -24,0 Z M 260,196 L 350,200 L 260,204 Z",
+      "pixelCount": 9,
+      "color": "oklch(72% 0.15 210)",
+      "emit": "dir",
+      "angle": 0,
+      "reversed": true,
+      "speed": 1,
+      "brightness": 1,
+      "hueShift": 0,
+      "patternId": null
+    }
+  ],
+  "layers": [
+    {
+      "layerId": "wedge-0",
+      "name": "wedge-0",
+      "pathData": "M200,200 Q235,168 355,200 Q235,232 200,200 Z M296.6,174.1 m-12,0 a12,8 0 1,0 24,0 a12,8 0 1,0 -24,0 Z M 260,196 L 350,200 L 260,204 Z",
+      "svgLength": 571.8355102539062,
+      "_color": "oklch(72% 0.15 210)",
+      "_emit": "dir",
+      "_angle": 0
+    },
+    {
+      "layerId": "layer-1",
+      "name": "Layer 2",
+      "pathData": "",
+      "svgLength": 0,
+      "_color": "oklch(78% 0.14 300)",
+      "_emit": "dir",
+      "_angle": 0
+    },
+    {
+      "layerId": "layer-2",
+      "name": "Layer 3",
+      "pathData": "",
+      "svgLength": 0,
+      "_color": "oklch(78% 0.14 60)",
+      "_emit": "dir",
+      "_angle": 0
+    },
+    {
+      "layerId": "layer-3",
+      "name": "Layer 4",
+      "pathData": "",
+      "svgLength": 0,
+      "_color": "oklch(80% 0.15 155)",
+      "_emit": "dir",
+      "_angle": 0
+    }
+  ],
+  "svgText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!--\n  mandala-6fold.svg — hand-written fixture for artworkSymmetry.js.\n\n  A 6-fold rotationally symmetric mandala centred on (200,200), built from\n  one base wedge (\"wedge-0\") repeated 6x around the centre by a mix of\n  <g transform=\"rotate(...)\"> and <use> clones (the two duplication idioms\n  real laser-cut art files use interchangeably). Deliberately NOT\n  perfectly clean:\n\n    - \"signature\" is a single off-pattern path (an engraver's mark) with\n      no rotational partner — the kind of stray shape estimateCentre's\n      top-60%-by-path-length filter exists to ignore.\n    - \"spot-1\"..\"spot-3\" are three small dust/mounting-hole dots, placed\n      asymmetrically (3, not 6) and NOT aligned to the wedge boundaries.\n\n  This file is not parsed by the unit tests in artworkSymmetry.test.js\n  (those use an injectable analytic sampler and need no DOM/SVG parser).\n  It exists for manual/visual verification and for any future consumer\n  that samples real SVG geometry.\n-->\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 400\" width=\"400\" height=\"400\">\n  <title>6-fold mandala fixture</title>\n\n  <!-- Undecorated centre hub — the single <circle> in this file. -->\n  <circle id=\"centre-hub\" cx=\"200\" cy=\"200\" r=\"10\" fill=\"#c9a227\" />\n\n  <!-- Base wedge: one 60-degree slice of the motif, drawn once and reused\n       by every other wedge via rotate transforms and <use> clones. -->\n  <g id=\"wedge-0\">\n    <!-- lotus: the large petal motif -->\n    <path id=\"lotus\" d=\"M200,200 Q235,168 355,200 Q235,232 200,200 Z\" fill=\"#7a3f8f\" />\n    <!-- bee: a small blob offset from the wedge centreline -->\n    <path id=\"bee\" d=\"M296.6,174.1 m-12,0 a12,8 0 1,0 24,0 a12,8 0 1,0 -24,0 Z\" fill=\"#caa000\" />\n    <!-- sun-ray: the single <polygon> in this file -->\n    <polygon id=\"sun-ray\" points=\"260,196 350,200 260,204\" fill=\"#e07b39\" />\n  </g>\n\n  <!-- (a) one wedge realised as a <g transform=\"rotate(...)\"> around the\n       base wedge, via <use> — this is the required rotate-transform\n       wedge. -->\n  <g transform=\"rotate(60 200 200)\">\n    <use href=\"#wedge-0\" />\n  </g>\n\n  <!-- (b) two further wedges duplicated as direct <use> clones. -->\n  <use href=\"#wedge-0\" transform=\"rotate(120 200 200)\" />\n  <use href=\"#wedge-0\" transform=\"rotate(180 200 200)\" />\n\n  <!-- Remaining two wedges, completing the 6-fold ring. -->\n  <g transform=\"rotate(240 200 200)\">\n    <use href=\"#wedge-0\" />\n  </g>\n  <g transform=\"rotate(300 200 200)\">\n    <use href=\"#wedge-0\" />\n  </g>\n\n  <!-- spot-1..3: a few small asymmetric dust/mounting-hole dots — three\n       of them, not six, and not on any wedge boundary. Paths (not\n       circles), so this file keeps exactly one <circle> element. -->\n  <path id=\"spot-1\" d=\"M62,74 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 Z\" fill=\"#555\" />\n  <path id=\"spot-2\" d=\"M340,330 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z\" fill=\"#555\" />\n  <path id=\"spot-3\" d=\"M120,326 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z\" fill=\"#555\" />\n\n  <!-- (e) signature: one deliberately asymmetric mark, no rotational\n       partner anywhere in the piece. -->\n  <path id=\"signature\" d=\"M370,372 Q378,364 372,356 Q365,364 374,369 Q368,373 370,378\" fill=\"none\" stroke=\"#333\" stroke-width=\"1.2\" />\n</svg>\n",
+  "viewBox": "0 0 400 400",
+  "density": 60,
+  "editCounts": {},
+  "activePatternId": "aurora",
+  "masterSpeed": 1,
+  "masterBrightness": 1,
+  "masterSaturation": 1,
+  "gammaEnabled": false,
+  "gammaValue": 2.2,
+  "patternParams": {},
+  "bpm": 120
+}

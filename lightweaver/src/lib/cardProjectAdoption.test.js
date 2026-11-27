@@ -469,6 +469,46 @@ test('reconstruct drops readback when the same card reports a different installe
   assert.equal(calls.appliedParts.length, 0);
 });
 
+test('reconstruct saves editable work and re-reads the exact card project before it applies', async () => {
+  const { deps, calls } = makeDeps();
+  let reads = 0;
+  deps.io.readCardStatusEnvelope = async () => {
+    reads += 1;
+    return statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  };
+  const apply = deps.actions.applyCardParts;
+  deps.actions.applyCardParts = (parts, status, { canApply }) => {
+    assert.equal(calls.save, 1);
+    assert.equal(reads, 2);
+    assert.equal(canApply(), true);
+    return apply(parts, status);
+  };
+
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct', preserveCurrentProject: true });
+  assert.equal(result.ok, true);
+  assert.equal(calls.appliedParts.length, 1);
+});
+
+test('reconstruct preserves the outgoing workspace if the save fails or the workspace or live project changes', async () => {
+  for (const failure of ['save failed', 'workspace changed', 'installed revision changed']) {
+    const { deps, calls } = makeDeps();
+    let reads = 0;
+    deps.io.readCardStatusEnvelope = async () => {
+      reads += 1;
+      return statusEnvelope({
+        outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+        ...(reads === 2 && failure === 'installed revision changed' ? { projectRevision: 10 } : {}),
+      });
+    };
+    if (failure === 'save failed') deps.actions.saveBeforeCardProjectSwitch = async () => ({ ok: false, reason: 'browser-library-failed' });
+    if (failure === 'workspace changed') deps.actions.isProjectSwitchSnapshotCurrent = () => false;
+    const result = await guardedResolutionRun(deps, { strategy: 'reconstruct', preserveCurrentProject: true });
+    assert.equal(result.ok, false, failure);
+    assert.equal(result.reason, failure === 'save failed' ? 'save-before-adoption' : 'cancelled', failure);
+    assert.equal(calls.appliedParts.length, 0, failure);
+  }
+});
+
 test('reconstruct rejects a disconnected shared link after its card identity is cleared', async () => {
   const { deps, calls } = makeDeps();
   deps.getSharedCardLink = () => ({ state: 'disconnected', card: null, readiness: null });

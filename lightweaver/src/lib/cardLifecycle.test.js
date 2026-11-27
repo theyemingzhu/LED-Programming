@@ -437,7 +437,6 @@ test('connectionLabel states the link, never the errand', () => {
 // verifying anything — this asserts the panel names the real verdict.
 const DIRECT_CONNECT_WAITING_COPY = 'This exact card answered, but Studio is still verifying its installed project before ordinary controls are enabled.';
 const DIRECT_CONNECT_READY_COPY = 'This exact card and installed project are ready for ordinary pattern, color, brightness, and Stop controls. Project saves and firmware changes keep their stronger safety checks.';
-const DIRECT_CONNECT_PROJECT_MISMATCH_COPY = "This card holds the same project at a different revision. Use the card's copy, or save this one to the card.";
 
 test('F25: confirming/verifying keep the waiting copy; project-mismatch does not', () => {
   // In-flight states: still genuinely verifying, keep the waiting sentence.
@@ -450,10 +449,24 @@ test('F25: confirming/verifying keep the waiting copy; project-mismatch does not
   const confirmingCopy = directConnectVerdictCopy('confirming');
   const mismatchCopy = directConnectVerdictCopy('project-mismatch');
   assert.notEqual(mismatchCopy, confirmingCopy);
-  assert.equal(mismatchCopy, DIRECT_CONNECT_PROJECT_MISMATCH_COPY);
+  assert.match(mismatchCopy, /could not confirm which project/);
   assert.ok(!mismatchCopy.includes('still verifying'), 'project-mismatch must not claim to still be verifying');
 
   assert.equal(directConnectVerdictCopy('ready'), DIRECT_CONNECT_READY_COPY);
+});
+
+test('direct-connect copy distinguishes a different project from drift in the same project', () => {
+  const cases = [
+    [{ id: 'another-piece', revision: 6 }, /holds a different project from the one open/],
+    [{ id: 'piece-a', revision: 6 }, /same project at a different revision/],
+    [{ id: 'piece-a', revision: 7, fingerprint: 'b'.repeat(64) }, /has not matched the open project/],
+    [{}, /could not confirm which project/],
+  ];
+  for (const [project, expected] of cases) {
+    const lifecycle = deriveCardLifecycle({ link: READY_LINK, project });
+    assert.equal(lifecycle.state, 'project-mismatch');
+    assert.match(directConnectVerdictCopy(lifecycle.state, lifecycle), expected);
+  }
 });
 
 test('F25: every other terminal state gets its own verdict, never "still verifying"', () => {

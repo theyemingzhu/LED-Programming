@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Card Home is the install. Hardware fold keeps recovery and calibration —
+// Card Home is the install. Hardware settings keeps recovery and calibration —
 // card address and the strip colour check (the order itself is set on Card
 // Home's Color order row). It must not offer a second
 // "Save to card" primary. Deleting that row used to be withdrawn; this
@@ -16,19 +16,19 @@ test.beforeEach(async ({ page }) => {
 
 async function openHardware(page: Page) {
   await page.goto(HARDWARE_ROUTE, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
   await expect(page.getByTestId('card-address-summary')).toBeVisible({ timeout: 20_000 });
 }
 
-test('Hardware fold has no primary Save to card row', async ({ page }) => {
+test('Hardware settings has no primary Save to card row', async ({ page }) => {
   await openHardware(page);
 
-  const fold = page.getByTestId('card-hardware-fold');
-  await expect(fold.locator('.set-row', { hasText: 'Save to card' })).toHaveCount(0);
-  await expect(fold.getByRole('button', { name: 'Save to card', exact: true })).toHaveCount(0);
-  await expect(fold.getByRole('button', { name: 'Open card installer' })).toHaveCount(0);
-  await expect(fold.getByRole('button', { name: 'Flash chip' })).toHaveCount(0);
-  await expect(fold.getByRole('button', { name: 'Installer guide' })).toHaveCount(0);
+  const settings = page.getByRole('main');
+  await expect(settings.locator('.set-row', { hasText: 'Save to card' })).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: 'Save to card', exact: true })).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: 'Open card installer' })).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: 'Flash chip' })).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: 'Installer guide' })).toHaveCount(0);
 });
 
 test('Card Home gives connection to the setup journey without a duplicate install', async ({ page }) => {
@@ -58,8 +58,8 @@ test('the colour-order picker is gone from Hardware; Card Home owns the order', 
   // One owner per question: the order is set on Card Home's Color order row
   // (three keys, pushed live and read back). Hardware keeps only the proof.
   await expect(page.getByTestId('color-order-summary')).toHaveCount(0);
-  await expect(page.getByTestId('card-hardware-fold').locator('.set-row', { hasText: 'Color order' })).toHaveCount(0);
-  await expect(page.getByTestId('card-hardware-fold').getByRole('button', { name: 'Check colors' })).toBeVisible();
+  await expect(page.getByRole('main').locator('.set-row', { hasText: 'Color order' })).toHaveCount(0);
+  await expect(page.getByRole('main').getByRole('button', { name: 'Check colors' })).toBeVisible();
 
   await page.goto(CARD_HOME, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('fact-color-keys')).toBeVisible({ timeout: 20_000 });
@@ -68,6 +68,6 @@ test('the colour-order picker is gone from Hardware; Card Home owns the order', 
 
 test('the colour-order test deep link from the card still lands here', async ({ page }) => {
   await page.goto(`${HARDWARE_ROUTE}&tool=color-order`, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
   await expect(page.getByTestId('strip-color-order')).toBeVisible({ timeout: 20_000 });
 });

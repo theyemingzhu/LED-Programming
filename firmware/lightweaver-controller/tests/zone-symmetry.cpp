@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "LightweaverPatterns.h"
+#include "LightweaverSequencePlayback.h"
 #include "LightweaverZoneSymmetry.h"
 
 KaleidoscopeSample sampleKaleidoscope(const KaleidoscopeMappingConfig*, uint16_t) {
@@ -214,10 +215,61 @@ static bool validationRules() {
   return true;
 }
 
+// Native procedural effects are rendered independently before the final GPIO
+// copy. Cover both one selected part and each of the four in the same output.
+static bool dividedOutputPlaybackDirections() {
+  const char* names[] = {"meteor", "scanner", "chase", "rainbow", "sunset"};
+  const uint16_t starts[] = {0, 11, 21, 31, 41};
+  const uint16_t counts[] = {11, 10, 10, 10, 5};
+  CRGB canvas[46] = {}, physical[46] = {};
+  OutputConfig outputs[2];
+  outputs[0].start = 0;
+  outputs[0].pixels = 41;
+  outputs[0].segmentCount = 4;
+  outputs[1].start = 41;
+  outputs[1].pixels = 5;
+  outputs[1].segmentCount = 1;
+  outputs[1].segments[0].count = 5;
+  const auto identity = [](const CRGB& pixel) { return pixel; };
+
+  for (uint8_t part = 0; part < 5; ++part) {
+    PatternModifiers mods;
+    // Select a frame with distinct first and last colors for every effect.
+    bool asymmetric = false;
+    for (uint32_t now = 137; now < 20000; now += 307) {
+      CHECK(renderProceduralPattern(String(names[part]), canvas + starts[part], counts[part], now, mods));
+      if (!(canvas[starts[part]] == canvas[starts[part] + counts[part] - 1])) {
+        asymmetric = true;
+        break;
+      }
+    }
+    CHECK(asymmetric);
+    if (part < 4) outputs[0].segments[part].count = counts[part];
+  }
+
+  for (const uint8_t mask : {0, 2, 15, 0}) {
+    for (uint8_t part = 0; part < 4; ++part) outputs[0].segments[part].reversed = mask & (1U << part);
+    CHECK(copyCanvasToPhysicalOutputs(physical, canvas, 46, outputs, 2, false, identity));
+    for (uint8_t part = 0; part < 5; ++part) {
+      const bool reversed = part < 4 && (mask & (1U << part));
+      const uint16_t start = starts[part], count = counts[part];
+      for (uint16_t led = 0; led < count; ++led) {
+        CHECK(physical[start + led] == canvas[start + (reversed ? count - 1 - led : led)]);
+      }
+    }
+    // A pre-ordered recording or explicit physical stream must bypass the
+    // same permutation. Passing the physical result through is idempotent.
+    CRGB received[46] = {};
+    CHECK(copyCanvasToPhysicalOutputs(received, physical, 46, outputs, 2, true, identity));
+    for (uint16_t led = 0; led < 46; ++led) CHECK(received[led] == physical[led]);
+  }
+  return true;
+}
+
 int main() {
   const bool ok = continuousIndexingSpansTwoRanges() && mirrorIndexMath() &&
                   mirrorCopyEqualLengths() && mirrorCopyStretches24To30() &&
-                  mirrorCopySkipsUnusableRanges() && validationRules();
+                  mirrorCopySkipsUnusableRanges() && validationRules() && dividedOutputPlaybackDirections();
   if (!ok) return 1;
   std::printf("zone symmetry host tests: %d checks passed\n", checks);
   return 0;

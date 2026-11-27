@@ -689,6 +689,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   const previewSegments = useMemo(() => {
     if (!strips.length) return [];
     return buildPatternPreviewSegments({
+      previewPlaybackDirection: true,
       strips,
       patchBoard,
       wiring,

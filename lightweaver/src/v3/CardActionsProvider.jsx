@@ -12,9 +12,7 @@
 //                       snapshot, cloud detach, save-block reset). Every
 //                       screen-level import goes through this so all four
 //                       surfaces share one cleanup behavior.
-//   openCard          — the footer's openCardControl routing (Connected →
-//                       control drawer; needs attention → exact Setup task;
-//                       otherwise → Connection Center).
+//   openInstalledCardControl — opens the card's installed playback controls.
 //
 // The provider mounts unconditionally above the screen switch and its value
 // is memoized, so its identity never changes across renders — this codebase
@@ -150,11 +148,11 @@ export function CardActionsProvider({ deps, children }) {
     return app.saveProjectToCard?.();
   }, []);
 
-  const openCard = useCallback(() => depsRef.current.openCardControl?.(), []);
+  const openInstalledCardControl = useCallback(() => depsRef.current.openInstalledCardControl?.(), []);
 
   const value = useMemo(
-    () => ({ adoptCardProject, recoverLights, importProjectFile, openCard, saveSceneDraft }),
-    [adoptCardProject, recoverLights, importProjectFile, openCard, saveSceneDraft],
+    () => ({ adoptCardProject, recoverLights, importProjectFile, openInstalledCardControl, saveSceneDraft }),
+    [adoptCardProject, recoverLights, importProjectFile, openInstalledCardControl, saveSceneDraft],
   );
   return <CardActionsContext.Provider value={value}>{children}</CardActionsContext.Provider>;
 }

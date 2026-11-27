@@ -71,7 +71,7 @@ test('Patterns Save, card has no room: Studio says so, the card keeps its projec
 async function walkToInstall(page: Page, p: InterruptionCard) {
   await p.card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await expect.poll(() => linkState(page), { timeout: 30_000 }).toMatch(/^connected-/);
   await page.getByTestId('setup-lights-action').click();
   // Find my strips, combined flow: tap the pin, one colour row, Stop, end check.

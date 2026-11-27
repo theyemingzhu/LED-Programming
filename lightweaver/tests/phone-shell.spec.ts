@@ -141,7 +141,7 @@ test.describe('phone 390', () => {
     const card = createCardSimulator(cardState('factory-blank'));
     await card.install(page);
     await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+    await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45_000 });
     await page.getByTestId('setup-lights-action').click({ timeout: 20_000 });
     await expect(page.locator('.card-setup-overlay')).toBeVisible();
     // Let the entry slide settle before measuring where the sheet rests.
@@ -188,7 +188,7 @@ test.describe('phone 390, one scale', () => {
     const card = createCardSimulator(cardState('factory-blank'));
     await card.install(page);
     await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+    await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45_000 });
     await page.getByTestId('setup-lights-action').click({ timeout: 20_000 });
     await page.getByTestId('discovery-probe-18').click({ timeout: 20_000 });
     await page.getByTestId('discovery-start').click();
@@ -238,7 +238,7 @@ test.describe('desktop 1280 is unchanged', () => {
     const card = createCardSimulator(cardState('factory-blank'));
     await card.install(page);
     await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+    await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45_000 });
     await page.getByTestId('setup-lights-action').click({ timeout: 20_000 });
     const sheet = await rect(page, '.card-setup-overlay');
     expect(sheet.x).toBeGreaterThan(0);

@@ -1,3 +1,4 @@
+import { OUTPUT_PLAYBACK_ORDER } from './wiringCompiler.js';
 import { buildPatternPreviewSegments, applyPatternPreviewSegmentLooks } from './patternPiecePreview.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
@@ -48,7 +49,7 @@ const patternId = id => {
   return card?.previewPatternId || card?.preset || id;
 };
 
-function sourceSnapshot(input) {
+function sourceSnapshot(input, legacyLogicalPlayback) {
   if (!input.compiledWiring?.ok || !Array.isArray(input.compiledWiring.pixels)) {
     throw new TypeError('Known compiled physical wiring is required for Flow recording');
   }
@@ -58,7 +59,9 @@ function sourceSnapshot(input) {
   // hash, so a compile with no symmetry is snapshotted in its old shape (a real
   // symmetry is part of the snapshot and changes the hash on purpose).
   const { symmetry: appliedSymmetry, ...compiledWithoutSymmetry } = input.compiledWiring;
+  const playbackOrderChanged = input.compiledWiring.runs?.some(run => run.reversed && run.count > 1);
   const layout = structuredClone({
+    ...(!legacyLogicalPlayback && playbackOrderChanged ? { playbackOrder: OUTPUT_PLAYBACK_ORDER } : {}),
     strips: input.strips, patchBoard: input.patchBoard ?? null,
     wiring: input.wiring,
     compiledWiring: appliedSymmetry == null ? { ...compiledWithoutSymmetry, mirrorSets: [] } : input.compiledWiring,
@@ -89,14 +92,14 @@ function sourceSnapshot(input) {
   return { scene, layout, catalog, resolved, outputs };
 }
 
-function prepare(input) {
+function prepare(input, { legacyLogicalPlayback = false } = {}) {
   // Reject a card-incompatible physical layout before catalog or renderer work.
   const physicalCount = input.compiledWiring?.pixels?.length;
   if (Number.isSafeInteger(physicalCount)) {
     if (physicalCount < 1) throw new RangeError('Flow recording needs at least one LED.');
     assertLwseqPixelCount(physicalCount);
   }
-  const snapshot = sourceSnapshot(input);
+  const snapshot = sourceSnapshot(input, legacyLogicalPlayback);
   const fps = input.fps ?? MAX_FPS;
   if (!Number.isSafeInteger(fps) || fps < 1 || fps > MAX_FPS) throw new RangeError(`Flow recording FPS must be from 1 to ${MAX_FPS}`);
   const durationMs = snapshot.scene.steps.reduce((sum, step) => sum + step.holdMs, 0);
@@ -113,7 +116,7 @@ function prepare(input) {
   if (!Number.isSafeInteger(estimate.totalBytes) || estimate.totalBytes > maxBytes) {
     throw new RangeError(`Flow recording needs ${recordingSize(estimate.totalBytes)}, above the ${recordingSize(maxBytes)} storage limit. Record a shorter loop.`);
   }
-  return { ...snapshot, fps, durationMs, frameCount, pixelCount, maxBytes, estimate };
+  return { ...snapshot, fps, durationMs, frameCount, pixelCount, maxBytes, estimate, legacyLogicalPlayback };
 }
 
 export function estimateSceneExpressionFlowRecording(input) {
@@ -181,14 +184,14 @@ function renderAt(prepared, frameIndex, stepContexts, clock) {
     perStripFns: context.renderer?.ok ? new Map() : context.perStripFns, symmetry, sidesMirrored });
   applyPatternPreviewSegmentLooks(frame.pixels, context.segments, time * 1000, { symmetry, sidesMirrored });
   const mapped = mapSceneExpressionPreviewFrame({ framePixels: frame.pixels, segments: context.segments,
-    compiledWiring: prepared.layout.compiledWiring });
+    compiledWiring: prepared.layout.compiledWiring, legacyLogicalPlayback: prepared.legacyLogicalPlayback });
   if (!mapped.ok) throw new TypeError(mapped.errors[0]?.message || 'Physical Flow frame mapping failed');
   return mapped.pixels;
 }
 
-export async function bakeSceneExpressionFlow(input = {}) {
+export async function bakeSceneExpressionFlow(input = {}, options) {
   checkAbort(input.signal);
-  const prepared = prepare(input);
+  const prepared = prepare(input, options);
   checkAbort(input.signal);
   const template = toLwseqBytes([Array.from({ length: prepared.pixelCount }, () => ({ r: 0, g: 0, b: 0 }))],
     { fps: prepared.fps, outputs: prepared.outputs });
@@ -226,8 +229,8 @@ export async function bakeSceneExpressionFlow(input = {}) {
 }
 
 // Exact single-choice hash for legacy provenance inspection, not playback validity.
-export async function hashSceneExpressionFlowLayout(input = {}) {
-  const prepared = prepare(input);
+export async function hashSceneExpressionFlowLayout(input = {}, options) {
+  const prepared = prepare(input, options);
   return sha256(canonical(prepared.layout), input.signal);
 }
 
@@ -246,11 +249,11 @@ export async function verifySceneExpressionFlowBake(bakeResult, input = {}) {
     // A recording keeps the mirrored-or-own choice it was baked with, so a later
     // flip of the live choice must not make it look stale. Symmetry itself (the
     // sides and their strip order) is still compared exactly.
-    const layoutHashes = [await sha256(canonical(prepared.layout), input.signal)];
-    if (input.symmetry) {
-      const other = prepare({ ...input, fps: bakeResult?.sidecar?.fps, sidesMirrored: input.sidesMirrored === false });
-      layoutHashes.push(await sha256(canonical(other.layout), input.signal));
-    }
+    const choices = input.symmetry ? [input, { ...input, sidesMirrored: input.sidesMirrored === false }] : [input];
+    const layoutHashes = await Promise.all(choices.flatMap(choice => [false, true].map(legacyLogicalPlayback => {
+      const { layout } = prepare({ ...choice, fps: sidecar.fps }, { legacyLogicalPlayback });
+      return sha256(canonical(layout), input.signal);
+    })));
     if (canonical(sidecar.outputs) !== canonical(prepared.outputs)
       || !layoutHashes.includes(sidecar.layoutPhysicalOrderSha256)) {
       return { ok: false, reason: 'recording-stale-layout' };

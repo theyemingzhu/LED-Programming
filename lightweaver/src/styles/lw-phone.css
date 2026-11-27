@@ -143,15 +143,14 @@
   .app .plab-screen[data-sheet-detent="peek"] .plab-preview,
   .app .plab-screen[data-sheet-detent="half"] .plab-preview { padding-bottom: var(--plab-sheet-h); }
 
-  /* ── Card setup sheet: edge to edge, ends where a notice begins ── */
+  /* The expanded sheet reserves room for app notices on phones. Light check
+     notices scroll in the sheet body, above its safety controls. */
   .card-setup-backdrop:not(.is-minimized) {
+    z-index: 1200;
     padding: 0 0 var(--lw-notice-reserve, 0px);
     /* Edge to edge and from the top, but only as tall as its step
        (strip-discovery.spec: "content-sized"). */
     place-items: start stretch;
-    /* The sheet fills the phone, so nothing behind it needs to show
-       through the strip a notice reserves. */
-    background: var(--bg-app);
   }
   .card-setup-backdrop:not(.is-minimized) .card-setup-overlay {
     width: 100%;
@@ -211,11 +210,8 @@
   .app > .screen .lw-mod { padding: 12px; }
   .app > .screen .lw-mod-head { padding: 8px 12px; }
   .app > .screen .lw-fact { padding: 8px 12px; }
-  .app > .screen .card-page-fold-body { padding: 10px 12px 12px; }
-  .app > .screen .card-page-fold-body > summary,
   .app > .screen details > summary { padding-inline: 12px; }
   .app > .screen .lw-setup-identity-door { padding: 6px 10px; }
-  .app > .screen .card-page-fold-body button:not(.btn) { padding: 8px 10px; }
   .app > .screen .lwb-quiz { padding: 10px 12px; }
   .app > .screen .lw-fact b,
   .app > .screen .lwb-quiz b { font-size: 18px; line-height: 1.2; }
@@ -245,8 +241,6 @@
   .strip-discovery .strip-discovery-grid .strip-discovery-port { min-height: var(--lw-tap); height: auto; padding: 6px; }
   .app > .screen .set .set-stat b { font-size: 15px; }
   .app > .screen .pm .pl-stat .v { font-size: 15px; }
-  .app > .screen .card-support-grid { gap: 6px; }
-  .app > .screen .card-support-grid > button { min-height: 0; padding: 8px 10px; gap: 2px; }
   .app > .screen .lw-setup-identity-door { min-height: 0; gap: 2px; }
 
   /* Card setup sheet */

@@ -4,6 +4,8 @@
 // order. Segment pixels carry the Layout-owned `{ stripId, sourceLed }`
 // identity. Compiled wiring is the only authority for physical output order.
 
+import { pixelsInPlaybackOrder } from './wiringCompiler.js';
+
 const BLACK = '000000';
 
 const sourceKey = (stripId, sourceLed) => `${stripId}:${sourceLed}`;
@@ -61,6 +63,7 @@ export function mapSceneExpressionPreviewFrame({
   framePixels,
   segments,
   compiledWiring,
+  legacyLogicalPlayback = false,
 } = {}) {
   const errors = [];
   if (!compiledWiring || compiledWiring.ok !== true || !Array.isArray(compiledWiring.pixels)) {
@@ -95,7 +98,8 @@ export function mapSceneExpressionPreviewFrame({
   }
 
   const physicalBySource = new Map();
-  compiledWiring.pixels.forEach((physical, outputIndex) => {
+  const outputPixels = legacyLogicalPlayback ? compiledWiring.pixels : pixelsInPlaybackOrder(compiledWiring);
+  outputPixels.forEach((physical, outputIndex) => {
     if (physical?.inactive === true) return;
     if (!validSource(physical)) {
       errors.push({ code: 'physical-source-invalid', message: 'An active compiled output pixel has no valid strip source.', outputIndex });
@@ -124,7 +128,7 @@ export function mapSceneExpressionPreviewFrame({
 
   return {
     ok: true,
-    pixels: compiledWiring.pixels.map(physical => {
+    pixels: outputPixels.map(physical => {
       if (physical?.inactive === true) return BLACK;
       return rgbHex(colorBySource.get(sourceKey(physical.stripId, physical.sourceLed)));
     }),

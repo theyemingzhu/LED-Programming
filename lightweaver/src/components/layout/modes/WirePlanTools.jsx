@@ -11,9 +11,8 @@ import { InstallerWiringSheetButton } from '../wire/InstallerWiringSheet.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
 import { CardPinMap } from '../../card/CardPinMap.jsx';
 import { activeBoardGpios, assignWiringRunToPin, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
-import { PORT_ROLE_STRIP } from '../../../lib/portRoles.js';
-import { describeCardCapacity } from '../../../lib/designCapacity.js';
-import { STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../../lib/cardAction.js';
+import { designPixelTotal } from '../../../lib/designCapacity.js';
+import { WIRING_DISCOVERY_LINK, WiringPinEvidence, WiringReplacementLinks, wiringPinEvidence } from '../../card/WiringPinEvidence.jsx';
 import { estimatePowerBudget } from '../../../lib/controllerProfiles.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../../lib/powerSupplySettings.js';
 import { estimateWiringFrameTiming } from '../../../lib/wiringFrameTiming.js';
@@ -44,7 +43,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
   } = state;
   const {
     wiring, updateWiring, compiledWiring,
-    standaloneController, setStandaloneController, portRoles,
+    standaloneController, setStandaloneController, portRoles, projectId, origin,
   } = useProject();
   const ledType = normalizeCardLedType(standaloneController?.led?.type, DEFAULT_STANDALONE_LED.type);
   const setLedType = useCallback(nextType => {
@@ -64,28 +63,6 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
   const [milliampsDraft, setMilliampsDraft] = useState(() => String(readPowerSupplySettings(standaloneController).milliampsPerPixel));
   const stripsById = useMemo(() => new Map(strips.map(strip => [strip.id, strip])), [strips]);
   const runsById = useMemo(() => new Map(wiring.runs.map(run => [run.id, run])), [wiring.runs]);
-  // Strips the guided setup learned about from the real card: one entry per
-  // measured strip, carrying its true GPIO and light count.
-  const discoveredStripEntries = useMemo(() => (Array.isArray(portRoles) ? portRoles : [])
-    .filter(entry => entry
-      && entry.role === PORT_ROLE_STRIP
-      && Number.isInteger(entry.pin)
-      && Number.isInteger(entry.pixelCount)
-      && entry.pixelCount > 0), [portRoles]);
-  // Pair each output with a discovered strip so an owner who ran the guided
-  // card setup sees the real strip next to the drawing's plan. A discovered
-  // strip already on this output's GPIO wins; otherwise the first unmatched
-  // measured strip is the truth this output should be pointing at.
-  const discoveredByOutput = useMemo(() => {
-    const used = new Set();
-    const byOutput = new Map();
-    for (const output of wiring.outputs || []) {
-      let entry = discoveredStripEntries.find(item => item.pin === output.pin && !used.has(item.pin));
-      if (!entry) entry = discoveredStripEntries.find(item => !used.has(item.pin));
-      if (entry) { byOutput.set(output.id, entry); used.add(entry.pin); }
-    }
-    return byOutput;
-  }, [wiring.outputs, discoveredStripEntries]);
   const mutate = (callback, options = {}) => {
     const result = updateWiring(callback, options);
     if (!result.ok) setMutationError(result.errors?.[0]?.message || 'Wiring change rejected.');
@@ -100,7 +77,8 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
   }, { changeKind: 'route' });
 
   const { availablePins: availableOutputPins, cardId: liveCardId,
-    capacity: outputCapacity, maxOutputs, state: cardReadinessState } = useWiringCard();
+    capacity: outputCapacity, maxOutputs, link } = useWiringCard();
+  const pinEvidence = wiringPinEvidence({ wiring, compiledWiring, portRoles, cardLink: link, projectId, origin });
   const tooManyOutputs = outputCapacity && wiring.outputs.length > maxOutputs;
   const { minimumFrameDataMs } = estimateWiringFrameTiming(compiledWiring);
   const selectedOutput = wiring.outputs.find(output => output.id === selectedOutputId) || wiring.outputs[0];
@@ -268,31 +246,9 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
     milliampsPerPixel,
     ...next,
   }));
-  // How the card that is plugged in right now relates to the design. Never used
-  // to change the design — a development card is allowed to be smaller than the
-  // piece being designed, and saying so is the whole job here.
-  const capacity = useMemo(
-    () => describeCardCapacity({ strips, portRoles }),
-    [strips, portRoles],
-  );
-  // The LED check below lights real LEDs, which means 'frame' messages, which
-  // the bridge refuses while the card reports playbackReady=false. A card with
-  // no project always reports exactly that — so offering the check here is
-  // offering a button that cannot work, and the install it gates cannot be
-  // reached any other way. Send those cards to discovery instead.
-  //
-  // A bench card is NOT sent there. It is Ready, it lights LEDs, and the whole
-  // point of the bench config is to be replaced: this branch owns the install
-  // CTA, so routing a bench card back to discovery would close the only exit
-  // discovery has and loop the owner between the two screens forever.
-  const cardNeedsStripDiscovery = needsStripDiscovery({ readinessState: cardReadinessState });
-  const openStripDiscovery = () => { window.location.hash = STRIP_DISCOVERY_ROUTE; };
-  const showCapacityFact = capacity.state === 'short' || capacity.state === 'over';
-  const mismatchedOutputs = (wiring.outputs || []).filter(output => {
-    const discovered = discoveredByOutput.get(output.id);
-    return discovered && output.pin !== discovered.pin;
-  });
-  const needsAttention = (!cardNeedsStripDiscovery && (showCapacityFact || mismatchedOutputs.length > 0))
+  const designPixels = designPixelTotal(strips);
+  const showCountComparison = pinEvidence.lastCount > 0 && pinEvidence.lastCount !== designPixels;
+  const needsAttention = pinEvidence.hasMismatch
     || powerEstimate.status === 'over'
     || tooManyOutputs
     || Boolean(mutationError || pinError);
@@ -302,40 +258,22 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
 
   return (
     <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-tools">
-      {/* Connection and power warnings stay visible when the controls fold. */}
-      {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
-        <section className="wire-discovered-list" aria-label="What is plugged in right now">
-          {showCapacityFact && (
+      <section className="wire-discovered-list" aria-label="Wiring evidence">
+        <WiringPinEvidence evidence={pinEvidence}>
+          {showCountComparison && (
             <p className="wire-capacity-line" data-testid="wire-capacity">
-              {capacity.state === 'short' && (
-                <>Plugged in right now: {capacity.cardPixels} light{capacity.cardPixels === 1 ? '' : 's'}. This design uses {capacity.designPixels} — the other {capacity.unattached} are not wired up yet.</>
-              )}
-              {capacity.state === 'over' && (
-                <>Plugged in right now: {capacity.cardPixels} lights. This design only uses {capacity.designPixels}, so {capacity.cardPixels - capacity.designPixels} stay dark.</>
-              )}
+              Design: {designPixels.toLocaleString()} LEDs · Last counted: {pinEvidence.lastCount.toLocaleString()} LEDs
             </p>
           )}
-          {mismatchedOutputs.map(output => {
-            const discovered = discoveredByOutput.get(output.id);
-            if (!discovered) return null;
-            return (
-              <div key={output.id} className="wire-discovered-output">
-                <p className="wire-discovered-mismatch" data-testid={`wire-mismatch-${discovered.pin}`}>
-                  This output uses {formatGpio(output.pin)} in the design. Your strip is plugged into {formatGpio(discovered.pin)}.
-                </p>
-                <button
-                  type="button"
-                  className="btn wire-discovered-adopt"
-                  data-testid={`wire-adopt-${discovered.pin}`}
-                  title="Point this output at the GPIO the strip is really plugged into."
-                  data-tooltip="Point this output at the GPIO the strip is really plugged into."
-                  onClick={() => changeOutputPin(output.id, discovered.pin)}
-                >Use GPIO {discovered.pin}</button>
-              </div>
-            );
-          })}
-        </section>
-      )}
+          {(pinEvidence.plannedPins.size > 0 || pinEvidence.lastCount > 0) && (
+            <div className="wiring-pin-actions">
+              <a className="btn" data-testid="wire-recount" href={WIRING_DISCOVERY_LINK}>Scan pins</a>
+              <WiringReplacementLinks slots={pinEvidence.replaceSlots} />
+            </div>
+          )}
+        </WiringPinEvidence>
+      </section>
+      <p className="wire-capacity-line" data-testid="wire-full-white">Full white estimate: {powerEstimate.maxAmps.toFixed(2)} A</p>
       {powerEstimate.status === 'over' && (
         <p className="lww-power-warning" role="alert">
           Needs {powerEstimate.maxAmps.toFixed(1)} A at full white — your supply is {powerSettings.psuAmps} A.
@@ -347,6 +285,25 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
       {tooManyOutputs && <p className="wire-capacity-line" role="alert">
         This design uses {wiring.outputs.length} LED outputs. The connected card supports up to {outputCapacity.maxOutputs}.
       </p>}
+      {wiring.locked && (
+        <div className="lww-unlock">
+          <span>Wiring locked after the check — unlocking clears the verification.</span>
+          <button type="button" className="btn" data-testid="unlock-wiring" title="Reopen wiring edits and clear the completed verification before changing connections." data-tooltip="Reopen wiring edits and clear the completed verification before changing connections." onClick={unlockWiring}>Unlock to edit</button>
+        </div>
+      )}
+      {selectedOutput && <div className="lww-output-pin-editor">
+        <label>Output <select aria-label="LED output to move" value={selectedOutput.id} onChange={event => setSelectedOutputId(event.target.value)}>
+          {wiring.outputs.map(output => <option key={output.id} value={output.id}>{output.name}</option>)}
+        </select></label>
+        <label>Planned pin <select aria-label="Pin for LED output" value={selectedOutput.pin} disabled={wiring.locked}
+                             onChange={event => changeOutputPin(selectedOutput.id, Number(event.target.value))}>
+          {CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => <option key={pin} value={pin} disabled={pin !== selectedOutput.pin
+            && (!availableOutputPins.includes(pin) || unavailablePinsFor(`output:${selectedOutput.id}`).includes(pin))}>{pin}</option>)}
+        </select></label>
+      </div>}
+      {remappedOutput && selectedOutput?.id === remappedOutput.id && selectedOutput.pin === remappedOutput.to && (
+        <p className="wire-capacity-line" role="status">{selectedOutput.name} moved from {formatGpio(remappedOutput.from)} to {formatGpio(remappedOutput.to)} in the design.</p>
+      )}
       <InstallerWiringSheetButton />
 
       <details ref={advancedToolsRef} className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
@@ -357,42 +314,13 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
           <div className="la-led-chipset-row" data-testid="project-led-chipset">
             <LedChipsetSelect value={ledType} onChange={setLedType}/>
           </div>
-          {discoveredStripEntries.length > 0 && (
-            <button
-              type="button"
-              className="btn wire-discovered-recount"
-              data-testid="wire-recount"
-              title="Count the lights on the card that is plugged in now. Your design is not changed."
-              data-tooltip="Count the lights on the card that is plugged in now. Your design is not changed."
-              onClick={openStripDiscovery}
-            >Count what is plugged in</button>
-          )}
-          {wiring.locked && (
-            <div className="lww-unlock">
-              <span>Wiring locked after the check — unlocking clears the verification.</span>
-              <button type="button" className="btn" data-testid="unlock-wiring" title="Reopen wiring edits and clear the completed verification before changing connections." data-tooltip="Reopen wiring edits and clear the completed verification before changing connections." onClick={unlockWiring}>Unlock to edit</button>
-            </div>
-          )}
           <p className="wire-capacity-line" data-testid="wire-output-capacity">
             {wiring.outputs.length} LED {wiring.outputs.length === 1 ? 'output' : 'outputs'} · {outputCapacity ? 'Card supports' : 'Design supports'} up to {maxOutputs}
           </p>
           {minimumFrameDataMs > 0 && <p className="wire-capacity-line">
             {compiledWiring.totalPixels.toLocaleString()} LEDs · {minimumFrameDataMs.toFixed(1)} ms minimum data time per frame
           </p>}
-          {selectedOutput && <div className="lww-output-pin-editor">
-            <label>Output <select aria-label="LED output to move" value={selectedOutput.id} onChange={event => setSelectedOutputId(event.target.value)}>
-              {wiring.outputs.map(output => <option key={output.id} value={output.id}>{output.name}</option>)}
-            </select></label>
-            <label>Pin <select aria-label="Pin for LED output" value={selectedOutput.pin} disabled={wiring.locked}
-                                 onChange={event => changeOutputPin(selectedOutput.id, Number(event.target.value))}>
-              {CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => <option key={pin} value={pin} disabled={pin !== selectedOutput.pin
-                && (!availableOutputPins.includes(pin) || unavailablePinsFor(`output:${selectedOutput.id}`).includes(pin))}>{pin}</option>)}
-            </select></label>
-          </div>}
-          {remappedOutput && selectedOutput?.id === remappedOutput.id && selectedOutput.pin === remappedOutput.to && (
-            <p className="wire-capacity-line" role="status">{selectedOutput.name} moved from {formatGpio(remappedOutput.from)} to {formatGpio(remappedOutput.to)} in the design.</p>
-          )}
-          <CardPinMap testId="wire-pin-map" cardId={liveCardId} outputCapabilities={outputCapacity} outputs={wiring.outputs} controls={standaloneController?.controls} availablePins={availableOutputPins} lit={wiring.outputs.map((output, index) => ({ pin: output.pin, tag: String(index + 1), name: `Port ${index + 1}` }))}/>
+          <CardPinMap testId="wire-pin-map" title="Planned output pins" cardId={liveCardId} outputCapabilities={outputCapacity} outputs={wiring.outputs} controls={standaloneController?.controls} availablePins={availableOutputPins} lit={wiring.outputs.map((output, index) => ({ pin: output.pin, tag: String(index + 1), name: `Port ${index + 1}` }))}/>
           <WireDiscovery outputs={wiring.outputs} controls={standaloneController?.controls} cardHost={cardHost} cardId={liveCardId} outputCapabilities={outputCapacity} disabled={wiring.locked} onPinConfirmed={changeOutputPin}/>
           {compiledWiring.sendReady && <button className="btn lw-open-assembly" title="Show or hide the assembly map used to build the verified LED wiring." data-tooltip="Show or hide the assembly map used to build the verified LED wiring." onClick={() => setShowAssembly(value => !value)}>{showAssembly ? 'Hide assembly map' : 'Open assembly map'}</button>}
           {showAssembly && compiledWiring.sendReady && <WiringAssemblyMap wiring={wiring} compiled={compiledWiring} strips={strips} physicalScale={Number(pxPerMm) > 0 ? { pxPerMm: Number(pxPerMm) } : null} onClose={() => setShowAssembly(false)}/>}

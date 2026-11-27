@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const WORKER_ARTWORK = `
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180">
@@ -7,7 +7,7 @@ const WORKER_ARTWORK = `
     </g>
   </svg>`;
 
-async function openFreshStudio(page) {
+async function openFreshStudio(page: Page) {
   await page.route('http://lightweaver.local/**', route => route.abort());
   await page.route('http://192.168.4.1/**', route => route.abort());
   await page.goto('/');
@@ -15,50 +15,76 @@ async function openFreshStudio(page) {
   await page.goto('/');
 }
 
-test('a fresh worker sees physical card setup first, before design and saved work', async ({ page }) => {
-  await openFreshStudio(page);
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 390, height: 844 },
+  { width: 320, height: 700 },
+]) {
+  const phone = viewport.width < 600;
+  test.describe(`first-use actions at ${viewport.width}px`, () => {
+    test.use({ viewport, hasTouch: phone, isMobile: phone });
 
-  const start = page.getByTestId('public-worker-start');
-  await expect(start).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
-  const paths = start.locator('.lw-worker-start-path');
-  await expect(paths).toHaveCount(3);
-  await expect(paths.nth(0)).toHaveClass(/primary/);
-  await expect(paths.nth(0)).toContainText('Set up this card');
-  await expect(start.getByRole('button', { name: /set up this card/i })).toBeVisible();
-  await expect(page.getByTestId('setup-identity-row')).toBeVisible();
+    test('the three exact actions open their destinations in one press', async ({ page }) => {
+      await openFreshStudio(page);
 
-  await start.getByRole('button', { name: /set up this card/i }).click();
-  const connect = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(connect.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
-  await expect(connect.getByTestId('installer-setup-progress').locator('[aria-current="step"]')).toHaveText('1Connect');
-  await expect(connect.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
-  await page.keyboard.press('Escape');
+      const start = page.getByRole('group', { name: 'Start', exact: true });
+      const actions = start.getByRole('button');
+      const labels = ['Set up this card', 'Start a layout', 'Open saved work'];
+      await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
+      await expect(actions).toHaveText(labels);
+      await expect(actions.first()).toHaveClass(/\bprimary\b/);
+      await expect(start.locator('.primary')).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Set up this card', exact: true })).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Board Manager', exact: true })).toBeVisible();
+      for (const label of labels) {
+        const action = start.getByRole('button', { name: label, exact: true });
+        await expect(action).toBeInViewport({ ratio: 1 });
+        const box = await action.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        expect(box?.width).toBeGreaterThanOrEqual(44);
+        expect(await action.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
 
-  await page.getByTestId('public-worker-start').getByRole('button', { name: 'Start a layout' }).click();
-  await expect(page).toHaveURL(/#screen=layout/);
-  const layoutStart = page.getByTestId('layout-primitive-picker');
-  await expect(layoutStart).toBeVisible();
-  await expect(layoutStart.getByRole('button', { name: 'Import SVG' })).toBeVisible();
-  await expect(layoutStart).toContainText('Enter the real LED count');
+      const status = page.getByRole('region', { name: 'Card status' });
+      const lights = status.getByRole('button', { name: 'Lights Not counted yet Open card setup', exact: true });
+      await expect(lights).toBeVisible();
+      expect((await lights.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+      await expect(page.getByText('Find my strips counts them', { exact: true })).toHaveCount(1);
+      await expect(page.getByRole('region', { name: 'This card' }).getByTestId('fact-lights'))
+        .toContainText('Find my strips counts them');
+      await expect(page.getByTestId('setup-phase-lights')).toHaveCount(0);
+      await lights.press('Enter');
+      const connect = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+      await expect(connect.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+      await expect(connect).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(connect).toBeHidden();
 
-  await page.getByRole('button', { name: 'Card', exact: true }).click();
-  await page.getByTestId('public-worker-start').getByRole('button', { name: 'Open saved work' }).click();
-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
-  await expect(page.getByText('On this device', { exact: true })).toBeVisible();
-  await expect(page.getByText('Online project library', { exact: true })).toBeVisible();
-});
+      const press = (label: string) => {
+        const action = start.getByRole('button', { name: label, exact: true });
+        return phone ? action.tap() : action.click();
+      };
 
-test('the fresh-worker start remains usable at phone width', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openFreshStudio(page);
+      await press('Set up this card');
+      await expect(connect.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+      await expect(connect.getByTestId('installer-setup-progress').locator('[aria-current="step"]')).toHaveText('1Connect');
+      await expect(connect.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
+      await page.keyboard.press('Escape');
 
-  const start = page.getByTestId('public-worker-start');
-  await expect(start).toBeVisible();
-  await expect(start.getByRole('button', { name: 'Start a layout' })).toBeVisible();
-  await expect(start.getByRole('button', { name: 'Open saved work' })).toBeVisible();
-  await expect(start.getByRole('button', { name: /set up this card/i })).toBeVisible();
-});
+      await press('Start a layout');
+      await expect(page).toHaveURL(/#screen=layout/);
+      const layoutStart = page.getByTestId('layout-primitive-picker');
+      await expect(layoutStart.getByRole('button', { name: 'Import SVG' })).toBeVisible();
+      await expect(layoutStart).toContainText('Enter the real LED count');
+
+      await page.getByRole('button', { name: 'Card', exact: true }).click();
+      await press('Open saved work');
+      await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+      await expect(page.getByText('On this device', { exact: true })).toBeVisible();
+      await expect(page.getByText('Online project library', { exact: true })).toBeVisible();
+    });
+  });
+}
 
 test('a worker can import artwork, count and split it, choose a pattern, save, and reopen after reload', async ({ page }) => {
   await openFreshStudio(page);

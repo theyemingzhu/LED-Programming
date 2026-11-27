@@ -11,6 +11,7 @@ const unrelated = 'c'.repeat(40);
 const successful = (id = 1) => ({ id, status: 'completed', conclusion: 'success', run_attempt: 2 });
 const state = () => prepareStart(null, { revision: base, repo: 'owner/repo' }, false, 1_000);
 const publishedJob = { name: 'deploy', conclusion: 'success', steps: [
+  { name: 'Verify the deployable signed artifacts', conclusion: 'success' },
   { name: 'Build and deploy to Cloudflare Pages', conclusion: 'success' },
   { name: 'Verify the live Production Setup release', conclusion: 'success' },
 ] };
@@ -106,14 +107,37 @@ test('signer deferral waits, but credential-skipped publish blocks promptly', as
   assert.equal(skipped.phase, 'blocked');
 });
 
-test('only exact signer child is allowed after main advances', async () => {
-  const signerChild = { sha: child, parents: [{ sha: base }], commit: { message: 'CI: publish signed Lightweaver firmware release', committer: { email: '41898282+github-actions[bot]@users.noreply.github.com' } } };
+const signerChild = { sha: child, parents: [{ sha: base }], commit: { message: 'CI: publish signed Lightweaver firmware release', committer: { email: '41898282+github-actions[bot]@users.noreply.github.com' } } };
+const signingJob = { name: 'build', conclusion: 'success', steps: [
+  { name: 'Verify signed release set', conclusion: 'success' },
+  { name: 'Commit the signed release if it changed', conclusion: 'success' },
+  { name: 'Trigger exact signed-revision deploy', conclusion: 'success' },
+] };
+const signedRelease = {
+  main: signerChild, signer: successful(3), childTests: null,
+  deploy: { ...successful(9), event: 'workflow_dispatch' }, jobs: { 3: [signingJob], 9: [publishedJob] },
+};
+
+test('exact signer child ships through its verified dispatch when the token push creates no child Tests run', async () => {
   let proofArgs;
-  const shipped = await advanceRelease(state(), api({ main: signerChild, signer: successful(3) }), async args => { proofArgs = args; return { ok: true, studioBuildNumber: 100, firmwareBuildNumber: 99 }; }, 2_000);
+  const shipped = await advanceRelease(state(), api(signedRelease), async args => { proofArgs = args; return { ok: true, studioBuildNumber: 100, firmwareBuildNumber: 99 }; }, 2_000);
   assert.equal(shipped.phase, 'shipped');
   assert.equal(shipped.deployRevision, child);
   assert.deepEqual(proofArgs, { revision: child, runId: 9, runAttempt: 2, repo: 'owner/repo' });
   assert.equal((await advanceRelease(state(), api({ main: unrelated }), async () => ({}), 2_000)).phase, 'superseded');
+});
+
+test('signed-child proof requires the real signer, the dispatched artifact check, and any separately started child Tests', async () => {
+  const noProof = () => assert.fail('Release proof attempted without the required checks.');
+  for (const [overrides, phase] of [
+    [{ jobs: { 3: [], 9: [publishedJob] } }, 'blocked'],
+    [{ jobs: { 3: [signingJob], 9: [{ ...publishedJob, steps: publishedJob.steps.slice(1) }] } }, 'blocked'],
+    [{ deploy: { ...successful(9), event: 'workflow_run' } }, 'publishing'],
+    [{ childTests: { id: 10, status: 'in_progress' } }, 'checking'],
+    [{ childTests: { id: 10, status: 'completed', conclusion: 'failure' } }, 'blocked'],
+  ]) {
+    assert.equal((await advanceRelease(state(), api({ ...signedRelease, ...overrides }), noProof, 2_000)).phase, phase);
+  }
 });
 
 test('independent proof retries bounded network trouble but blocks conclusive failures', async () => {

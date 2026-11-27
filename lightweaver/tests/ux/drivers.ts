@@ -115,16 +115,16 @@ export async function driveFirstSetup(page: Page, j: Journey, { stopBeforeConfir
   await page.locator('main h1').first().waitFor({ timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(1500);
   await j.land('opens led.mandalacodes.com');
-  const pair = page.getByRole('button', { name: 'Pair this card', exact: true });
+  const pair = page.getByRole('button', { name: 'Connect this card', exact: true });
   if (!(await shown(pair, 8000))) await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await j.press(pair, 'Pair this card');
+  await j.press(pair, 'Connect this card');
   await j.press(page.getByTestId('setup-lights-action'), 'Find and count the lights');
   await findStrip(page, { pin: 18, count: 41, j });
-  const record = page.getByTestId('discovery-record-save');
   const done = page.getByTestId('discovery-done');
-  // Builds before C8 asked again on a record screen; since C8 the last confirm
-  // saves and that screen only flashes past on the way to done.
-  if (!(await shown(done, 4000)) && await shown(record)) await j.press(record, 'Save what we found');
+  const manualRecord = page.getByTestId('discovery-record-save').and(page.locator('button:enabled'));
+  // Before C8 the record step required a press. During automatic recording
+  // the button can stay visible but disabled while the light stream stops.
+  if (!(await shown(done, 4000)) && await shown(manualRecord)) await j.press(manualRecord, 'Save what we found');
   await expect(done).toBeVisible({ timeout: 20_000 });
   const save = page.getByTestId('discovery-save-to-card');
   if (await shown(save)) {

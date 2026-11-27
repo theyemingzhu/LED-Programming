@@ -17,6 +17,16 @@ async function createTwelveLedLine(page: any) {
   await expect(page.getByLabel('More strip actions')).toBeVisible();
 }
 
+async function waitForCreatedLineAutosave(page: any) {
+  await expect.poll(() => page.evaluate(() => {
+    const primary = localStorage.getItem('lw_autosave_v3');
+    if (!primary || primary !== localStorage.getItem('lw_autosave_v3_backup')) return false;
+    const { strips, wiring } = JSON.parse(primary).layout;
+    return strips.length === 1 && strips[0].pixelCount === 12
+      && wiring?.runs?.some((run: any) => run.source?.stripId === strips[0].id);
+  })).toBe(true);
+}
+
 test('Kaleidoscope editor exposes bounded count and per-point inline steppers', async ({ page }) => {
   await createTwelveLedLine(page);
   await page.getByLabel('More strip actions', { exact: true }).click();
@@ -77,7 +87,10 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
   await expect(fineTune).toHaveAttribute('aria-expanded', 'true');
   const reflectionPoints = page.getByRole('list', { name: 'Reflection points' }).getByRole('listitem');
   await expect(reflectionPoints).toHaveCount(6);
-  for (const point of await reflectionPoints.all()) await expect(point.getByRole('button')).toHaveCount(3);
+  for (const point of await reflectionPoints.all()) {
+    const selected = await point.getByRole('button', { name: /Fine-tune reflection point/ }).evaluate(button => button.classList.contains('active'));
+    await expect(point.getByRole('button')).toHaveCount(selected ? 4 : 3);
+  }
   const pointValues = reflectionPoints.getByRole('button', { name: /Fine-tune reflection point/ });
   await expect.poll(() => pointValues.evaluateAll(values => (
     values.every(value => value.scrollWidth <= value.clientWidth)
@@ -169,13 +182,15 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
 
 test('marker drag snaps after zoom and pan, rejects collision without consuming undo, and preserves locked wiring', async ({ page }) => {
   await createTwelveLedLine(page);
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3')))).toBe(true);
+  await waitForCreatedLineAutosave(page);
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     saved.layout.wiring.locked = true;
     saved.layout.wiring.verified = true;
     saved.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
+    const serialized = JSON.stringify(saved);
+    localStorage.setItem('lw_autosave_v3', serialized);
+    localStorage.setItem('lw_autosave_v3_backup', serialized);
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   const row = page.locator('.la-strip-row');
@@ -244,15 +259,8 @@ test('calibration is active only for the selected strip in Draw mode and reports
 
 test('malformed saved Kaleidoscope metadata renders an actionable recovery warning', async ({ page }) => {
   await createTwelveLedLine(page);
-  // The initial empty project also has an autosave. Wait for the new strip's
-  // complete write before replacing both copies with the malformed fixture.
-  await expect.poll(() => page.evaluate(() => {
-    const primary = localStorage.getItem('lw_autosave_v3');
-    const backup = localStorage.getItem('lw_autosave_v3_backup');
-    if (!primary || primary !== backup) return false;
-    const saved = JSON.parse(primary);
-    return saved.layout?.strips?.length === 1 && saved.layout.strips[0].pixelCount === 12;
-  })).toBe(true);
+  // Wait for the created line rather than the untouched starter snapshot.
+  await waitForCreatedLineAutosave(page);
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     saved.layout.strips[0].kaleidoscope = {
@@ -276,7 +284,7 @@ test('malformed saved Kaleidoscope metadata renders an actionable recovery warni
 
 test('Draw resize reports reflection points reset by count reprojection', async ({ page }) => {
   await createTwelveLedLine(page);
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3')))).toBe(true);
+  await waitForCreatedLineAutosave(page);
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     saved.layout.strips[0].kaleidoscope = {

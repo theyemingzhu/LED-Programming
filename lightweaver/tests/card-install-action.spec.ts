@@ -27,7 +27,7 @@ test('install-project keeps card setup first when Studio has no card', async ({ 
   await expect(page.getByText('Lightweaver hardware')).toHaveCount(0);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 
-  // Setup is on Home. Hardware is a fold, not a second install page.
+  // Home offers a route to the dedicated Hardware settings page.
   await expect(page.getByRole('heading', { name: 'Hardware settings' })).toHaveCount(0);
-  await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Hardware' })).toBeVisible();
 });

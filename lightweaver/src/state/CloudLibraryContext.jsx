@@ -1432,7 +1432,6 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
   const saveNow = useCallback(async ({ expectedRemoteId = '', expectedMarker = null } = {}) => {
     const authToken = captureAuthenticatedSession();
     if (!authToken) return { ok: false, reason: 'stale-session' };
-    clearTimeout(saveTimerRef.current);
     const marker = projectMarker(lifecycleRef.current);
     const remote = activeRemoteRef.current;
     if (expectedRemoteId && remote?.id !== expectedRemoteId) {
@@ -1442,6 +1441,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
       && (!validProjectMarker(expectedMarker) || markerKey(expectedMarker) !== markerKey(marker))) {
       return { ok: false, reason: 'workspace-changed' };
     }
+    clearTimeout(saveTimerRef.current);
     if (acknowledgedMarkerRef.current && markerKey(acknowledgedMarkerRef.current) === markerKey(marker)) {
       setSyncStatus('saved');
       return { ok: true, project: remote, unchanged: true };

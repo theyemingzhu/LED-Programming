@@ -56,3 +56,17 @@ test('Flow compares current saved scene, not unrelated active scene; unavailable
   assert.equal((await recordedSequenceFreshness(recording,{...context,expressionScenes:{scenes:[{...scene,name:'Changed'}]}})).state,'stale');
   assert.equal((await recordedSequenceFreshness(recording,{...input})).state,'unknown');
 });
+
+test('a direction edit keeps frozen playback and marks the earlier recording for re-recording', async () => {
+  const oldBake = await bakePatternLabRecipe(input, { legacyLogicalPlayback: true });
+  assert.deepEqual(oldBake.bytes, baked.bytes, 'forward wiring keeps its previously exported bytes');
+  assert.equal(oldBake.sidecar.layoutPhysicalOrderSha256, baked.sidecar.layoutPhysicalOrderSha256);
+  const reversedWiring = { ...wiring, runs: [{ ...wiring.runs[0], physicalDirection: 'source-reverse' }] };
+  const reversedProject = { ...project, wiring: reversedWiring, compiledWiring: compileWiring({ strips, wiring: reversedWiring }) };
+  const previousAsset = JSON.stringify(asset);
+  const freshness = await recordedSequenceFreshness(asset, reversedProject);
+  assert.equal(freshness.state, 'stale');
+  assert.equal(freshness.canRebake, true);
+  assert.match(freshness.message, /keeps its saved playback direction.*Record again/);
+  assert.equal(JSON.stringify(asset), previousAsset);
+});

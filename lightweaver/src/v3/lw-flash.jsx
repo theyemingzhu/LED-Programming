@@ -1114,9 +1114,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                     host: usbJoinedHost,
                   } });
                   setPairingBusy(false);
-                  if (!result.ok) setError(result.message || 'Studio could not pair this card. Open its page and try again.');
+                  if (!result.ok) setError(result.message || 'Studio could not connect to this card. Open its page and try again.');
                   else setError('');
-                }}>Pair this card</button>
+                }}>Connect this card</button>
               ) : <p role="alert">The card page answered with a different card or firmware build. Reconnect the USB card you selected before continuing.</p>
             )}
           </div>

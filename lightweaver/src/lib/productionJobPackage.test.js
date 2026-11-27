@@ -917,3 +917,35 @@ test(process.platform === 'win32'
   }), true);
   assert.doesNotMatch(JSON.stringify(result), /BEGIN (?:EC |)PRIVATE KEY|signing-key\.pem/);
 });
+
+
+test('one editor point round-trips in a production restore snapshot without a runtime mapping', async () => {
+  const value = source();
+  const snapshot = value.project.restoreSnapshot;
+  snapshot.layout.strips[0].reflectionPointDraft = 3;
+  value.project.fingerprint = fingerprintCommissioningProject(snapshot);
+  value.configuration = buildCardRuntimePackageFromProject({
+    projectId: value.project.id, projectName: snapshot.name,
+    projectRevision: value.project.revision, projectFingerprint: value.project.fingerprint,
+    productionJobId: value.jobId, productionJobDigest: hex('0', 64),
+    strips: snapshot.layout.strips, patchBoard: snapshot.layout.patchBoard,
+    wiring: snapshot.layout.wiring, standaloneController: snapshot.devices.standaloneController,
+  });
+  const job = await buildProductionJob(value, { cryptoImpl: webcrypto });
+  const parsed = await parseProductionJobPackage(canonicalProductionJobBytes(job), {
+    trust: { kind: 'same-origin-index', expectedDigest: job.digest }, cryptoImpl: webcrypto,
+  });
+  assert.equal(parsed.project.restoreSnapshot.layout.strips[0].reflectionPointDraft, 3);
+  assert.equal(Object.hasOwn(parsed.configuration.config, 'kaleidoscopeMappings'), false);
+  assert.equal(Object.hasOwn(parsed.project.restoreSnapshot.layout.strips[0], 'kaleidoscope'), false);
+  const schema = JSON.parse(await readFile(new URL('../../../release/production-job.schema.json', import.meta.url)));
+  assert.equal(schema.$defs.strip.properties.reflectionPointDraft.type, 'integer');
+  for (const point of [-1, 8, 0.5, '3', null]) {
+    const invalid = structuredClone(value);
+    invalid.project.restoreSnapshot.layout.strips[0].reflectionPointDraft = point;
+    await assert.rejects(buildProductionJob(invalid, { cryptoImpl: webcrypto }), /reflection point draft is invalid/);
+  }
+  const conflict = structuredClone(value);
+  conflict.project.restoreSnapshot.layout.strips[0].kaleidoscope = { enabled: true, pointCount: 2, startLed: 0, offsets: [0, 0] };
+  await assert.rejects(buildProductionJob(conflict, { cryptoImpl: webcrypto }), /reflection point draft is invalid/);
+});

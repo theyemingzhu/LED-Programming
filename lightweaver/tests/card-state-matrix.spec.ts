@@ -31,6 +31,7 @@ import {
   MATRIX_CARD_ID,
   MATRIX_BUILD_ID,
   MATRIX_FIRMWARE_VERSION,
+  MATRIX_HOST,
   MATRIX_PATTERNS,
   type CardStateSpec,
 } from './harness/cardStates';
@@ -330,8 +331,19 @@ for (const browser of BROWSER_STATES) {
 // must go through the card page. Every walkthrough before this suite drove the
 // local http Studio, so this whole transport shipped untested.
 // ---------------------------------------------------------------------------
-import { installHttpsStudio, installFakeCardBridge, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { isLoopbackHost, isPrivateHost } from './harness/networkGuard';
 import { testBaseURL } from './testPort.mjs';
+
+async function serveHttpsCardPage(page: Page, card: CardSimulator) {
+  await page.context().route(url => isPrivateHost(url.hostname) && !isLoopbackHost(url.hostname), route => route.abort('connectionrefused'));
+  await installHttpsStudio(page, testBaseURL);
+  return installPracticeCardPopup(page, card, { hosts: [MATRIX_HOST] });
+}
+
+async function storedCardId(page: Page) {
+  return page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id || null);
+}
 
 for (const spec of CARD_STATES) {
   cell(spec.id)(`[T2] ${spec.id} over the card page — a card ${spec.describe} connects, unaided`, async ({ page }) => {
@@ -339,32 +351,84 @@ for (const spec of CARD_STATES) {
     page.on('pageerror', error => crashes.push(String(error.message)));
 
     const card = createCardSimulator(spec);
-    await installHttpsStudio(page, testBaseURL);
-    await installFakeCardBridge(page, card);
-    // Deliberately NOT installing the direct HTTP routes: on https a direct
-    // fetch is mixed-content blocked, so anything that tries one should fail
-    // loudly here rather than quietly succeed in a test and break in the world.
+    const bridge = await serveHttpsCardPage(page, card);
     await remembers.seed(page);
-    await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
 
-    // Since c6eb000f public Studio answers Find my card with its connection
-    // choices instead of opening the card page behind the owner's back. The
-    // card-page route is the panel's named fallback, under Connection details: no
-    // alert, no panel that opened itself, and then a live link.
-    let panelOpenedItself = false;
-    if (!(await settlesConnected(page, CONNECT_BUDGET_MS))) {
-      panelOpenedItself = await connectionPanelOpen(page);
-      await page.getByTestId('setup-connect-card').click();
-      const panel = page.locator('#card-connection-center');
-      await panel.getByText('Connection details', { exact: true }).click();
-      await panel.getByRole('button', { name: /Connect through the card.s own page/ }).click();
-      await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
-    }
-    await expectUnaided(page, `${spec.id} over the bridge`, panelOpenedItself);
+    // A remembered bridge comes from a preceding card-page session. Create
+    // that real named window before loading Studio, then require Studio to
+    // reattach and verify it without a new popup or recovery click.
+    const previousPage = `${STUDIO_ORIGIN}/matrix-prior-bridge-session`;
+    await page.route(previousPage, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Prior card session</title>' }));
+    await page.goto(previousPage, { waitUntil: 'domcontentloaded' });
+    const [cardPage] = await Promise.all([
+      page.waitForEvent('popup'),
+      page.evaluate(host => { window.open(`http://${host}/#studioBridge=1`, 'lightweaver-card-bridge'); }, MATRIX_HOST),
+    ]);
+    await expect(cardPage).toHaveURL(url => url.hostname === MATRIX_HOST);
+
+    const newPopups: Page[] = [];
+    page.on('popup', tab => newPopups.push(tab));
+    await page.goto(`${STUDIO_ORIGIN}/?cardBridge=1&cardHost=${MATRIX_HOST}&studioTakeover=0`, { waitUntil: 'domcontentloaded' });
+
+    await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toBe('connected-bridge');
+    await expectUnaided(page, `${spec.id} over the bridge`, await connectionPanelOpen(page));
     await expectNotStuck(page, `${spec.id} over the bridge`);
+    expect(newPopups, 'the remembered bridge should not require another popup').toHaveLength(0);
+    expect(await storedCardId(page)).toBe(MATRIX_CARD_ID);
+    expect(bridge.relays.map(relay => relay.type)).toEqual(expect.arrayContaining(['firmware-info', 'status']));
+    expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
+    expect(card.unhandled).toEqual([]);
     expect(crashes, 'the screen crashed').toEqual([]);
   });
 }
+
+test('[T2] a remembered factory card resumes on one Find when its card page was closed', async ({ page }) => {
+  const card = createCardSimulator(cardState('factory-blank'));
+  const bridge = await serveHttpsCardPage(page, card);
+  await remembers.seed(page);
+  const popups: Page[] = [];
+  page.on('popup', tab => popups.push(tab));
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=setup`, { waitUntil: 'domcontentloaded' });
+  const find = page.getByTestId('setup-connect-card');
+  await expect(find).toHaveAccessibleName(/Find my card|Reconnect this card/);
+  expect(await storedCardId(page)).toBe(MATRIX_CARD_ID);
+  expect(await linkState(page)).not.toMatch(CONNECTED);
+  expect(popups, 'Studio opened a card page without permission').toHaveLength(0);
+
+  await find.click();
+  await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toBe('connected-bridge');
+  await expect(page.getByRole('button', { name: 'Connect this card', exact: true })).toHaveCount(0);
+  await expectUnaided(page, 'remembered card with a closed card page');
+  expect(popups, 'one Find should open one card page').toHaveLength(1);
+  expect(bridge.navigations.filter(navigation => navigation.served)).toHaveLength(1);
+  expect(await storedCardId(page)).toBe(MATRIX_CARD_ID);
+  expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
+  expect(card.unhandled).toEqual([]);
+});
+
+test('[T2] a fresh factory card on the card page waits for explicit pairing', async ({ page }) => {
+  const card = createCardSimulator(cardState('factory-blank'));
+  const bridge = await serveHttpsCardPage(page, card);
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=setup`, { waitUntil: 'domcontentloaded' });
+  const connect = page.getByRole('button', { name: 'Set up this card', exact: true });
+  await expect(connect).toBeVisible();
+  await connect.click();
+  const panel = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await panel.getByRole('button', { name: 'Find card already on Wi-Fi', exact: true }).click();
+  const pair = panel.getByRole('button', { name: 'Connect this card', exact: true });
+  await expect(pair).toBeVisible();
+  await expect(panel.getByText(MATRIX_CARD_ID, { exact: true })).toBeVisible();
+  expect(await storedCardId(page)).toBeNull();
+  expect(await linkState(page)).not.toMatch(CONNECTED);
+  expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
+
+  await pair.click();
+  await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toBe('connected-bridge');
+  expect(await storedCardId(page)).toBe(MATRIX_CARD_ID);
+  expect(bridge.navigations.filter(navigation => navigation.served)).toHaveLength(1);
+  expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
+  expect(card.unhandled).toEqual([]);
+});
 
 // ---------------------------------------------------------------------------
 // Tier 5 — a card that is answering but NOT well.

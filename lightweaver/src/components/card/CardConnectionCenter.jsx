@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createBridgeResultChannel, resumeBridgeReturnCode } from '../../lib/bridgeLaunch.js';
 import { acquireCardBridgeFromGesture } from '../../lib/cardBridge.js';
 import {
@@ -15,7 +15,7 @@ import { confirmedBoardProfile } from '../../lib/boardLedPins.js';
 import { InstallerSetupProgress } from './InstallerSetupProgress.jsx';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
 import { directConnectHeading, directConnectVerdictCopy } from '../../lib/cardLifecycle.js';
-import { locateReachableCard } from '../../lib/cardFind.js';
+import { findAndConnectCard } from '../../lib/cardFind.js';
 import { openCardFlow } from '../../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../../lib/cardReturnIntent.js';
 import { cardTaskCopy } from '../../lib/cardTaskCopy.js';
@@ -23,7 +23,7 @@ import { connectPanelRouteOut } from '../../lib/connectPanelRouting.js';
 import { cardBuildLabel, readPersistedCardIdentity, setupNetworkLabelForCardId } from '../../lib/cardIdentity.js';
 import { connectCardLink } from '../../lib/cardLink.js';
 import { pairDiscoveredCard } from '../../lib/cardPairing.js';
-import { connectCardTransport, getActiveCardTransportAuthority } from '../../lib/cardTransport.js';
+import { getActiveCardTransportAuthority } from '../../lib/cardTransport.js';
 import { classifyFooterFirmwareStatus } from '../../lib/footerFirmwareStatus.js';
 import { commissioningReconnectHost, readCardCommissioning } from '../../lib/cardCommissioningFlow.js';
 import {
@@ -54,6 +54,12 @@ function goToInstall() {
 
 const SETUP_HOST = '192.168.4.1';
 const exactCardId = /^lw-[a-f\d]{12}$/;
+const SETUP_FOCUS_TARGETS = ['installed-control-open', 'setup-continue-wifi', 'setup-lights-action', 'card-link-status'];
+
+function canReceiveFocus(element) {
+  return typeof element?.focus === 'function' && element.isConnected
+    && !element.matches(':disabled, [aria-disabled="true"]') && element.getClientRects().length > 0;
+}
 
 export function CardConnectionCenter({
   open,
@@ -81,6 +87,8 @@ export function CardConnectionCenter({
   const panelRef = useRef(null);
   const restoreFocusRef = useRef(null);
   const shouldRestoreFocusRef = useRef(false);
+  const focusedControlRef = useRef(null);
+  const waitingForActionFocus = useRef(false);
   const [intent, setIntent] = useState('');
   const [failure, setFailure] = useState('');
   const [host, setHost] = useState(readStoredCardHost);
@@ -90,6 +98,8 @@ export function CardConnectionCenter({
   const [pairingBusy, setPairingBusy] = useState(false);
   const [directAttempt, setDirectAttempt] = useState(null);
   const [directBusy, setDirectBusy] = useState(false);
+  const [connectProgress, setConnectProgress] = useState('');
+  const connectRun = useRef(null);
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [usbInspection, setUsbInspection] = useState(null);
   const [usbReleaseState, setUsbReleaseState] = useState('idle');
@@ -134,6 +144,10 @@ export function CardConnectionCenter({
     },
   });
   const action = { ...verdict, id: verdict.actionId };
+  const pairingCardId = action.id === 'pair-local-card' ? link.discoveredCard?.id : '';
+  const pairingCardSummary = pairingCardId && (
+    <>Card ID <strong>{pairingCardId}</strong>{isLocalCardHost(link.host) && <> · {normalizeCardHost(link.host)}</>}</>
+  );
   const showFirmwareUpdate = action.id === 'ready-local-card'
     && firmwareStatus?.state === 'update-available';
   const incompatibleFirmware = directAttempt?.reason === 'firmware-incompatible'
@@ -162,6 +176,8 @@ export function CardConnectionCenter({
     const activeAuthority = getActiveCardTransportAuthority();
     setDirectAttempt(activeAuthority);
     setDirectBusy(false);
+    setPairingBusy(false);
+    setConnectProgress('');
     setConnectionDetailsOpen(false);
     setUsbInspection(getActiveUsbInspection());
     setUsbReleaseState('idle');
@@ -169,22 +185,64 @@ export function CardConnectionCenter({
     const timer = window.setTimeout(() => panelRef.current?.focus(), 0);
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
-        shouldRestoreFocusRef.current = true;
+        shouldRestoreFocusRef.current = panelRef.current?.contains(document.activeElement)
+          || (document.activeElement === document.body && Boolean(focusedControlRef.current));
         onClose();
       }
     };
     const onPointerDown = (event) => {
       if (!panelRef.current?.contains(event.target)) onClose();
     };
+    const onFocusIn = event => {
+      if (event.target === panelRef.current) return;
+      focusedControlRef.current = panelRef.current?.contains(event.target) ? event.target : null;
+      waitingForActionFocus.current = false;
+    };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('focusin', onFocusIn);
     return () => {
+      connectRun.current?.abort();
+      connectRun.current = null;
       window.clearTimeout(timer);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onPointerDown);
-      if (shouldRestoreFocusRef.current) restoreFocusRef.current?.focus?.();
+      document.removeEventListener('focusin', onFocusIn);
+      focusedControlRef.current = null;
+      waitingForActionFocus.current = false;
+      if (!shouldRestoreFocusRef.current) return;
+      const opener = restoreFocusRef.current;
+      if (opener !== document.body && canReceiveFocus(opener)) {
+        opener.focus();
+        return;
+      }
+      for (const testId of SETUP_FOCUS_TARGETS) {
+        const next = [...document.querySelectorAll(`[data-testid="${testId}"]`)].find(canReceiveFocus);
+        if (next) {
+          next.focus();
+          return;
+        }
+      }
     };
   }, [open, connectIntent, onClose]);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const previous = focusedControlRef.current;
+    if (!open || !panel || !previous) return;
+    const active = document.activeElement;
+    if (active !== document.body && active !== panel && canReceiveFocus(active)) return;
+    if (!waitingForActionFocus.current && canReceiveFocus(previous)) return;
+    // The focused Find or Pair control can disappear while its read is in
+    // flight. Keep the keyboard in the panel until its replacement is ready.
+    const board = panel.querySelector('[data-testid="connect-board-setup"]');
+    const next = !directBusy && !pairingBusy && [...(board || panel).querySelectorAll(
+      board ? 'button:enabled' : 'button.btn.primary, [data-connection-action]',
+    )].find(canReceiveFocus);
+    waitingForActionFocus.current = !next;
+    if (next) next.focus();
+    else if (active !== panel) panel.focus({ preventScroll: true });
+  });
 
   useEffect(() => {
     if (!bridgeResult) return;
@@ -272,74 +330,50 @@ export function CardConnectionCenter({
     } finally { setUsbLocateBusy(false); }
   };
 
-  const connect = async (rawHost = '', { bridge = false } = {}) => {
+  const connect = async (rawHost = '', { bridge = false, exactHost = bridge } = {}) => {
+    if (connectRun.current) return;
     setFailure('');
     const activeUsbInspection = getActiveUsbInspection();
-    if (!bridge && activeUsbInspection) {
+    if (activeUsbInspection) {
       setUsbInspection(activeUsbInspection);
-      return null;
-    }
-    const targetHost = normalizeCardHost(rawHost || readStoredCardHost());
-    if (!isLocalCardHost(targetHost)) {
-      setFailure('Enter a valid local Lightweaver hostname before connecting.');
       return;
     }
-    if (bridge) {
-      const result = connectCardLink(targetHost);
-      if (!result) setFailure('The browser could not open the legacy card page. Allow popups, then try again.');
-      return result;
-    }
+    const controller = new AbortController();
+    const setupNetworkRetry = exactHost && rawHost === SETUP_HOST
+      ? { cardId: readPersistedCardIdentity()?.id || '' }
+      : null;
+    connectRun.current = controller;
     setDirectBusy(true);
+    setDirectAttempt(null);
     try {
-      const expectedCardId = rememberedCard?.id || link.expectedCard?.id || '';
-      // An explicit host (setup AP continue, details form) stays exact. The
-      // footer Connect button must race remembered IPs against mDNS — a lone
-      // fetch to lightweaver.local stalls on .local DNS while the card already
-      // answers on its station address.
-      let hostToOpen = targetHost;
-      if (!rawHost) {
-        const found = await locateReachableCard({
-          preferredHost: targetHost,
-          expectedCard: rememberedCard?.id ? rememberedCard : undefined,
-          timeoutMs: 2000,
-        });
-        if (found?.connected && found.host) hostToOpen = found.host;
-        else if (found?.reason === 'wrong-card') {
-          setDirectAttempt({
-            connected: false,
-            reason: 'wrong-card',
-            host: found.host || targetHost,
-            expectedCardId,
-            observedCardId: found.detectedStatus?.cardId || '',
-          });
-          setFailure(`Wrong card: expected ${expectedCardId || 'the paired card'}, but found ${found.detectedStatus?.cardId || 'another Lightweaver'}. Writes remain blocked.`);
-          return found;
-        }
-      }
-      // transport: n/a (this establishes a fresh direct transport as the manual Connect flow's own explicit choice — bridge=false branch above is the other explicit choice; nothing to forward)
-      const result = await connectCardTransport({
-        host: hostToOpen,
-        expectedCardId,
+      const result = await findAndConnectCard({
+        link,
+        preferredHost: rawHost,
+        exactHost,
+        bridgeFirst: bridge,
+        signal: controller.signal,
+        onProgress: setConnectProgress,
       });
-      setDirectAttempt(result);
-      if (result.connected) {
-        setFailure('');
-        return result;
-      }
-      if (result.reason === 'wrong-card') {
-        setFailure(`Wrong card: expected ${result.expectedCardId || 'the paired card'}, but found ${result.observedCardId || 'another Lightweaver'}. Writes remain blocked.`);
-      } else if (result.reason === 'firmware-incompatible' && result.observedCard?.id) {
-        const version = result.observedCard.firmwareVersion ? ` firmware v${result.observedCard.firmwareVersion}` : ' firmware';
-        const build = cardBuildLabel(result.observedCard);
-        setFailure(`Found card ${result.observedCard.id} running${version}${build ? ` · ${build}` : ''}, but it cannot provide the exact safety evidence this Studio requires. Update this card to continue.`);
-      } else if (result.reason === 'direct-unavailable') {
-        setFailure('No reply from the card.');
-      } else {
-        setFailure('No reply from the card.');
+      if (controller.signal.aborted || result.reason === 'cancelled') return;
+      if (!result.ok) {
+        setDirectAttempt({ ...result, connected: false, setupNetworkRetry });
+        if (result.reason === 'firmware-incompatible' && result.observedCard?.id) {
+          const version = result.observedCard.firmwareVersion ? ` firmware v${result.observedCard.firmwareVersion}` : ' firmware';
+          const build = cardBuildLabel(result.observedCard);
+          setFailure(`Found card ${result.observedCard.id} running${version}${build ? ` · ${build}` : ''}, but it cannot provide the exact safety evidence this Studio requires. Update this card to continue.`);
+        } else {
+          setFailure(result.message);
+        }
+      } else if (result.how === 'found-direct') {
+        setDirectAttempt(result.authority);
       }
       return result;
     } finally {
-      setDirectBusy(false);
+      if (connectRun.current === controller) {
+        connectRun.current = null;
+        setConnectProgress('');
+        setDirectBusy(false);
+      }
     }
   };
 
@@ -357,12 +391,22 @@ export function CardConnectionCenter({
     if (next.route !== 'setup-network') connect();
   };
 
+  const retryConnection = fallback => {
+    const setupRetry = directAttempt?.setupNetworkRetry;
+    if (setupRetry && setupRetry.cardId === (readPersistedCardIdentity()?.id || '')) {
+      return connect(SETUP_HOST, { bridge: true });
+    }
+    return fallback();
+  };
+
   const chooseFactoryBeacon = () => {
+    connectRun.current?.abort();
     setIntent('factory-beacon');
     setFailure('');
   };
 
   const chooseBlankCard = () => {
+    connectRun.current?.abort();
     setIntent('blank-card');
     if (capabilities.canWebSerialInstall) openInstall();
   };
@@ -373,13 +417,23 @@ export function CardConnectionCenter({
   };
 
   const useDiscoveredCard = async () => {
+    if (connectRun.current) return;
+    const controller = new AbortController();
+    connectRun.current = controller;
     setPairingBusy(true);
-    const result = await pairDiscoveredCard(link);
+    const result = await pairDiscoveredCard(link, { signal: controller.signal });
+    if (connectRun.current !== controller) return;
+    connectRun.current = null;
+    setPairingBusy(false);
+    if (controller.signal.aborted) return;
     setTakeoverHost(result.ok ? '' : result.takeoverHost);
     setFailure(result.ok ? '' : result.message);
-    setPairingBusy(false);
     // Pairing leaves this panel open when the exact card still needs a board.
     const pairedCardId = link.discoveredCard?.id || link.card?.id || '';
+    if (result.ok && result.directCard) {
+      setDirectAttempt({ connected: true, card: result.directCard, host: link.host });
+      return;
+    }
     if (result.ok && (!onOpenBoardManager || !exactCardId.test(pairedCardId)
       || (!installerSetup && confirmedBoardProfile(pairedCardId)))) {
       closeAndRestore();
@@ -417,6 +471,7 @@ export function CardConnectionCenter({
       setFailure('Enter a valid local Lightweaver hostname.');
       return;
     }
+    connectRun.current?.abort();
     setHost(writeStoredCardHost(normalizedHost));
     setFailure('');
   };
@@ -560,13 +615,13 @@ export function CardConnectionCenter({
     // Lifecycle-owned verdicts have exactly one rendering: the route-out
     // button. There is no case below that can offer a remedy for them.
     if (routeOut) {
-      return <button type="button" className={postConnectButtonClass} onClick={followRouteOut}>{routeOut.label}</button>;
+        return <button type="button" className={postConnectButtonClass} data-connection-action onClick={followRouteOut}>{routeOut.label}</button>;
     }
     switch (action.id) {
       case 'ready-local-card':
         return <button type="button" className={postConnectButtonClass} onClick={closeAndRestore}>Done</button>;
       case 'pair-local-card':
-        return <button type="button" className="btn primary" onClick={useDiscoveredCard} disabled={pairingBusy}>{pairingBusy ? 'Connecting…' : 'Connect'}</button>;
+        return <button type="button" className="btn primary" onClick={useDiscoveredCard} disabled={pairingBusy}>{pairingBusy ? 'Connecting…' : 'Connect this card'}</button>;
       case 'relearn-current-card':
         // Same verified re-pair as "Keep the new firmware on this card". The
         // difference is that nothing here is a question: the card matches the
@@ -607,9 +662,9 @@ export function CardConnectionCenter({
               className="btn primary"
               onClick={() => connect(
                 showSetupSteps ? SETUP_HOST : (ordinaryRetry ? stableRecoveryHost : ''),
-                { bridge: showSetupSteps || ordinaryRetry },
+                { bridge: showSetupSteps, exactHost: showSetupSteps },
               )}
-              disabled={action.primaryDisabled}
+              disabled={action.primaryDisabled || directBusy}
             >
               {setupRecovery || (setupSteps && intent === 'factory-beacon') ? 'Continue after joining' : conciseWorkingCardSetup ? action.primaryLabel : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
             </button>
@@ -703,7 +758,7 @@ export function CardConnectionCenter({
             : sameWifiFailure
               ? 'Make sure this device and the card use the same Wi-Fi. Local names can fail even when a card is online, so you can also enter its IP address.'
               : directAttempt?.connected
-                ? directConnectVerdictCopy(lifecycle?.state)
+                ? directConnectVerdictCopy(lifecycle?.state, lifecycle)
                 : 'Your browser may ask whether Lightweaver Studio can find devices on your local network. Choose Allow so Studio can verify this exact card.'}</p>
           {usbReleaseState === 'restarted' && (
             <p role="status">Card restarted. Its Wi-Fi may take a moment. Try again when the card rejoins the network.</p>
@@ -718,16 +773,16 @@ export function CardConnectionCenter({
               </>
             ) : sameWifiFailure ? (
               <>
-                <button type="button" className="btn primary" onClick={chooseWorkingCard}>Try again</button>
+                <button type="button" className="btn primary" onClick={() => retryConnection(chooseWorkingCard)}>Try again</button>
                 <button type="button" className="btn" onClick={chooseFactoryBeacon}>Use Lightweaver setup Wi-Fi</button>
                 <button type="button" className="btn" onClick={() => setConnectionDetailsOpen(true)}>Enter a known card IP</button>
               </>
             ) : directAttempt?.connected ? (
               safeControlsReady
-                ? <button type="button" className={postConnectButtonClass} onClick={closeAndRestore}>Done</button>
-                : <button type="button" className={postConnectButtonClass} onClick={onOpenSetup}>Continue in Setup</button>
+                ? <button type="button" className={postConnectButtonClass} data-connection-action onClick={closeAndRestore}>Done</button>
+                : <button type="button" className={postConnectButtonClass} data-connection-action onClick={onOpenSetup}>Continue in Setup</button>
             ) : (
-              <button type="button" className="btn primary" onClick={() => connect()} disabled={directBusy}>
+              <button type="button" className="btn primary" onClick={() => retryConnection(connect)} disabled={directBusy}>
                 {directBusy ? 'Connecting…' : directAttempt ? 'Try again' : 'Connect this card'}
               </button>
             )}
@@ -804,7 +859,7 @@ export function CardConnectionCenter({
       ) : incompatibleFirmware ? null : showActionBody ? (
         <div className="card-connection-action" data-action-id={effectiveActionId} aria-live="polite" aria-busy={(action.busy || bridgeBusy) || undefined}>
           <h3>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Waiting for Lightweaver Bridge' : bridgeLifecycleState === 'return-pending' ? 'Return pending' : bridgeLifecycleState === 'installer-unavailable' ? 'Signed Bridge installer unavailable' : setupRecovery ? 'Join the Lightweaver setup network' : action.title}</h3>
-          <p>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Studio sent the launch request but cannot confirm whether Bridge opened. Keep this tab available for the result, or paste the return code below.' : bridgeLifecycleState === 'return-pending' ? 'Studio is validating the one-time return. Bridge will clear its saved result only after this tab accepts it.' : setupRecovery ? `If the card is pulsing amber, join ${setupNetworkLabel}, then continue.` : conciseWorkingCardSetup ? `Power the card, join ${setupNetworkLabel}, finish Wi-Fi setup on the card page, then return to Studio.` : (routeOut?.line || action.explanation)}</p>
+          <p>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Studio sent the launch request but cannot confirm whether Bridge opened. Keep this tab available for the result, or paste the return code below.' : bridgeLifecycleState === 'return-pending' ? 'Studio is validating the one-time return. Bridge will clear its saved result only after this tab accepts it.' : setupRecovery ? `If the card is pulsing amber, join ${setupNetworkLabel}, then continue.` : conciseWorkingCardSetup ? `Power the card, join ${setupNetworkLabel}, finish Wi-Fi setup on the card page, then return to Studio.` : (routeOut?.line || pairingCardSummary || action.explanation)}</p>
           {action.id === 'escape-insecure-card-frame' && (
             <p>Your browser only allows USB install from a separate secure top-level tab, so the installer opens in the Lightweaver Studio tab.</p>
           )}
@@ -868,6 +923,7 @@ export function CardConnectionCenter({
         </div>
       ) : null}
 
+      {connectProgress && <p role="status">{connectProgress}</p>}
       {failure && <p className="card-connection-failure" role="alert">{failure}</p>}
       {takeoverHost && (
         <div className="card-connection-actions">

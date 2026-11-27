@@ -107,6 +107,62 @@ test('a fresh layout offers primitive choices and creates a centered selected ci
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 });
 
+async function holdDelayedAutosave(page: any) {
+  // Keep the 500 ms timer pending across a real browser reload, independent of CI speed.
+  await page.evaluate(() => {
+    const schedule = window.setTimeout;
+    window.setTimeout = ((callback, delay, ...args) =>
+      schedule(callback, delay === 500 ? 60_000 : delay, ...args)) as typeof window.setTimeout;
+  });
+}
+
+test('a newly created strip survives a browser reload before the delayed autosave', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await expect.poll(() => readAutosaveStrips(page)).toHaveLength(2);
+  await holdDelayedAutosave(page);
+  const picker = page.getByTestId('layout-primitive-picker');
+  await picker.getByRole('button', { name: 'Create line' }).click();
+  const rows = page.locator('.la-strip-row');
+  await expect(rows).toHaveCount(1);
+  expect(await readAutosaveStrips(page)).toHaveLength(2);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('Line');
+  const saved = await page.evaluate(() => {
+    const primary = localStorage.getItem('lw_autosave_v3');
+    const backup = localStorage.getItem('lw_autosave_v3_backup');
+    return { mirrored: primary === backup, names: JSON.parse(primary!).layout.strips.map((strip: { name: string }) => strip.name) };
+  });
+  expect(saved).toEqual({ mirrored: true, names: ['Line'] });
+});
+
+test('reloading a dirty tab preserves a newer draft saved from another Studio tab', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  await expect.poll(async () => (await readAutosaveStrips(page))?.map((strip: { name: string }) => strip.name)).toEqual(['Line']);
+
+  const newerTab = await page.context().newPage();
+  await newerTab.goto('/#screen=layout');
+  await expect(newerTab.locator('.la-strip-row')).toHaveCount(1);
+  await newerTab.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await newerTab.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Circle', exact: true }).click();
+  await expect.poll(async () => (await readAutosaveStrips(newerTab))?.map((strip: { name: string }) => strip.name)).toEqual(['Line', 'Circle']);
+  await newerTab.close();
+
+  // The older tab starts a new edit after the newer tab has already saved.
+  await holdDelayedAutosave(page);
+  await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await page.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Square', exact: true }).click();
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Line', 'Square']);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Line', 'Circle']);
+  const mirrors = await page.evaluate(() => localStorage.getItem('lw_autosave_v3') === localStorage.getItem('lw_autosave_v3_backup'));
+  expect(mirrors).toBe(true);
+});
+
 test('an untouched fresh starter survives autosave reload, but a saved legacy circle layout is never hidden', async ({ page }) => {
   await gotoFreshLayout(page);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3') !== null)).toBe(true);
@@ -118,6 +174,18 @@ test('an untouched fresh starter survives autosave reload, but a saved legacy ci
   await expect(page.getByTestId('layout-primitive-picker')).toHaveCount(0);
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
   await expect(page.locator('path[data-strip-path]')).toHaveCount(2);
+});
+
+test('canvas LED count matches the visible layout while starter data is suppressed', async ({ page }) => {
+  await gotoFreshLayout(page);
+  const ledCount = page.locator('.la-overlay.tl > div').filter({ has: page.locator('.k', { hasText: 'leds' }) }).locator('.v');
+  await expect(ledCount).toHaveText('0');
+
+  const picker = page.getByTestId('layout-primitive-picker');
+  await picker.getByLabel('Starting strip LEDs').fill('18');
+  await picker.getByRole('button', { name: 'Create line' }).click();
+  await expect(ledCount).toHaveText('18');
+  await expect(page.locator('.la-overlay.tl > div').filter({ has: page.locator('.k', { hasText: 'layers' }) }).locator('.v')).toHaveText('0 · 1 strip');
 });
 
 test('importing artwork clears starter provenance before reload', async ({ page }) => {
@@ -214,18 +282,45 @@ test('removing the last strip keeps Add strip available and can create its repla
   await expect(page.locator('path[data-strip-path]')).toHaveCount(1);
 });
 
-test('Add strip appears before the LED strips inventory heading', async ({ page }) => {
-  await gotoFreshLayout(page);
-  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+for (const viewport of [
+  { name: 'desktop', width: 1440, height: 900, hasTouch: false },
+  { name: 'phone', width: 390, height: 844, hasTouch: true },
+]) {
+  test.describe(viewport.name, () => {
+    test.use({ viewport: { width: viewport.width, height: viewport.height }, hasTouch: viewport.hasTouch });
 
-  const order = await page.locator('body').evaluate(panel => {
-    const add = panel.querySelector('[data-testid="layout-add-strip"]');
-    const heading = Array.from(panel.querySelectorAll('.ttl')).find(node => node.textContent?.trim() === 'LED strips');
-    return add && heading ? Boolean(add.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING) : false;
+    test('Shapes stays visible before the strip inventory with or without its heading', async ({ page }) => {
+      await gotoFreshLayout(page);
+      await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+
+      const shapes = page.getByRole('button', { name: 'Shapes', exact: true });
+      const inventoryHeading = page.getByText('LED strips', { exact: true });
+      const stripRows = page.locator('.la-strip-row');
+      await expect(shapes).toHaveCount(1);
+      await expect(page.getByRole('group', { name: 'Create layout' }).getByTestId('layout-add-strip')).toBeInViewport();
+      await expect(stripRows).toHaveCount(1);
+      await expect(inventoryHeading).toHaveCount(0);
+      const isBefore = (selector: string) => shapes.evaluate((add, targetSelector) => {
+        const target = document.querySelector(targetSelector);
+        return Boolean(target && add.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }, selector);
+      expect(await isBefore('.la-strip-row')).toBe(true);
+
+      if (viewport.hasTouch) await shapes.tap();
+      else await shapes.press('Enter');
+      const chooser = page.getByTestId('layout-add-strip-chooser');
+      await expect(chooser).toBeInViewport();
+      await chooser.getByRole('combobox', { name: 'New strip GPIO output' }).selectOption('17');
+      await chooser.getByRole('button', { name: 'Circle', exact: true }).click();
+
+      await expect(stripRows).toHaveCount(2);
+      await expect(inventoryHeading).toBeVisible();
+      await expect(shapes).toHaveCount(1);
+      await expect(shapes).toBeInViewport();
+      expect(await isBefore('.la-led-strips-heading')).toBe(true);
+    });
   });
-
-  expect(order).toBe(true);
-});
+}
 
 test('an expanded strip lets the maker choose its reel density', async ({ page }) => {
   await gotoFreshLayout(page);

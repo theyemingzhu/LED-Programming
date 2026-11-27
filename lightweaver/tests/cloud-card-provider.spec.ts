@@ -96,9 +96,12 @@ async function installCloudCardProviderHarness(page: Page) {
         if (!remote) throw Object.assign(new Error('Project not found.'), { status: 404 });
         return remote;
       },
-      updateProject: async (id, body, options) => {
+      updateProject: async (id, body, { requestId, isCurrent } = {}) => {
+        if (typeof isCurrent !== 'function' || !isCurrent()) {
+          throw new Error('Project write requires a current workspace.');
+        }
         state.calls.push(`update:${id}`);
-        state.updateCalls.push({ id, body: structuredClone(body), options: structuredClone(options) });
+        state.updateCalls.push({ id, body: structuredClone(body), requestId });
         const current = state.remotes.get(id);
         if (!current) throw Object.assign(new Error('Project not found.'), { status: 404 });
         const updated = {
@@ -176,6 +179,8 @@ test('saveNow acknowledges only the exact remote and workspace marker', async ({
   });
   expect(opened).toMatchObject({ ok: true, project: { id: 'remote-cloud-source' } });
   await expect(page.getByTestId('provider-active-remote')).toHaveText('remote-cloud-source');
+  await page.clock.install({ time: 1_000 });
+  await page.clock.pauseAt(60_000);
 
   await page.evaluate(() => {
     const state = (window as any).__LW_CLOUD_CARD_PROVIDER__;
@@ -212,6 +217,7 @@ test('saveNow acknowledges only the exact remote and workspace marker', async ({
   expect(result.updateCalls[0]).toMatchObject({
     id: 'remote-cloud-source',
     body: { baseRevision: 1, title: 'Cloud source edited' },
+    requestId: expect.any(String),
   });
   await expect.poll(() => page.evaluate(() => {
     const state = (window as any).__LW_CLOUD_CARD_PROVIDER__;
@@ -224,6 +230,51 @@ test('saveNow acknowledges only the exact remote and workspace marker', async ({
     remoteId: 'remote-cloud-source',
     remoteRevision: 2,
     persistence: { destination: 'cloud', revision: result.marker.revision },
+  });
+});
+
+test('a rejected saveNow request leaves the current workspace autosave scheduled', async ({ page }) => {
+  await installCloudCardProviderHarness(page);
+  const opened = await page.evaluate(() => {
+    const state = (window as any).__LW_CLOUD_CARD_PROVIDER__;
+    return state.api.library.openProject(state.source.id, { force: true });
+  });
+  expect(opened).toMatchObject({ ok: true, project: { id: 'remote-cloud-source' } });
+  await expect(page.getByTestId('provider-active-remote')).toHaveText('remote-cloud-source');
+  await page.clock.install({ time: 1_000 });
+  await page.clock.pauseAt(60_000);
+  await page.evaluate(() => {
+    (window as any).__LW_CLOUD_CARD_PROVIDER__.api.project.setProjectName('Current draft');
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__LW_CLOUD_CARD_PROVIDER__.api.library.syncState.status))
+    .toBe('pending');
+
+  const rejected = await page.evaluate(async () => {
+    const state = (window as any).__LW_CLOUD_CARD_PROVIDER__;
+    const { generation, editedRevision } = state.api.project.projectLifecycle;
+    const wrongRemote = await state.api.library.saveNow({
+      expectedRemoteId: state.target.id,
+      expectedMarker: { generation, revision: editedRevision },
+    });
+    const wrongMarker = await state.api.library.saveNow({
+      expectedRemoteId: state.source.id,
+      expectedMarker: { generation, revision: editedRevision + 1 },
+    });
+    return { wrongRemote, wrongMarker, updateCalls: state.updateCalls };
+  });
+  expect(rejected).toEqual({
+    wrongRemote: { ok: false, reason: 'workspace-changed' },
+    wrongMarker: { ok: false, reason: 'workspace-changed' },
+    updateCalls: [],
+  });
+
+  await page.clock.fastForward(1_000);
+  await expect.poll(() => page.evaluate(() => {
+    const state = (window as any).__LW_CLOUD_CARD_PROVIDER__;
+    return { updateCalls: state.updateCalls, revision: state.api.library.activeRemoteProject?.revision };
+  })).toMatchObject({
+    updateCalls: [{ id: 'remote-cloud-source', body: { baseRevision: 1, title: 'Current draft' } }],
+    revision: 2,
   });
 });
 

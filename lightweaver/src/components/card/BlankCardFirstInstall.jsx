@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { getFirstInstallState, setFirstInstallState, subscribeFirstInstallState } from '../../lib/firstInstallState.js';
 import { useProject } from '../../state/ProjectContext.jsx';
+import { StackSectionLinks } from '../patterns/StackSectionLink.jsx';
 import { pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification, correlateCardDeploymentReadinessEvidence, CARD_RESTART_WAIT_MS } from '../../lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../../lib/cardStoragePayload.js';
@@ -43,7 +44,7 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
     const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
     if (!claim.ok) { setState({ status: 'failed', message: claim.message }); return; }
     setState({ status: 'pending', message: 'Saving your project to the blank card…' });
-    setFirstInstallState({ cardId });
+    setFirstInstallState({ cardId, staleLookIds: [] });
     onStart?.();
     let ok = false;
     try {
@@ -118,8 +119,13 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
       setState({ status: 'confirmed', message: 'Installed on card. Next, check the lights.' });
       ok = true;
     } catch (error) {
-      setState({ status: 'failed', message: error?.message || 'Studio could not save the project to this blank card.' });
-      setFirstInstallState({ reason: String(error?.reason || '') });
+      const staleLookIds = error?.code === 'stack-sections-changed' ? error.lookIds : [];
+      setFirstInstallState({
+        status: 'failed',
+        message: staleLookIds.length ? 'Update saved looks before installing.' : error?.message || 'Studio could not save the project to this blank card.',
+        reason: String(error?.reason || ''),
+        staleLookIds,
+      });
     } finally {
       claim.release();
       onSettled?.(ok);
@@ -132,7 +138,10 @@ export function BlankCardFirstInstall({ host, transport, board, controller, clas
         {busy ? (state.message.startsWith('Restarting') ? 'Restarting the card…' : 'Saving…') : state.status === 'failed' ? 'Try saving again' : 'Save to card'}
       </button>
       {state.message && (
-        <p className="lww-flow-message" role={state.status === 'failed' ? 'alert' : 'status'} data-testid="blank-card-save-status">{state.message}</p>
+        <p className="lww-flow-message" role={state.status === 'failed' ? 'alert' : 'status'} data-testid="blank-card-save-status">
+          {state.message}
+          {state.staleLookIds?.length > 0 && <StackSectionLinks lookIds={state.staleLookIds} looks={controller.looks} />}
+        </p>
       )}
     </>
   );

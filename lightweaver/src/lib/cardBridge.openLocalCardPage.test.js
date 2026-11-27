@@ -10,6 +10,7 @@ import {
   openCardBridge,
   openLocalCardPage,
   reserveCardBridgeWindow,
+  startCardBridgeSearch,
   releaseCardBridge,
   releaseInheritedBridgeWindowName,
   retargetCardBridge,
@@ -85,6 +86,35 @@ function fakeCardTab() {
     },
   };
 }
+
+test('Find owns only the blank page it reserved and ignores replies after closing it', () => {
+  const target = fakeCardTab();
+  target.location.href = 'about:blank';
+  target.close = () => { target.closed = true; };
+  const { opened, emitMessage } = stubWindow({ openResult: target });
+  const search = startCardBridgeSearch();
+  assert.ok(search.current());
+  assert.equal(opened[0].url, '');
+  assert.equal(search.navigate('192.168.39.94'), true);
+  assert.match(target.location.href, /^http:\/\/192\.168\.39\.94\//);
+  search.finish(false);
+  assert.equal(target.closed, true);
+  emitMessage({ origin: 'http://192.168.39.94', source: target,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host: '192.168.39.94', version: 9 } });
+  assert.equal(getCardBridgeState().open, false);
+});
+
+test('Find preserves an established card-page target and cannot retarget it', () => {
+  const target = fakeCardTab();
+  const { opened } = stubWindow({ openResult: target });
+  openCardBridge('192.168.39.95');
+  const borrowed = startCardBridgeSearch();
+  assert.equal(borrowed.navigate('192.168.39.96'), false);
+  assert.equal(borrowed.navigate('192.168.39.95'), true);
+  borrowed.finish(false);
+  assert.equal(opened.length, 1);
+  assert.equal(target.closed, false);
+});
 
 test('a verified unpaired factory status after a bridge timeout offers pairing, never a firmware update', async () => {
   const host = '192.168.50.94';

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { formatGpio } from '../lib/cardPinout.js';
 import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { FirstSaveOrFind } from '../components/card/FirstSaveOrFind.jsx';
 import './lw-setup.css';
@@ -21,7 +22,7 @@ import { openLocalCardPage } from '../lib/cardBridge.js';
 import { readCardFirmwareInfoEnvelope, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
-import { canPushDirectlyToCard, cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
+import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
 import { getCardLinkState, isCardLinkConnected, noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { waitForCardRestart } from '../lib/cardDeployment.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
@@ -35,8 +36,8 @@ import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { requestLedTotal } from '../lib/ledCountHandoff.js';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
-import { projectFromCardParts } from '../lib/cardPickup.js';
-import { adoptedProjectName, guardedResolutionRun, LOOKS_UNREADABLE_MESSAGE, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
+import { projectFromCardParts, recoveredProjectFromCardParts } from '../lib/cardPickup.js';
+import { guardedResolutionRun, LOOKS_UNREADABLE_MESSAGE, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
@@ -126,12 +127,17 @@ export function SetupScreen({
   connected,
   cardHost,
   onOpenConnectionCenter,
+  onOpenInstallerConnection = onOpenConnectionCenter,
   cardLink,
   cardLifecycle,
   currentProject = {},
   activeCloudProjects = [],
   browserProjects = [],
+  readBrowserProjects,
   replaceProject,
+  saveBeforeCardProjectSwitch,
+  isProjectSwitchSnapshotCurrent,
+  onMatchedProjectLoaded,
   firmwareStatus = null,
   firmwareReleaseManifest = null,
   onRenameProject = null,
@@ -167,6 +173,8 @@ export function SetupScreen({
   // role="alert" — a status line, not a warning.
   const [adoptionNotice, setAdoptionNotice] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
+  const findRun = useRef(null);
+  useEffect(() => () => findRun.current?.abort(), []);
   const [wifiPageError, setWifiPageError] = useState('');
   const [ledCountDraft, setLedCountDraft] = useState('');
   // Rename the project right in the status row: click the name, type, Enter
@@ -174,6 +182,11 @@ export function SetupScreen({
   // Escape cancels. The blur after Enter/Escape must not double-commit.
   const [nameDraft, setNameDraft] = useState(null);
   const [reviewLights, setReviewLights] = useState(false);
+  const lightsPhaseRef = useRef(null);
+  const lightsReviewRef = useRef(null);
+  useEffect(() => {
+    if (reviewLights) lightsReviewRef.current?.focus();
+  }, [reviewLights]);
   const nameSettledRef = useRef(false);
   const projectDisplayName = currentProject?.name || currentProject?.id || 'Untitled project';
   const startRename = () => { nameSettledRef.current = false; setNameDraft(projectDisplayName); };
@@ -522,9 +535,9 @@ export function SetupScreen({
     ownerAskedToAdoptRef.current = true;
     (async () => { await run(); })().catch(error => reportAdoptionFailure('', error));
   };
-  const reportAdoptionFailure = (reason, error = null) => {
+  const reportAdoptionFailure = (reason, error = null, detail = null) => {
     if (error) console.warn('Lightweaver card project adoption failed', error);
-    const message = ADOPTION_FAILURES[String(reason || '')]
+    const message = detail || ADOPTION_FAILURES[String(reason || '')]
       || 'Could not read the card’s project. Check the connection, then try again.';
     // Owner-pressed failures are an alert (setAdoptionError, role="alert").
     // The automatic adopt-by-default attempt below must never raise an alert
@@ -533,6 +546,23 @@ export function SetupScreen({
     // sibling (role="status"), same as ledCountState.message above it.
     if (ownerAskedToAdoptRef.current) setAdoptionError(message);
     else setAdoptionNotice(message);
+  };
+
+  const applyRecoveredCardParts = async (parts, status, { canApply }) => {
+    if (!replaceProject || !status?.projectId) return { ok: false, reason: 'invalid' };
+    const replacement = await replaceProject(recoveredProjectFromCardParts(parts, status), {
+      confirmDiscard: () => true,
+      canApply,
+    });
+    if (!replacement?.ok) return { ok: false, reason: replacement?.reason || 'replace-failed' };
+    const association = await onMatchedProjectLoaded?.({ source: 'unassociated', expectedMarker: replacement.marker });
+    if (association && !association.ok) return {
+      ok: false,
+      reason: association.reason,
+      message: 'The card copy opened, but Studio could not establish a safe save destination. Your previous project was kept.',
+    };
+    recordCardInstallation(status, replacement.marker, replacement.project);
+    return { ok: true };
   };
 
   const startFromCard = async () => {
@@ -572,9 +602,14 @@ export function SetupScreen({
       getSharedCardLink: getCardLinkState,
       isCardLinkConnected,
       io: { readCardStatusEnvelope, readCardPatternsFromCard, readCardZonesFromCard, readCardFirmwareInfoEnvelope },
-      actions: { applyCardParts },
+      actions: {
+        applyCardParts: applyRecoveredCardParts,
+        saveBeforeCardProjectSwitch,
+        isProjectSwitchSnapshotCurrent,
+      },
     }, {
       strategy: 'reconstruct',
+      preserveCurrentProject: !untouchedStarter,
       isCurrent: () => reconstructionRunTokenRef.current === runToken,
       projectMarker,
       isProjectLifecycleMarkerCurrent,
@@ -583,7 +618,7 @@ export function SetupScreen({
       onStatus: status => setCardState(previous => ({ ...previous, status, read: true })),
     });
     if (reconstructionRunTokenRef.current !== runToken) return;
-    if (!result.ok) reportAdoptionFailure(result.reason, result.error || null);
+    if (!result.ok) reportAdoptionFailure(result.reason, result.error || null, result.message);
   };
 
   const setupAdoptionFlightRef = useRef({
@@ -591,8 +626,8 @@ export function SetupScreen({
     pendingProbe: { current: null },
     probeSignature: { current: '' },
   });
-  const loadResolvedProject = async () => {
-    if (!resolution?.resolved?.project) return;
+  const loadResolvedProject = async (match = resolution.resolved) => {
+    if (!match?.project) return;
     setAdoptionError('');
     setAdoptionNotice('');
     if (!cardActions?.adoptCardProject) {
@@ -605,10 +640,10 @@ export function SetupScreen({
     // it previously lacked. The current project is saved before the resolved
     // match replaces it, and the machine's verification callback records the
     // installation — this screen keeps only its error surface, and stays on
-    // Setup (the re-resolved "already set up" banner offers Open Patterns).
+    // Setup with the installed project controls.
     await cardActions.adoptCardProject({
       strategy: 'resolved',
-      selectionKey: resolvedMatchKey(resolution.resolved),
+      selectionKey: resolvedMatchKey(match),
       flight: setupAdoptionFlightRef.current,
       report: state => {
         // F27: this fires for the automatic "adopt by default" call at line
@@ -622,6 +657,18 @@ export function SetupScreen({
       },
       openPatterns: () => {},
     });
+  };
+
+  const openInstalledProject = () => {
+    // The panel can render from live readiness before the background resolver
+    // finishes. Check the library here so an early press still keeps the artwork.
+    const exactCopy = resolveCardProject({
+      evidence: cardLink?.readiness || {},
+      cloudProjects: activeCloudProjects,
+      browserProjects: readBrowserProjects?.() || browserProjects,
+    });
+    if (exactCopy.status === 'match') return loadResolvedProject(exactCopy);
+    return resolution.kind === 'saved-match' ? loadResolvedProject() : startFromCard();
   };
 
   // Project adoption is always explicit; card control never replaces the browser draft.
@@ -799,44 +846,40 @@ export function SetupScreen({
     </form>
   ) : null;
 
-  // Phase 1's primary button DOES THE THING IT IS NAMED AFTER — it looks for
-  // the card, on whichever route this page can actually use, and pairs what it
-  // finds. It used to open the Connection Center, which asked the owner to
-  // describe the LEDs before Studio had tried anything; on a screen already
-  // showing the card's address that reads as a button that does nothing.
-  // The panel is still the answer once a real attempt has failed, so every
-  // failure hands off to it with the reason stated first.
-  const findMyCard = async () => {
-    if (pairState.busy) return;
+  const findMyCard = async ({ pair = false } = {}) => {
+    if (findRun.current) return;
     const hasCardEvidence = Boolean(
       cardLink?.card?.id
       || cardLink?.expectedCard?.id
       || cardLink?.discoveredCard?.id
       || readPersistedCardIdentity()?.id,
     );
-    // Public Studio must offer its supported network and USB connection
-    // choices first. Opening a remembered HTTP card page here bypassed the
-    // local-network prompt and left owners waiting on a legacy popup.
-    if (!hasCardEvidence || !canPushDirectlyToCard()) {
+    if (!hasCardEvidence) {
       onOpenConnectionCenter?.();
       return;
     }
+    const controller = new AbortController();
+    findRun.current = controller;
     setPairState({ busy: true, message: '' });
-    const result = await findAndConnectCard({
-      link: cardLink || {},
-      onProgress: message => setPairState({ busy: true, message }),
-    });
-    setPairState({ busy: false, message: result.ok ? '' : result.message });
-    if (result.ok) {
-      setRecheckTick(tick => tick + 1);
-      return;
+    try {
+      const result = await findAndConnectCard({
+        link: cardLink || {},
+        pair,
+        signal: controller.signal,
+        onProgress: message => setPairState({ busy: true, message }),
+      });
+      if (controller.signal.aborted) return;
+      setPairState({ busy: false, message: result.ok ? '' : (result.message || '') });
+      if (result.ok) setRecheckTick(tick => tick + 1);
+    } finally {
+      if (findRun.current === controller) findRun.current = null;
     }
-    onOpenConnectionCenter?.();
   };
 
   const onImportFile = event => {
     const file = event.target.files?.[0];
     if (!file) return;
+    ownerAskedToAdoptRef.current = true;
     setAdoptionError('');
     setAdoptionNotice('');
     // THE project-file import (lib/projectTransfer.js), through the shell's
@@ -849,9 +892,15 @@ export function SetupScreen({
       : file => importProjectFromPickedFile(file, { replaceProject: data => replaceProject?.(data) });
     importFile(file)
       .then(replacement => {
-        if (!replacement?.ok) reportAdoptionFailure(replacement?.reason);
+        if (replacement?.reason === 'invalid') {
+          reportAdoptionFailure('invalid', null, 'Could not open this project file. Choose a compatible Lightweaver project backup.');
+        } else if (!replacement?.ok && replacement?.reason !== 'cancelled') {
+          reportAdoptionFailure(replacement?.reason);
+        }
       })
-      .catch(error => reportAdoptionFailure('invalid', error));
+      .catch(error => reportAdoptionFailure('invalid', error, `Could not open this project file. ${
+        error instanceof SyntaxError ? 'Choose a valid Lightweaver project backup.' : error?.message || 'Try opening the file again.'
+      }`));
     event.target.value = '';
   };
 
@@ -883,7 +932,7 @@ export function SetupScreen({
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
     && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
     && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
-    && !wiringTestActive && !reviewLights && (!setupTask || setupTask === 'load-matching-project');
+    && !wiringTestActive && (!setupTask || setupTask === 'load-matching-project');
   // The card is where browsers meet. A browser holding only the untouched
   // starter has no owner work to protect, so it opens the card's project by
   // itself, once per card boot, the same way "Open installed project" would.
@@ -907,8 +956,7 @@ export function SetupScreen({
     if (!autoPickupKey || autoPickupKeyRef.current === autoPickupKey) return;
     autoPickupKeyRef.current = autoPickupKey;
     ownerAskedToAdoptRef.current = false;
-    const run = resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard;
-    run().catch(error => reportAdoptionFailure('', error));
+    openInstalledProject().catch(error => reportAdoptionFailure('', error));
   }, [autoPickupKey]);
   const identityStatus = wiringTestActive
     ? 'Testing lights'
@@ -939,7 +987,7 @@ export function SetupScreen({
       }
       const blocker = journey.blockers[0]?.id;
       const taskId = journey.taskId;
-      const connectionLabel = taskId === 'pair-card' ? 'Pair this card'
+      const connectionLabel = taskId === 'pair-card' ? 'Connect this card'
         : taskId === 'reconnect-card' ? 'Reconnect this card'
           : 'Find my card';
       // Every connect-shaped task is answered by looking for the card. There is
@@ -1047,7 +1095,7 @@ export function SetupScreen({
           ) : (
             <>
               {canFindInPlace ? (
-                <button type="button" className="btn primary" data-testid="setup-connect-card" disabled={pairState.busy} onClick={() => void findMyCard()}>
+                <button type="button" className="btn primary" data-testid="setup-connect-card" disabled={pairState.busy} onClick={() => void findMyCard({ pair: taskId === 'pair-card' })}>
                   {pairState.busy ? 'Looking…' : connectionLabel}
                 </button>
               ) : (
@@ -1060,10 +1108,7 @@ export function SetupScreen({
                   data-testid="setup-pair-failure"
                 >{pairState.message}</p>
               )}
-              {/* Search-first already hands off to the panel on failure. A
-                  second "Card connection options" button on the same task
-                  was another connect door beside Find / Pair / Reconnect. */}
-              {!canFindInPlace && (
+              {(!canFindInPlace || (pairState.message && !pairState.busy)) && (
                 <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
               )}
             </>
@@ -1112,7 +1157,7 @@ export function SetupScreen({
           {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
             <p data-testid="setup-counted-lights">
               {evidence.count} LED{evidence.count === 1 ? '' : 's'} counted
-              {evidence.outputs.length === 1 ? ` on GPIO ${evidence.outputs[0].pin}` : ` across ${evidence.outputs.length} outputs`}
+              {evidence.outputs.length === 1 ? ` on ${formatGpio(evidence.outputs[0].pin)}` : ` across ${evidence.outputs.length} outputs`}
               . Look at the strip — those lights should be on.
             </p>
           )}
@@ -1169,13 +1214,41 @@ export function SetupScreen({
     );
   };
 
-  const lightsStillOpen = missingPhases(journey).some(phase => phase.id === 'lights');
+  const showSetupPhases = !startOwnsPrimary && !installedHome && !sceneDraftReview;
+  const setupPhases = missingPhases(journey);
+  const lightsStillOpen = !installedHome && setupPhases.some(phase => phase.id === 'lights');
+  const lightsSetupPhase = exactTransport && showSetupPhases && lightsStillOpen ? journey.currentPhaseId : null;
+  const lastSeenOutputs = (rememberedInstalled ? displaySession.installation.outputs || [] : [])
+    .filter(output => Number(output.pixels ?? output.pixelCount ?? output.count) > 0);
+  const recordedOutputs = evidence.outputs.filter(output => !isUncountedHeadroomCount(output.pixelCount));
+  const offlineOutputs = lastSeenOutputs.length ? lastSeenOutputs : recordedOutputs;
+  const offlineReview = !exactTransport && offlineOutputs.length > 0;
+  const offlineReviewTitle = lastSeenOutputs.length ? 'Last seen lights' : 'Recorded lights';
+  const lightsActionLabel = offlineReview ? (lastSeenOutputs.length ? 'Review last seen lights' : 'Review recorded lights')
+    : !exactTransport ? (startOwnsPrimary ? 'Open card setup' : 'Open connection options')
+    : lightsSetupPhase === 'lights' ? 'Open light setup'
+    : lightsSetupPhase ? 'Continue setup'
+    : lightsStillOpen ? 'Open light discovery'
+    : 'Open light review';
   const openLightsDoor = () => {
-    if (lightsStillOpen) {
-      document.querySelector('[data-testid="setup-phase-lights"]')?.scrollIntoView({ block: 'nearest' });
+    if (!exactTransport && !offlineReview) {
+      const openConnection = startOwnsPrimary ? onOpenInstallerConnection : onOpenConnectionCenter;
+      openConnection?.();
       return;
     }
-    setReviewLights(true);
+    if (lightsPhaseRef.current) {
+      const phase = lightsPhaseRef.current;
+      const control = [...phase.querySelectorAll('button:enabled, input:enabled, a[href]')]
+        .find(element => element.getClientRects().length > 0);
+      (control || phase).focus();
+      return;
+    }
+    if (exactTransport && lightsStillOpen) {
+      go('#screen=discovery');
+      return;
+    }
+    if (lightsReviewRef.current) lightsReviewRef.current.focus();
+    else setReviewLights(true);
   };
 
   return (
@@ -1207,11 +1280,11 @@ export function SetupScreen({
           <h2>On the card</h2>
           <p>{displaySession.installation.name || 'Installed project'}{rememberedInstalled ? ' · Last seen' : ''}</p>
           <p>{rememberedInstalled ? 'Last seen installation · waiting for fresh card state' : session.playback.state === 'playing' ? `Playing: ${session.playback.patternId || 'card playlist'}` : session.playback.state === 'paused' ? 'Playlist paused' : session.playback.state === 'externally-driven' ? 'Playing from an external source' : 'Installed playback available'}</p>
-          <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
+          <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openInstalledCardControl?.()}>Control installed project</button>
           {displaySession.differenceCopy && <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>}
           {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
             {session.draft.relationship !== 'none' && <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>}
-            <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
+            <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(openInstalledProject)}>Open installed project</button>
           </div>}
           <p>The recoverable card copy may not include original artwork or editor assets.</p>
           <button type="button" className="btn" onClick={() => setReviewLights(true)}>Review checks</button>
@@ -1221,19 +1294,22 @@ export function SetupScreen({
       {(() => {
         const cardReady = matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen;
         const installedText = installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true);
-        const cardOutputs = displaySession.installation.outputs || [];
-        const shownEvidence = installedHome ? { outputs: cardOutputs, count: cardOutputs.reduce((sum, output) => sum + Number(output.pixels ?? output.count ?? 0), 0) } : evidence;
+        const shownOutputs = offlineReview ? offlineOutputs : installedHome ? displaySession.installation.outputs || [] : null;
+        const shownEvidence = shownOutputs ? {
+          outputs: shownOutputs,
+          count: shownOutputs.reduce((sum, output) => sum + Number(output.pixels ?? output.pixelCount ?? output.count ?? 0), 0),
+        } : evidence;
         const pins = shownEvidence.outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
         const led = currentProject?.devices?.standaloneController?.led || {};
         const colorConfirmed = readCardCommissioningVerification({ standaloneController: currentProject?.devices?.standaloneController }).colorConfirmed;
         const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
         const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
         const lightsValue = shownEvidence.count > 0
-          ? `${rememberedInstalled ? 'Last seen: ' : ''}${shownEvidence.count} on ${pins.length ? pins.map(pin => `GPIO ${pin}`).join(', ') : `${evidence.outputs.length} output${evidence.outputs.length === 1 ? '' : 's'}`}`
+          ? `${rememberedInstalled ? 'Last seen: ' : ''}${shownEvidence.count} on ${pins.length ? pins.map(formatGpio).join(', ') : `${shownEvidence.outputs.length} output${shownEvidence.outputs.length === 1 ? '' : 's'}`}`
           : installedHome ? 'Not reported by card' : 'Not counted yet';
         const lightsHint = installedHome ? rememberedInstalled ? 'Last seen configuration · reconnecting' : 'Configured on the card · physical checks kept separately' : evidence.count > 0
           ? `${colorConfirmed ? `${led.colorOrder} confirmed` : 'Color order not confirmed'} · ${drawn ? `${strips.length} strip${strips.length === 1 ? '' : 's'} drawn` : 'not drawn'}`
-          : 'Find my strips counts them';
+          : null;
         const openFirmware = () => go('#screen=card&section=install');
         return (
           <section className="lw-mod lw-mod-status" aria-label="Card status">
@@ -1293,7 +1369,8 @@ export function SetupScreen({
                   <small data-testid="setup-identity-installed">{installedHome ? 'Installed project' : installedText}</small>
                 </div>
                 <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-lights" onClick={openLightsDoor}>
-                  <span>Lights</span><strong>{lightsValue}</strong><small>{lightsHint}</small>
+                  <span>Lights</span><strong>{lightsValue}</strong>{lightsHint && <small>{lightsHint}</small>}
+                  <em className="lw-setup-lights-action-label">{lightsActionLabel}</em>
                 </button>
               </section>
               {/* No Patterns/Layout doors on a blank card: until the lights are
@@ -1330,16 +1407,28 @@ export function SetupScreen({
         );
       })()}
 
-      {reviewLights && !lightsStillOpen && (
+      {reviewLights && (offlineReview || (exactTransport && !lightsStillOpen)) && (
         <div className="lw-setup-task" data-testid="setup-lights-review">
+          {offlineReview && (
+            <>
+              <h2 tabIndex={-1} ref={lightsReviewRef}>{offlineReviewTitle}</h2>
+              <ul className="lw-setup-subprogress">
+                {offlineOutputs.map((output, index) => (
+                  <li key={`${output.pin}-${index}`}>
+                    {output.pin != null ? formatGpio(output.pin) : `Output ${index + 1}`} · {output.pixels ?? output.pixelCount ?? output.count} lights
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <button
             type="button"
             className="btn"
+            ref={offlineReview ? null : lightsReviewRef}
             data-testid="setup-lights-action"
-            disabled={!exactTransport}
             onClick={() => go('#screen=discovery')}
           >
-            Review the connected lights
+            {offlineReview ? 'Open light checks' : 'Review the connected lights'}
           </button>
         </div>
       )}
@@ -1392,8 +1481,8 @@ export function SetupScreen({
           ladder this replaces claimed an order the code never enforced and
           hid the last phase as "upcoming" while the owner was, legitimately,
           tuning patterns on lights that were not yet drawn. */}
-      {!startOwnsPrimary && !installedHome && !sceneDraftReview && (() => {
-        let missing = missingPhases(journey);
+      {showSetupPhases && (() => {
+        let missing = setupPhases;
         // An install in flight (`next=patterns` in the URL) keeps the verify
         // row mounted whatever the journey says mid-push: the install control
         // lives in that row and auto-starts on mount, so a row that unmounted
@@ -1403,7 +1492,7 @@ export function SetupScreen({
           missing = [...missing, ...journey.phases.filter(phase => phase.id === 'verify')];
         }
         if (missing.length === 0) return null;
-        const done = SETUP_CHAIN_IDS.length - missingPhases(journey).length;
+        const done = SETUP_CHAIN_IDS.length - setupPhases.length;
         return (
           <section className="lw-mod lw-mod-todo" aria-label="Still to do" data-testid="setup-todo">
             <div className="lw-mod-head">
@@ -1420,6 +1509,7 @@ export function SetupScreen({
                 return (
                   <li
                     key={phase.id}
+                    ref={phase.id === lightsSetupPhase ? lightsPhaseRef : null}
                     className={`lw-setup-phase is-${phase.status}${current ? ' is-active' : ''}`}
                     data-testid={`setup-phase-${phase.id}`}
                     data-phase-id={phase.id}

@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { installFakeCardBridge } from './harness/bridgeTransport';
+import { installFakeCardBridge, installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { isLoopbackHost, isPrivateHost } from './harness/networkGuard';
 
 const signedRelease = JSON.parse(await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'));
 
@@ -83,6 +84,7 @@ function finalStationStatus(cardId: string, overrides = {}) {
 }
 
 async function installOpenSpy(page) {
+  await page.context().route(url => isPrivateHost(url.hostname) && !isLoopbackHost(url.hostname), route => route.abort('connectionrefused'));
   await page.addInitScript(() => {
     (window as any).__openedUrls = [];
     (window as any).__cardFetchCalls = [];
@@ -96,9 +98,24 @@ async function installOpenSpy(page) {
     }) as typeof window.fetch;
     (window as any).__openedWindows = [];
     window.open = ((url?: string | URL, target?: string, features?: string) => {
-      (window as any).__openedUrls.push(String(url || ''));
-      (window as any).__openedWindows.push({ url: String(url || ''), target, features });
-      return { closed: false, postMessage() {}, close() {}, focus() {} } as Window;
+      const opened = { url: String(url || ''), target, features };
+      const recordNavigation = (next: string) => {
+        opened.url = next;
+        (window as any).__openedUrls.push(next);
+      };
+      (window as any).__openedWindows.push(opened);
+      if (url) recordNavigation(String(url));
+      const tab = {
+        closed: false,
+        postMessage() {},
+        close() { tab.closed = true; },
+        focus() {},
+        location: {
+          get href() { return opened.url || 'about:blank'; },
+          set href(next: string) { recordNavigation(next); },
+        },
+      };
+      return tab as unknown as Window;
     }) as typeof window.open;
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -149,18 +166,41 @@ test('a remembered card offers read-only USB address recovery beside Wi-Fi recon
   await expect(dialog.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
 });
 
-test('an unresolved paired local name reconnects through its remembered station IP', async ({ page }) => {
+test('an unresolved paired local name reconnects through its remembered station IP', async ({ page, baseURL }) => {
+  const stationIp = '192.168.18.70';
+  const cardId = 'lw-441bf681feb0';
+  await page.context().route(url => isPrivateHost(url.hostname) && !isLoopbackHost(url.hostname), route => route.abort('connectionrefused'));
+  await installHttpsStudio(page, baseURL!);
+  const bridge = await installPracticeCardPopup(page, {
+    async relayBridge(type) {
+      if (type === 'status' || type === 'firmware-info') {
+        return { ok: true, response: readyStatus(cardId, { cardName: 'Gallery card', bridgeVersion: 6 }) };
+      }
+      if (type === 'zones') return { ok: true, response: { zones: [] } };
+      return { ok: false, reason: 'invalid-payload', error: 'Reconnect should only request read-only evidence' };
+    },
+  }, { hosts: [stationIp] });
+  await page.goto(`${STUDIO_ORIGIN}/#screen=layout`, { waitUntil: 'domcontentloaded' });
   await seedRememberedCard(page);
-  await installOpenSpy(page);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
-  await dialog.getByRole('button', { name: 'Look for the card again' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__openedWindows.at(-1))).toMatchObject({
-    url: expect.stringContaining('http://192.168.18.70/'),
-    target: 'lightweaver-card-bridge',
-  });
+  const retry = dialog.getByRole('button', { name: 'Look for the card again' });
+  await expect(retry).toBeVisible();
+
+  const [popup] = await Promise.all([page.waitForEvent('popup'), retry.click()]);
+  await expect(popup).toHaveURL(url => url.origin === `http://${stationIp}` && url.pathname === '/');
+  expect(await popup.evaluate(() => window.name)).toBe('lightweaver-card-bridge');
+  expect(bridge.navigations[0]).toMatchObject({ host: stationIp, served: true });
+  await expect.poll(() => page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const { state, host, card } = getSharedCardLink().getState();
+    return { state, host, cardId: card?.id };
+  })).toEqual({ state: 'connected-bridge', host: stationIp, cardId });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')))
+    .toMatchObject({ id: cardId, address: stationIp, hostname: 'gallery-card.local' });
+  expect(bridge.relays.map(({ type }) => type)).toEqual(expect.arrayContaining(['firmware-info', 'status']));
+  expect(bridge.relays.filter(({ type }) => !['firmware-info', 'status', 'zones'].includes(type))).toEqual([]);
 });
 
 async function openInstallationDoor(page) {
@@ -390,6 +430,14 @@ test('connected current firmware does not show an update prompt', async ({ page 
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
 });
 
+async function pairFoundDirectCard(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  const pair = dialog.getByRole('button', { name: 'Connect this card', exact: true });
+  await expect(pair).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
+  await pair.click();
+}
+
 test('direct older firmware routes the update out beneath the right-aligned build values', async ({ page }) => {
   const status = {
     app: 'Lightweaver', provisioningContractVersion: 1,
@@ -403,6 +451,7 @@ test('direct older firmware routes the update out beneath the right-aligned buil
   await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await pairFoundDirectCard(page);
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText('lw-b0fe81f61b44');
@@ -438,6 +487,7 @@ test('direct current firmware keeps the inline update action hidden', async ({ p
   await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await pairFoundDirectCard(page);
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText(`v${signedRelease.firmwareVersion} · Build ${signedRelease.buildNumber}`);
@@ -470,6 +520,7 @@ test('F25: a direct-connect project mismatch names the verdict, never "still ver
   await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await pairFoundDirectCard(page);
 
   const panel = dialog.getByTestId('windowless-card-connect');
   await expect(panel.getByRole('heading', { name: 'Card connected' })).toBeVisible();
@@ -495,6 +546,7 @@ test('F25: a direct-connect card still confirming readiness keeps the waiting co
   await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await pairFoundDirectCard(page);
 
   const panel = dialog.getByTestId('windowless-card-connect');
   await expect(panel.getByRole('heading', { name: 'Card verified' })).toBeVisible();
@@ -513,7 +565,12 @@ test('identified incompatible firmware shows the found card, installed versus cu
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
+  await page.clock.install();
+  const observed = page.waitForResponse(response => response.url() === 'http://lightweaver.local/api/status' && response.ok());
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await observed;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  await page.clock.fastForward(46_000);
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText('lw-b0fe81f61b44');
@@ -527,7 +584,10 @@ test('identified incompatible firmware shows the found card, installed versus cu
 test('an unreachable card stays a network or permission failure and does not guess its firmware', async ({ page }) => {
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await page.clock.install();
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
+  await expect(dialog).toContainText('Looking for your card');
+  await page.clock.fastForward(46_000);
 
   const alert = dialog.getByRole('alert');
   await expect(alert).toContainText('No reply from the card');
@@ -953,6 +1013,9 @@ test('a staged GPIO restoration stops at the Check lights handoff without legacy
 });
 
 test('wrong-card and ordinary no-answer recovery alternate the paired IP and local name before setup-network continuation', async ({ page }) => {
+  // On browsers without Web Serial, the bounded Wi-Fi search offers setup
+  // Wi-Fi as its recovery route when it cannot reach the paired card.
+  await page.addInitScript(() => Object.defineProperty(navigator, 'serial', { configurable: true, value: undefined }));
   await installOpenSpy(page);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'wrong-card' });
@@ -978,6 +1041,7 @@ test('wrong-card and ordinary no-answer recovery alternate the paired IP and loc
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: '192.168.18.70' });
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'recoverable-failure');
+  await page.clock.install();
   await page.getByRole('button', { name: 'Look for the card again' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__openedWindows.at(-1))).toMatchObject({
     url: expect.stringContaining('http://gallery-card.local/'),
@@ -985,9 +1049,13 @@ test('wrong-card and ordinary no-answer recovery alternate the paired IP and loc
   });
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe('192.168.18.70');
 
+  // An injected link event cannot end the active search. Let its bounded
+  // Wi-Fi handoff deadline expire before exercising the next recovery action.
+  await page.clock.fastForward(241_000);
+  await expect(page.getByRole('alert').filter({ hasText: 'No reply from the card' })).toBeVisible();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
-  await expect(page.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
-  await page.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }).click();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await page.getByRole('button', { name: 'Join the setup network' }).click();
   await expect(actionRegion(page)).toContainText('name starts with');
   await expect(page.getByRole('button', { name: 'Continue after joining' })).toBeVisible();
   // The "I am not on the setup hotspot, look on the home network" escape. It
@@ -1006,6 +1074,8 @@ test('wrong-card and ordinary no-answer recovery alternate the paired IP and loc
     url: expect.stringContaining('http://192.168.18.70/'),
     target: 'lightweaver-card-bridge',
   });
+  await page.clock.fastForward(241_000);
+  await expect(page.getByRole('alert').filter({ hasText: 'No reply from the card' })).toBeVisible();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
 
   await page.getByRole('button', { name: 'Continue after joining' }).click();

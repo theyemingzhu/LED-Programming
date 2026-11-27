@@ -4,8 +4,12 @@ const CARD_ID = 'lw-setup-count';
 const CARD_HOST = 'lightweaver.local';
 const CARD_STATION_IP = '192.168.250.41';
 const BUILD_ID = 'b'.repeat(40);
+const COUNTED_BOOT_ID = 'boot-setup-count-after-save';
 let countWrites: any[] = [];
 let recoveryWrites: any[] = [];
+let rebootWrites = 0;
+let oldBootReadsAfterReboot = 0;
+let releaseReboot: () => void;
 
 function benchStatus() {
   return {
@@ -54,9 +58,24 @@ test.beforeEach(async ({ page }) => {
   };
   countWrites = [];
   recoveryWrites = [];
+  rebootWrites = 0;
+  oldBootReadsAfterReboot = 0;
+  releaseReboot = () => {
+    const [config] = countWrites;
+    status.bootId = COUNTED_BOOT_ID;
+    status.led = { ...status.led, ...config.led };
+    status.outputs = config.led.outputs;
+    status.projectFingerprint = config.projectFingerprint;
+    firmwareInfo.bootId = status.bootId;
+    firmwareInfo.outputs = status.outputs;
+    firmwareInfo.projectFingerprint = status.projectFingerprint;
+  };
   const fulfillCard = (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/status' || pathname === '/api/firmware-info') {
+      if (pathname === '/api/status' && rebootWrites > 0 && status.bootId !== COUNTED_BOOT_ID) {
+        oldBootReadsAfterReboot += 1;
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -71,6 +90,7 @@ test.beforeEach(async ({ page }) => {
     }
     if (pathname === '/api/recover-lights') {
       recoveryWrites.push(route.request().postDataJSON());
+      if (status.bootId !== COUNTED_BOOT_ID) return route.fulfill({ status: 503, body: 'Card restarting' });
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -87,15 +107,15 @@ test.beforeEach(async ({ page }) => {
     if (pathname === '/api/config') {
       const config = route.request().postDataJSON();
       countWrites.push(config);
-      status.led = { ...status.led, ...config.led };
-      status.outputs = config.led.outputs;
-      firmwareInfo.outputs = config.led.outputs;
-      firmwareInfo.projectFingerprint = config.projectFingerprint;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, saved: true, requiresReboot: false }),
+        body: JSON.stringify({ ok: true, saved: true, requiresReboot: true }),
       });
+    }
+    if (pathname === '/api/reboot') {
+      rebootWrites += 1;
+      return route.fulfill({ status: 200, json: { ok: true } });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   };
@@ -146,11 +166,17 @@ test('typed LED count lights the strip and tells the owner to look', async ({ pa
   await expect(page.getByTestId('setup-led-count')).toBeVisible();
   await page.getByTestId('setup-led-count').fill('41');
   await page.getByRole('button', { name: 'Use this count' }).click();
-  await expect(page.getByTestId('setup-led-count-status')).toBeVisible();
-  await expect(page.getByTestId('setup-led-count-status')).toHaveCount(1);
-  await expect(page.getByTestId('setup-led-count-status')).toContainText(/41 lights are set.*Look at the strip/i);
+  const status = page.getByTestId('setup-led-count-status');
+  await expect(status).toBeVisible();
+  await expect(status).toHaveCount(1);
+  await expect(status).toHaveText('Restarting the card…');
   expect(countWrites).toHaveLength(1);
   expect(countWrites[0].led.outputs).toEqual([expect.objectContaining({ pin: 18, pixels: 41 })]);
+  expect(rebootWrites).toBe(1);
+  await expect.poll(() => oldBootReadsAfterReboot).toBeGreaterThan(0);
+  expect(recoveryWrites).toHaveLength(0);
+  releaseReboot();
+  await expect(status).toContainText(/41 lights are set.*Look at the strip/i);
   expect(recoveryWrites).toHaveLength(1);
   expect(recoveryWrites[0]).toEqual(expect.objectContaining({ patternId: 'warm-white' }));
   // The status stays on the current row; there is no other phase to browse

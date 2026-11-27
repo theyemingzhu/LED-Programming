@@ -292,7 +292,7 @@ test('a strip with reflection points cannot join a side and says why', async ({ 
   await selectStrip(page, ids.Halo);
   const leftSide = page.getByTestId(`side-choice-${ids.Halo}-side-1`);
   await expect(leftSide).toBeDisabled();
-  await expect(leftSide).toHaveAttribute('title', 'Turn off reflection points first');
+  await expect(leftSide).toHaveAttribute('title', 'Remove reflection points first');
 });
 
 test('the sides fit a 300px desktop inspector and a 390px phone', async ({ page }) => {

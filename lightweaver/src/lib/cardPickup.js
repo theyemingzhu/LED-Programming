@@ -2,6 +2,7 @@
 // starter picks up the card's project by itself, on any screen.
 import { adoptedProjectName } from './cardProjectAdoption.js';
 import { lifecycleLabel } from './projectLifecycle.js';
+import { createDefaultProject } from './projectModel.js';
 
 const FINGERPRINT = /^[a-f0-9]{16,64}$/;
 
@@ -81,6 +82,11 @@ export function projectFromCardParts(currentProject, parts, status = null) {
       pattern: patternFromCard(currentProject?.pattern, status.currentPatternId),
     } : {}),
   };
+}
+
+/** Recover only card-backed content, with empty Studio-only artwork and assets. */
+export function recoveredProjectFromCardParts(parts, status) {
+  return projectFromCardParts(createDefaultProject(), parts, status);
 }
 
 function patternFromCard(previous = {}, patternId) {

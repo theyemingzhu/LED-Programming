@@ -1,36 +1,54 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { stopCardLights } from '../../lib/cardLiveControl.js';
 import { recoverCardLightsVerified } from '../../lib/cardRecoverLights.js';
 import { cardConnectionOptionsFor } from '../../lib/cardConnection.js';
 import { StripDiscoveryPanel } from './StripDiscoveryPanel.jsx';
+import { DiscoveryNotices } from '../NoticeLayer.jsx';
 
 const SAFE_LIFECYCLE = Object.freeze({ phase: 'idle', busy: false, lighting: false });
 
 function focusableElements(root) {
   return [...(root?.querySelectorAll?.(
-    'button:not([disabled]), select:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-  ) || [])].filter(element => !element.closest('[hidden]')
-    && element.getAttribute('aria-hidden') !== 'true' && element.getClientRects().length > 0);
+    'button, select, input, textarea, summary, a[href], [tabindex]',
+  ) || [])].filter(element => element.tabIndex >= 0 && !element.matches(':disabled')
+    && !element.closest('[hidden], [inert], [aria-hidden="true"]') && element.getClientRects().length > 0);
+}
+
+function focusLightCheck(root) {
+  const action = root?.querySelector('[data-light-check-action]:not(:disabled)');
+  const target = action || root?.querySelector('[data-light-check-heading]') || root?.querySelector('#card-setup-title') || root;
+  target?.focus();
+}
+
+function canRestoreFocus(element) {
+  return element?.isConnected && !element.matches(':disabled, [aria-disabled="true"]')
+    && !element.closest('[hidden], [inert], [aria-hidden="true"]') && element.getClientRects().length > 0;
 }
 
 export function CardSetupOverlay({
   cardHost = '',
   cardLink = null,
   discoveryHash = '',
+  takeOpener,
   onDismiss,
   onDisconnect,
   onComplete,
   onSaveToCard,
+  onReplacementSettled,
   onMinimizedChange,
   go,
 }) {
   const route = new URLSearchParams(discoveryHash.slice(1));
   const installerSetup = route.get('installer') === '1';
   const pinParam = route.get('pin') || '';
-  const preferredPin = installerSetup && /^\d{1,2}$/.test(pinParam) ? Number(pinParam) : null;
+  const replacementParam = route.get('replace') || '';
+  const replacementPin = /^\d{1,2}$/.test(replacementParam) ? Number(replacementParam) : null;
+  const pin = /^\d{1,2}$/.test(pinParam) ? Number(pinParam) : null;
+  const replacementTarget = replacementPin !== null ? pin : null;
+  const preferredPin = installerSetup && replacementPin === null ? pin : null;
   const dialogRef = useRef(null);
+  const entryHash = useRef(discoveryHash);
   const restoreButtonRef = useRef(null);
-  const restoreFocusRef = useRef(null);
   const [lifecycle, setLifecycle] = useState(SAFE_LIFECYCLE);
   const [minimized, setMinimized] = useState(false);
   const [releaseState, setReleaseState] = useState('idle');
@@ -62,48 +80,69 @@ export function CardSetupOverlay({
     onMinimizedChange?.(false);
   }, [onMinimizedChange]);
 
-  useEffect(() => {
-    restoreFocusRef.current = document.activeElement;
-    const timer = window.setTimeout(() => {
-      const focusables = focusableElements(dialogRef.current);
-      (focusables[0] || dialogRef.current)?.focus?.();
-    }, 0);
+  useLayoutEffect(() => {
+    const opener = takeOpener?.(entryHash.current);
+    const origin = opener?.origin || document.activeElement;
+    const context = opener?.context || origin?.closest('[data-testid="fact-outputs"], main');
+    const contextId = context?.getAttribute('data-testid');
+    const openerId = origin?.getAttribute('data-testid');
+    const openerHref = origin?.getAttribute('href');
+    const openerSelector = openerId ? `[data-testid="${CSS.escape(openerId)}"]`
+      : openerHref ? `a[href="${CSS.escape(openerHref)}"]` : null;
     return () => {
-      window.clearTimeout(timer);
-      restoreFocusRef.current?.focus?.();
+      requestAnimationFrame(() => {
+        if (document.activeElement !== document.body) return;
+        if (origin !== document.body && canRestoreFocus(origin)) {
+          origin.focus();
+          return;
+        }
+        // Card Home can remount its outputs when the link becomes ready.
+        const currentContext = context?.isConnected ? context
+          : document.querySelector(contextId ? `[data-testid="${CSS.escape(contextId)}"]` : 'main');
+        const reopened = openerSelector && currentContext?.querySelector(openerSelector);
+        const fallback = currentContext?.querySelector('a[href="#screen=discovery"]');
+        const target = [reopened, fallback].find(canRestoreFocus);
+        if (target) target.focus();
+        else {
+          const heading = document.querySelector('main h1');
+          heading?.setAttribute('tabindex', '-1');
+          heading?.focus();
+        }
+      });
     };
-  }, []);
+  }, [takeOpener]);
 
   useEffect(() => {
     if (minimized) restoreButtonRef.current?.focus();
-    else (focusableElements(dialogRef.current)[0] || dialogRef.current)?.focus?.();
+    else if (!dialogRef.current?.contains(document.activeElement)) focusLightCheck(dialogRef.current);
   }, [minimized]);
 
   useEffect(() => {
-    if (minimized && !protectedWork) return undefined;
     const onKeyDown = event => {
+      const dialog = dialogRef.current;
+      if (event.defaultPrevented || (minimized && !protectedWork && !dialog?.contains(document.activeElement))) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (minimized) restore();
-        else dismiss();
+        else if (!protectedWork) {
+          const cancel = dialog?.querySelector('[data-light-check-cancel]');
+          if (cancel) cancel.click();
+          else dismiss();
+        } else if (!dialog?.contains(document.activeElement)) focusLightCheck(dialog);
         return;
       }
-      if (event.key !== 'Tab') return;
-      const focusables = focusableElements(dialogRef.current);
-      if (!focusables.length) {
-        event.preventDefault();
-        dialogRef.current?.focus?.();
-        return;
+      if (event.key !== 'Tab' || (minimized && !protectedWork)) return;
+      const focusables = focusableElements(dialog);
+      const active = document.activeElement;
+      const direction = event.shiftKey ? -1 : 1;
+      const index = focusables.indexOf(active);
+      if (index >= 0 && focusables[index + direction]) return;
+      if (index < 0 && dialog?.contains(active)) {
+        const mask = event.shiftKey ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
+        if (focusables.some(element => active.compareDocumentPosition(element) & mask)) return;
       }
-      const first = focusables[0];
-      const last = focusables.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      event.preventDefault();
+      ((event.shiftKey ? focusables.at(-1) : focusables[0]) || dialog)?.focus();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -189,11 +228,12 @@ export function CardSetupOverlay({
               </button>
             )}
             {lightAction.message && <span className="card-setup-dock-status" role="status">{lightAction.message}</span>}
+            <DiscoveryNotices />
           </div>
         )}
         <header className="card-setup-overlay-head" hidden={minimized}>
           <div>
-            <h2 id="card-setup-title">Find my strips</h2>
+            <h2 id="card-setup-title" tabIndex={-1}>Find my strips</h2>
             <p id="card-setup-description" className="strip-discovery-visually-hidden">Lights stay dim and capped while Studio finds and counts them.</p>
           </div>
           <div className="card-setup-overlay-head-actions">
@@ -219,11 +259,15 @@ export function CardSetupOverlay({
             cardLink={cardLink}
             installerSetup={installerSetup}
             preferredPin={preferredPin}
+            replacementPin={replacementPin}
+            replacementTarget={replacementTarget}
             go={go}
             embedded
+            minimized={minimized}
             onLifecycleChange={setLifecycle}
             onComplete={onComplete}
             onSaveToCard={onSaveToCard}
+            onReplacementSettled={onReplacementSettled}
           />
         </div>
 

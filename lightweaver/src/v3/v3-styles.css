@@ -4,8 +4,6 @@
    All color via OKLCH tokens; no hard-coded hex.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;500;600&display=swap');
-
 :root {
   /* --- warm neutral surfaces (hue ~70, very low chroma) --- */
   --bg-app:     oklch(0.165 0.006 75);   /* app frame / behind panels */
@@ -53,6 +51,16 @@
   --r-sm: 5px;
   --r-md: 7px;
   --r-lg: 10px;
+  --stack-space: 6px;
+  --stack-text: 12px;
+  --stack-control-height: 28px;
+  --stack-touch-height: 44px;
+  --stack-card-width: 148px;
+  --stack-card-max-width: 152px;
+  --stack-art-size: 24px;
+  --stack-card-art-width: 42px;
+  --stack-action-ink: color-mix(in oklab, var(--accent-hi) 65%, var(--text-hi));
+  --stack-target-width: 8rem;
 }
 
 :root[data-theme="daylight"] {
@@ -98,6 +106,49 @@ input, .tnum, .mono, .status-bar, .inspector-value { font-variant-numeric: tabul
 button { font-family: inherit; color: inherit; cursor: pointer; border: none; background: none; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--r-sm); }
 [role="button"]:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stack-section-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--stack-control-height);
+  color: var(--accent-hi);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.stack-section-links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: calc(var(--stack-space) * 2);
+}
+.pm .stack-library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--stack-space);
+}
+.pm .stack-library-tabs > .btn[role="tab"] {
+  justify-content: center;
+  min-height: var(--stack-control-height);
+  color: var(--text-mid);
+  background: var(--bg-panel);
+  font-size: var(--stack-text);
+  white-space: nowrap;
+}
+.pm .stack-library-tabs > .btn[role="tab"]:not([aria-selected="true"]):hover { color: var(--text-hi); border-color: var(--border); }
+.pm .stack-library-tabs > .btn[aria-selected="true"] {
+  color: var(--text-hi);
+  font-weight: 600;
+  border-color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.pm .stack-library-tabs > .btn:focus-visible { outline-color: var(--stack-action-ink); }
+@media (pointer: coarse) {
+  .pm .stack-library-tabs > .btn[role="tab"] { min-height: var(--stack-touch-height); }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .stack-section-link { min-height: var(--lw-tap, 44px); }
+}
 
 /* Numeric values are direct-entry fields. Purpose-built +/- controls sit beside
    values that need nudging, so native browser steppers only add visual noise. */

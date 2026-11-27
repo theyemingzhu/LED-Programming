@@ -322,6 +322,14 @@
   .la .la-strip-settings-head .la-data-route span { white-space: nowrap; }
 }
 
+@media (pointer: coarse) {
+  .la .la-workspace-toolbar .la-create-tools > .tb-btn,
+  .la .la-install-actions > .btn[data-testid="layout-check-and-install"] {
+    min-height: var(--lw-tap, 44px);
+    height: auto;
+  }
+}
+
 @media (max-width: 379px) {
   .la:not(.mode-wire, .inspector-collapsed) { --mobile-sheet-height: clamp(180px, 39dvh, 300px); }
   /* The rail claims 57px. At the narrowest widths the canvas keeps its
@@ -343,4 +351,29 @@
 
 @media (max-width: 600px) and (max-height: 520px) {
   .la:not(.mode-wire, .inspector-collapsed) { --mobile-sheet-height: clamp(112px, 28dvh, 150px); }
+}
+
+.la .la-part-wiring-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+.la .la-part-wiring-tools .lw-connected-child { display: block; }
+.la .la-part-wiring-tools :is(.la-strip-pin-field, .lw-connected-child label) {
+  display: grid;
+  gap: 3px;
+}
+.la .la-part-wiring-tools :is(.la-gpio-select, .lw-connected-child input) {
+  height: 32px;
+  box-sizing: border-box;
+}
+.la .la-part-wiring-tools > :is(.la-strip-count-action, .la-strip-pin-help, .la-gpio-error) {
+  grid-column: 1 / -1;
+}
+.la .la-part-wiring-tools:not(:has(.lw-connected-child)) > .la-strip-pin-field { grid-column: 1 / -1; }
+.la .la-part-wiring-tools > .la-strip-count-action { justify-self: end; }
+@media (max-width: 600px), (pointer: coarse) {
+  .la .la-part-wiring-tools :is(.la-gpio-select, .lw-connected-child input) {
+    height: var(--lw-tap, 44px);
+  }
 }

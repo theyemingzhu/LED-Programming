@@ -131,6 +131,10 @@ export function writeStorageJsonWithBackup(primaryKey, backupKey, value, options
   const storage = storageFromOptions(options);
   if (!storage) return false;
   const text = JSON.stringify(value);
+  const { expectedCopies, onMirrored } = options;
+  if (expectedCopies !== undefined
+    && (!expectedCopies || storage.getItem(primaryKey) !== expectedCopies.primary
+      || (backupKey && storage.getItem(backupKey) !== expectedCopies.backup))) return false;
   try {
     storage.setItem(primaryKey, text);
   } catch (error) {
@@ -145,7 +149,11 @@ export function writeStorageJsonWithBackup(primaryKey, backupKey, value, options
   if (autosaveStorageLimitedMarker?.key === primaryKey) setAutosaveStorageLimited(null);
   if (backupKey) {
     try {
+      // Leave the backup alone if either copy changed during this exit write.
+      if (expectedCopies !== undefined && (storage.getItem(primaryKey) !== text
+        || storage.getItem(backupKey) !== expectedCopies.backup)) return false;
       storage.setItem(backupKey, text);
+      onMirrored?.(text);
     } catch {
       // Primary write succeeded; the backup is best-effort.
     }
@@ -211,7 +219,9 @@ export function readRestorableProjectJson(primaryKey, backupKey, options = {}) {
       if (role === 'primary') primaryFailure = { reason: 'parse-error', raw };
       continue;
     }
-    if (!migrateProject(parsed)) {
+    let restorable;
+    try { restorable = migrateProject(parsed); } catch { restorable = null; }
+    if (!restorable) {
       if (!failure) failure = { reason: classifyUnrestorableProject(parsed), raw };
       if (role === 'primary') primaryFailure = { reason: classifyUnrestorableProject(parsed), raw };
       continue;

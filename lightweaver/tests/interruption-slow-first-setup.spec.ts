@@ -43,21 +43,31 @@ test('pairing a factory-blank card that answers in 5 s: it pairs, and Studio nev
   await practice.card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await startWordsLog(page);
-  const pair = page.getByRole('button', { name: 'Pair this card', exact: true });
+  const pair = page.getByRole('button', { name: 'Connect this card', exact: true });
   await expect(pair).toBeVisible({ timeout: STEP_MS });
   await startQuietWatch(page, '$^');
   await pair.click();
-  let pairedFirstTime = await expect.poll(() => linkState(page), { timeout: 60_000 }).toMatch(/^connected-/).then(() => true, () => false);
-  if (!pairedFirstTime) {
-    await page.getByRole('button', { name: 'Connect', exact: true }).first().click();
-    await expect.poll(() => linkState(page), { timeout: 60_000 }).toMatch(/^connected-/).catch(() => {});
-  }
+  await expect.configure({ soft: true }).poll(() => linkState(page), {
+    timeout: 60_000, message: 'Connect this card connects a slow card on the first press',
+  }).toMatch(/^connected-/);
   const quiet = await stopQuietWatch(page);
   const screen = await page.locator('body').innerText();
-  expect.soft(pairedFirstTime, 'Pair this card pairs a slow card on the first press').toBe(true);
-  expect.soft(await linkState(page), 'connected in the end').toMatch(/^connected-/);
   expect.soft(screen, 'no raw browser error text').not.toMatch(/signal is aborted|AbortError|Failed to fetch|TypeError/i);
   expect.soft(quiet.gapMs, `longest wait with nothing on screen began at: ${quiet.gapText}`).toBeLessThan(QUIET_LIMIT_MS);
+  const verified = await page.evaluate(async () => {
+    const { getActiveCardTransportAuthority } = await import('/src/lib/cardTransport.js');
+    const authority = getActiveCardTransportAuthority();
+    if (!authority) return null;
+    const status = await authority.request('/api/status');
+    return { host: authority.host, cardId: authority.cardId, bootId: authority.bootId, status };
+  });
+  expect(verified).toMatchObject({
+    cardId: practice.card.state.cardId,
+    status: { cardId: practice.card.state.cardId },
+  });
+  expect(verified?.bootId).toBe(practice.card.state.bootId);
+  expect(verified?.status.bootId).toBe(verified?.bootId);
+  expect(practice.card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
 });
 
 test('first setup after pairing, card answering in 5 s: every step finishes, the card holds the project, never silent for 3 s', async ({ page }) => {
@@ -75,7 +85,7 @@ test('first setup after pairing, card answering in 5 s: every step finishes, the
   const gaps: Gap[] = [];
   const t0 = Date.now();
 
-  const pair = page.getByRole('button', { name: 'Pair this card', exact: true });
+  const pair = page.getByRole('button', { name: 'Connect this card', exact: true });
   await expect(pair).toBeVisible({ timeout: STEP_MS });
   // Paired at the card's normal speed (pairing at 5 s is the test above), then slow from here on.
   await pair.click();

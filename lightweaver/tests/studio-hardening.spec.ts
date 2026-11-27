@@ -326,7 +326,7 @@ async function readBrowserFallbackStorage(page: any) {
 
 // The old standalone Settings and Installer rail entries were consolidated
 // into the Hardware workspace (Settings → Hardware > Preferences, Installer → Hardware >
-// Advanced & Support > GPIO & install guide). The legacy hash screens still
+// Support > GPIO & install guide). The legacy hash screens still
 // deep-link to the consolidated sections, so these navigation shims keep the
 // original assertions unchanged.
 async function openPreferences(page: any) {
@@ -852,7 +852,7 @@ test('reduced motion disables status and preview animation names', async ({ page
 
 test('installer signoff persists and exposes a ready state', async ({ page }) => {
   await page.locator('.rail-item', { hasText: 'Card' }).click();
-  await page.getByTestId('card-advanced-fold').locator('summary').click();
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).click();
   await page.getByRole('button', { name: 'GPIO & install guide' }).click();
   const checks = page.locator('.inst-signoff input[type="checkbox"]');
   await expect(checks).toHaveCount(6);
@@ -865,7 +865,7 @@ test('installer signoff persists and exposes a ready state', async ({ page }) =>
   await expect(page.getByTestId('installer-ready-summary')).toContainText(/card/i);
   await expect(page.getByTestId('installer-ready-summary')).toContainText(/physical/i);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'GPIO & install guide' }).click();
+  await expect(page).toHaveURL(/#screen=card&section=support&tool=guide$/);
   await expect(page.locator('.inst-signoff input[type="checkbox"]:checked')).toHaveCount(6);
   await expect(page.getByText('Ready to ship', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reset bench signoff' }).click();
@@ -952,11 +952,10 @@ test('Settings controls expose stable accessible names', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'Theme' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Remove palette color 1/i })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add palette color' })).toBeVisible();
-  // The designer config JSON now lives in Card > Advanced > Designer JSON.
+  // The designer config JSON now lives in Card > Support > Designer JSON.
   await page.locator('.rail-item', { hasText: 'Card' }).click();
-  await page.getByTestId('card-advanced-fold').locator('summary').click();
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).click();
   await page.getByRole('button', { name: 'Designer JSON' }).click();
-  await page.getByRole('button', { name: 'Show JSON' }).click();
   await expect(page.getByRole('textbox', { name: 'Designer config JSON' })).toBeVisible();
 
   const unlabeledInputs = await page.locator('.set input, .set textarea').evaluateAll(elements => elements
@@ -1121,7 +1120,7 @@ test('replacement dialog traps keyboard focus and restores its trigger', async (
 
 test('flash erase requires a final confirmation before starting', async ({ page }) => {
   await page.locator('.rail-item', { hasText: 'Card' }).click();
-  await page.getByTestId('card-advanced-fold').locator('summary').click();
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).click();
   await page.getByRole('button', { name: 'Technician firmware & logs' }).click();
   await page.getByRole('checkbox', { name: /Wipes the chip first/i }).check();
   await expect(page.getByText(/final confirmation/i)).toBeVisible();

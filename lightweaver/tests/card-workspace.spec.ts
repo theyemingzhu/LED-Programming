@@ -1455,16 +1455,16 @@ test('one Card rail destination owns the card and exposes ordinary section navig
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.locator('.rail').getByRole('button', { name: 'Card', exact: true }).click();
 
-  // The rail lands on Card Home — one page, Hardware and Advanced folded under it.
+  // The rail lands on Card Home with direct access to Card tools.
   await expect(page).toHaveURL(/#screen=card&section=setup$/);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
   await expect(page.locator('.card-section-tabs')).toHaveCount(0);
-  await expect(page.getByTestId('card-hardware-fold').locator('summary')).toHaveText('Hardware');
-  await expect(page.getByTestId('card-advanced-fold').locator('summary')).toHaveText('Advanced');
-  for (const label of ['Home', 'Hardware settings', 'Advanced & Support']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  const tools = page.getByRole('navigation', { name: 'Card tools' });
+  for (const label of ['Recovery', 'Hardware', 'Support']) {
+    await expect(tools.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
+  await expect(tools.locator('details')).toHaveCount(0);
   // Setup and Hardware were peer rail items asking the same questions. Neither
   // name survives as a second destination — there is one card entry now.
   for (const label of ['Flash', 'Installer', 'Production setup', 'Settings', 'Hardware', 'Setup']) {
@@ -1475,7 +1475,7 @@ test('one Card rail destination owns the card and exposes ordinary section navig
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Hardware' })).toBeVisible();
 });
 
 test('Hardware loads the verified production project that matches the paired card in one action', async ({ page }) => {
@@ -1836,15 +1836,13 @@ test('Card section navigation becomes one compact switcher on a 390px viewport',
 
   await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
   await expect(page.getByLabel('Hardware section')).toHaveCount(0);
-  const hardware = page.getByTestId('card-hardware-fold');
-  const summary = hardware.locator('summary');
-  await expect(summary).toBeVisible();
-  expect(await summary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(MIN_TAP);
+  const hardware = page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Hardware' });
+  await expect(hardware).toBeVisible();
+  expect(await hardware.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(MIN_TAP);
 
-  await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
+  await hardware.click();
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
-  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  await expect(hardware).toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeFocused();
   await expect(page.getByTestId('card-address-summary')).toBeVisible();
 
   const pageWidth = await page.evaluate(() => ({
@@ -1868,7 +1866,7 @@ test('disconnected Card Home names the state and offers the exact connect task o
   // the public start choice before the setup phases. Its Card action is the
   // single connect door.
   await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(0);
-  await page.getByRole('button', { name: /Card Set up this card/ }).click();
+  await page.getByTestId('public-worker-start').getByRole('button', { name: 'Set up this card', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible();
 });
 
@@ -2064,8 +2062,12 @@ test('Card overview flags the temporary bench discovery project and delegates to
   // The card is not presented as a commissioned project…
   await expect(page.getByTestId('card-detected-state')).not.toContainText('ready for light check');
   // …and discovery stays the one Setup journey's active task, right on Home.
-  await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');
-  await page.getByTestId('setup-lights-action').click();
+  const phase = page.getByTestId('setup-phase-lights');
+  await expect(phase).toHaveAttribute('aria-current', 'step');
+  const lights = page.getByRole('button', { name: 'Lights Not counted yet Open light setup', exact: true });
+  await lights.press('Enter');
+  await expect(phase.getByTestId('setup-lights-action')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#screen=discovery/);
 });
 
@@ -2092,7 +2094,7 @@ test('an unpaired card running the bench discovery project is flagged before pai
   // Pairing is Setup's connect task. A second "Detected state" that said
   // "tap Connect to pair" was another connect door on the same page.
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
-  await expect(page.getByTestId('setup-connect-card')).toHaveText('Pair this card', { timeout: 15000 });
+  await expect(page.getByTestId('setup-connect-card')).toHaveText('Connect this card', { timeout: 15000 });
 });
 
 test('a bench card offers Clear temporary setup and posts the confirmation token', async ({ page }) => {
@@ -2242,18 +2244,19 @@ test('ready overview offers Batch production as a low-emphasis link, not a setup
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Batch production is reached from the Advanced fold only; Home no longer
-  // carries a second, always-on door to it.
+  // Batch production is grouped under Support.
   await expect(page.getByTestId('card-batch-link')).toHaveCount(0);
-  await page.getByTestId('card-advanced-fold').locator('summary').click();
-  const batch = page.getByTestId('card-advanced-fold').getByRole('button', { name: 'Batch production', exact: true });
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).click();
+  const batch = page.getByRole('navigation', { name: 'Support tools' }).getByRole('button', { name: 'Batch production', exact: true });
   await expect(batch).not.toHaveClass(/primary/);
 
   await batch.click();
   await expect(page).toHaveURL(/#screen=card&section=workshop$/);
   await expect(page.getByRole('heading', { name: 'Batch production', level: 1 })).toBeVisible();
   await expect(page.getByText('Manufacturing mode', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Back to Hardware', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to Support', exact: true }).click();
+  await expect(page).toHaveURL(/#screen=card&section=support$/);
+  await page.getByRole('button', { name: 'Back to Card', exact: true }).click();
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 });
@@ -2335,7 +2338,7 @@ for (const cardState of [
 
     await expect(page.getByTestId('setup-identity-row')).toContainText(cardState.status);
     if (cardState.publicStart) {
-      await expect(page.getByRole('button', { name: new RegExp(`Card ${cardState.action}`) })).toBeVisible();
+      await expect(page.getByTestId('public-worker-start').getByRole('button', { name: cardState.action, exact: true })).toBeVisible();
     } else {
       const task = page.getByTestId('setup-active-task');
       await expect(task.getByRole('button', { name: cardState.action, exact: true })).toBeVisible();
@@ -2359,25 +2362,20 @@ test('top-bar Preferences opens the canonical Card preferences section', async (
 });
 
 for (const legacy of [
-  // Install, Preferences, and Batch production are full-body takeovers.
-  // Flash and installer land on Home with the Advanced fold open.
-  { hash: '#screen=flash&mode=install', fold: null, heading: 'Install Lightweaver' },
-  { hash: '#screen=flash', fold: 'card-advanced-fold', heading: 'Manual firmware tools' },
-  { hash: '#screen=installer', fold: 'card-advanced-fold', heading: 'Worker install' },
-  { hash: '#screen=production&job=moon-batch-7', fold: null, heading: 'Batch production' },
-  { hash: '#screen=settings', fold: null, heading: 'Preferences' },
+  { hash: '#screen=flash&mode=install', heading: 'Install Lightweaver' },
+  { hash: '#screen=flash', heading: 'Manual firmware tools' },
+  { hash: '#screen=installer', heading: 'Worker install' },
+  { hash: '#screen=production&job=moon-batch-7', heading: 'Batch production' },
+  { hash: '#screen=settings', heading: 'Preferences' },
   // The old Setup rail destination lands on the public-worker Card Home.
-  { hash: '#screen=setup', fold: null, heading: null },
+  { hash: '#screen=setup', heading: null },
 ]) {
-  test(`legacy ${legacy.hash} stays intact and opens ${legacy.fold || legacy.heading}`, async ({ page }) => {
+  test(`legacy ${legacy.hash} stays intact and opens ${legacy.heading || 'Card Home'}`, async ({ page }) => {
     await page.goto(`/${legacy.hash}`, { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(new RegExp(`${legacy.hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
     await expect(page.locator('.rail-item.active')).toHaveAccessibleName('Card');
     await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
-    if (legacy.fold) {
-      await expect(page.getByTestId(legacy.fold)).toHaveAttribute('open', '');
-    }
     if (legacy.heading) {
       await expect(page.getByRole('heading', { name: legacy.heading, exact: true }).first()).toBeVisible();
     } else {
@@ -2391,15 +2389,15 @@ for (const legacy of [
 }
 
 test('new section navigation emits canonical Card hashes and moves focus to the section heading', async ({ page }) => {
-  await page.goto('/#screen=flash', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('card-hardware-fold').locator('summary').click();
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Hardware' }).click();
 
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
   const heading = page.getByTestId('card-workspace-heading');
   await expect(heading).toBeFocused();
   expect(await heading.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
   expect(await heading.evaluate(element => Number.parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThan(0);
-  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
   await expect(page.getByText('Card connection', { exact: true })).toBeVisible();
 });
 
@@ -2427,7 +2425,6 @@ test('legacy technician path uses the Card heading as the only h1', async ({ pag
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Manual firmware tools', level: 2 })).toBeVisible();
 });
 
@@ -2436,7 +2433,6 @@ test('legacy installer guide path uses the Card heading as the only h1', async (
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Worker install', level: 2 })).toBeVisible();
 });
 
@@ -2466,23 +2462,23 @@ test('embedded unsupported workshop does not add a nested main landmark', async 
   await expect(page.locator('.prod-handoff')).toHaveJSProperty('tagName', 'SECTION');
 });
 
-test('Advanced & Support exposes its tools without a collapsed disclosure', async ({ page }) => {
+test('Support exposes its tools without a collapsed disclosure', async ({ page }) => {
   await page.goto('/#screen=card&section=support', { waitUntil: 'domcontentloaded' });
 
-  const fold = page.getByTestId('card-advanced-fold');
-  await expect(fold).toHaveAttribute('open', '');
+  const tools = page.getByRole('navigation', { name: 'Support tools' });
+  await expect(tools.locator('details')).toHaveCount(0);
   for (const label of ['Technician firmware & logs', 'GPIO & install guide', 'Designer JSON', 'Recovery', 'Batch production']) {
-    await expect(fold.getByRole('button', { name: label, exact: true })).toBeVisible();
+    await expect(tools.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
-  await fold.getByRole('button', { name: 'Technician firmware & logs' }).click();
+  await tools.getByRole('button', { name: 'Technician firmware & logs' }).click();
   await expect(page.getByRole('heading', { name: 'Manual firmware tools' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Flash firmware' })).toBeVisible();
 });
 
-test('Advanced & Support Batch production tile navigates to the batch surface', async ({ page }) => {
+test('Support Batch production tile navigates to the batch surface', async ({ page }) => {
   await page.goto('/#screen=card&section=support', { waitUntil: 'domcontentloaded' });
 
-  const tile = page.locator('.card-support-grid').getByRole('button', { name: 'Batch production', exact: true });
+  const tile = page.getByRole('navigation', { name: 'Support tools' }).getByRole('button', { name: 'Batch production', exact: true });
   await expect(tile).toBeVisible();
   // It navigates rather than toggling a local support tool.
   expect(await tile.getAttribute('aria-pressed')).toBeNull();
@@ -2495,7 +2491,7 @@ test('an active firmware install keeps rail navigation locked to install', async
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('lw-install-active', { detail: { active: true } })));
-  await expect(page.getByTestId('card-hardware-fold')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Card tools' })).toHaveCount(0);
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
@@ -2515,14 +2511,13 @@ test('an active firmware install rejects direct hash mutation without changing v
 
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Advanced & Support' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Support', level: 1 })).toHaveCount(0);
 });
 
 test('an active firmware install rejects browser Back without changing visible content', async ({ page }) => {
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  // Section clicks replace history, so push a real Back entry by mutating the
-  // hash directly — the same way an external link or bookmark would.
+  // Push a Back entry for Install by writing the hash as an external link would.
   await page.evaluate(() => { window.location.hash = 'screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
@@ -2587,16 +2582,20 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     const upstream = await page.request.fetch(`http://localhost:${testPort}${requested.pathname}${requested.search}`);
     await route.fulfill({ response: upstream });
   });
+  await page.clock.install();
   await page.goto('https://led.mandalacodes.com/#screen=card&section=overview', {
     waitUntil: 'domcontentloaded',
   });
 
-  const result = await page.evaluate(async () => {
+  const setup = await page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
     const handoff = await import('/src/lib/cardWifiHandoff.js');
     const cardLink = await import('/src/lib/cardLink.js');
     const commissioning = await import('/src/lib/cardCommissioningFlow.js');
     const cardPushClient = await import('/src/lib/cardPushClient.js');
+    // Attach the production link observer before the fixture emits navigation,
+    // just as an open Studio page observes an actual card page.
+    cardLink.getSharedCardLink();
 
     const priorCard = {
       version: 1,
@@ -2777,15 +2776,9 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     const hostBeforeFinal = localStorage.getItem('lw_chip_card_host');
     emitReady();
 
-    const deadline = Date.now() + 7000;
-    while (Date.now() < deadline && !cardLink.getCardLinkState().handoffStationVerified) {
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    const linkAfterFinal = cardLink.getCardLinkState();
-    const bridgeAfterFinal = bridge.getCardBridgeState();
     (window as any).__blankProductionPath = {
       messageTypes, flowId, replacementFlowId, correlation,
-      expectedFreshEvidence: structuredClone(status),
+      readFreshEvidence: () => structuredClone(status),
       capturedPush: null,
     };
     (window as any).__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ = async (
@@ -2796,17 +2789,32 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
       return cardPushClient.pushConfigToCard(runtimePackage, options);
     };
 
+    return { hostBeforeFinal, ackTimeoutMs: cardLink.CARD_LINK_PING_TIMEOUT_MS };
+  });
+
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).__blankProductionPath.messageTypes.filter((type: string) => type === 'wifi-handoff-ack').length,
+  )).toBe(1);
+  // The fixture drops the acknowledgement reply and reloads the same card
+  // page. Drive the real ACK timeout and the subsequent half-second status
+  // check without racing a wall-clock deadline on a loaded runner.
+  await page.clock.runFor(setup.ackTimeoutMs + 1_000);
+  const result = await page.evaluate(async hostBeforeFinal => {
+    const bridge = await import('/src/lib/cardBridge.js');
+    const cardLink = await import('/src/lib/cardLink.js');
+    const fixture = (window as any).__blankProductionPath;
+    fixture.expectedFreshEvidence = fixture.readFreshEvidence();
     return {
       protocol: location.protocol,
       hostBeforeFinal,
       persistedHost: localStorage.getItem('lw_chip_card_host'),
       priorIdentity: JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null'),
-      linkAfterFinal,
-      bridgeAfterFinal,
-      ackCount: messageTypes.filter(type => type === 'wifi-handoff-ack').length,
-      statusCount: messageTypes.filter(type => type === 'status').length,
+      linkAfterFinal: cardLink.getCardLinkState(),
+      bridgeAfterFinal: bridge.getCardBridgeState(),
+      ackCount: fixture.messageTypes.filter((type: string) => type === 'wifi-handoff-ack').length,
+      statusCount: fixture.messageTypes.filter((type: string) => type === 'status').length,
     };
-  });
+  }, setup.hostBeforeFinal);
 
   expect(result.protocol).toBe('https:');
   expect(result.hostBeforeFinal).toBe('192.168.4.1');

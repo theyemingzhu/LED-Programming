@@ -6,8 +6,7 @@
    panels and thin outlines on top, machined modules below. This
    carries the same vocabulary across the rest of the Card page —
    the identity strip, the phase ladder, the evidence panels, the
-   support tiles and the section folds — so the whole screen reads
-   as one instrument.
+   and support pages.
 
    Scoped to .card-workspace-screen. Tokens only, so Daylight
    keeps working; the one fixed value is the dark ink that sits on
@@ -15,6 +14,7 @@
    ============================================================ */
 
 .card-workspace-screen {
+  --card-tools-gap: 8px;
   --lw-live: var(--layer-1);
   --lw-live-ink: var(--layer-1);
   --lw-on-live: oklch(0.185 0.030 68);
@@ -108,44 +108,6 @@
 .card-workspace-screen .lw-setup-phase-head h2 { letter-spacing: -0.012em; }
 .card-workspace-screen .lw-setup-phase-head p { font-size: 12.5px; color: var(--text-lo); }
 
-/* ── section folds: a module header bar with a status light ─ */
-
-.card-workspace-screen .card-page-fold {
-  border-radius: var(--r-lg);
-  border-color: var(--border-soft);
-  box-shadow: var(--lw-mod);
-  overflow: hidden;
-}
-.card-workspace-screen .card-page-fold > summary {
-  min-height: 48px;
-  padding: 0 18px;
-  gap: 11px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid transparent;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-.card-workspace-screen .card-page-fold[open] > summary { border-bottom-color: var(--border-soft); }
-/* the caret becomes a status light, so a fold reads like every other module */
-.card-workspace-screen .card-page-fold > summary::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--idle);
-  transition: background .12s, box-shadow .12s;
-}
-.card-workspace-screen .card-page-fold[open] > summary::before {
-  content: "";
-  background: var(--lw-live-ink);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
-}
-.card-workspace-screen .card-page-fold > summary:hover { background: var(--bg-elev-2); }
-.card-workspace-screen .card-page-fold-body { padding: 16px 18px 20px; }
-
 /* ── check & install: its own module, not loose text ─────── */
 /* .lww-flow is shared with the Wire screen, so this stays scoped to the Card
    page — Wire keeps its own presentation. */
@@ -183,33 +145,21 @@
 }
 .card-workspace-screen .lww-flow-message { font-size: 12.5px; color: var(--text-lo); }
 
-/* ── the folds get room to be a control panel ────────────── */
-/* The setup journey is held to a 720px reading column on purpose — it is a
-   sequence of prose steps. The Hardware and Advanced folds are not prose;
-   they hold the instrument. Capped at 720 the Settings modules can only ever
-   stack in one column, which is why the panel read as a narrow strip. Give
-   the folds the page's full column so they can lay out in two. */
-.card-workspace-screen .card-workspace-body.lw-setup-body > .card-page-fold,
 .card-workspace-screen .card-workspace-body.lw-setup-body > .lw-setup-journey,
 .card-workspace-screen .card-workspace-body.lw-setup-body > .card-workspace-header,
+.card-workspace-screen .card-workspace-body.lw-setup-body > .card-tools-nav,
 .card-workspace-screen .card-workspace-body.lw-setup-body > .card-overview,
 .card-workspace-screen .card-workspace-body.lw-setup-body > .lww-flow {
   width: min(1180px, 100%);
 }
 
-/* ── evidence panels + support tiles ─────────────────────── */
+/* ── evidence panels ────────────────────────────────────── */
 
 .card-workspace-screen .card-overview-state,
-.card-workspace-screen .card-support-panel,
-.card-workspace-screen .card-support-grid > button {
+.card-workspace-screen .card-support-panel {
   border-radius: var(--r-lg);
   border-color: var(--border-soft);
   box-shadow: var(--lw-mod);
-}
-.card-workspace-screen .card-support-grid > button:hover,
-.card-workspace-screen .card-support-grid > button.selected {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
 }
 .card-workspace-screen .card-overview-signal.connected,
 .card-workspace-screen .card-overview-signal.connecting { box-shadow: 0 0 12px currentColor; }
@@ -255,7 +205,7 @@
 .card-workspace-screen .set .btn { box-shadow: var(--lw-raise), var(--lw-lift); }
 
 /* ── Card Home as modules: status, still to do, facts ────────
-   The same vocabulary as the Hardware fold's SettingsScreen (set-card):
+   The same vocabulary as Hardware settings (set-card):
    a header bar that carries the LED and a mono kicker, rows with the label
    left and the control right, readouts in an inset well. Declared here,
    not shared with .set, so Card Home's rows do not inherit the settings
@@ -534,7 +484,7 @@
   .card-workspace-screen .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
 }
 
-/* ── Checks & recovery: the same fold vocabulary as Hardware / Advanced ── */
+/* ── Checks & recovery ── */
 .card-workspace-screen .card-checks-panel { display: block; padding: 0; overflow: hidden; }
 .card-workspace-screen .card-checks-panel > .card-overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-workspace-screen .card-checks-panel > summary {
@@ -746,17 +696,6 @@
 }
 .card-workspace-screen .lw-fact-checks > .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
 
-/* two folds on one row; an open one takes the row */
-.card-workspace-screen .card-folds {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  width: min(1180px, 100%);
-  margin-top: 16px;
-}
-.card-workspace-screen .card-folds > .card-page-fold { width: 100%; margin: 0; }
-.card-workspace-screen .card-folds > .card-page-fold[open] { grid-column: 1 / -1; }
-.card-workspace-screen .card-workspace-body.lw-setup-body > .card-folds { width: min(1180px, 100%); }
 .card-workspace-screen .card-overview { margin-top: 0; }
 .card-workspace-screen .card-overview > .lw-mod { margin-top: 16px; }
 
@@ -765,7 +704,6 @@
   .card-workspace-screen .lw-setup-doors { border-left: 0; border-top: 1px solid var(--border-soft); max-width: none; }
   .card-workspace-screen .lw-facts-grid { grid-template-columns: minmax(0, 1fr); }
   .card-workspace-screen .lw-facts-col:first-child { border-right: 0; border-bottom: 1px solid var(--border-soft); }
-  .card-workspace-screen .card-folds { grid-template-columns: minmax(0, 1fr); }
 }
 
 .card-workspace-screen .lw-mod-todo .lw-setup-phase { align-items: start; }

@@ -762,6 +762,22 @@ function Shell({ offlineUpdateController = null }) {
   const cardRoute = useMemo(() => cardRouteFromHash(routeHash), [routeHash]);
   const cardSetupReturnHashRef = useRef('#screen=layout');
   const cardSetupHashRef = useRef('#screen=discovery');
+  const cardSetupOpenerRef = useRef(null);
+  const takeCardSetupOpener = useCallback(hash => {
+    const opener = cardSetupOpenerRef.current;
+    cardSetupOpenerRef.current = null;
+    return opener?.href === hash ? opener : null;
+  }, []);
+  const rememberCardSetupOpener = event => {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const origin = event.target.closest('a[href^="#screen=discovery"]');
+    if (!origin) return;
+    cardSetupOpenerRef.current = {
+      origin,
+      href: origin.getAttribute('href'),
+      context: origin.closest('[data-testid="fact-outputs"], main'),
+    };
+  };
   // A minimized light check remains mounted while the owner visits another
   // Studio screen. Its in-memory counting and card lease must not restart.
   const [cardSetupPersistent, setCardSetupPersistent] = useState(false);
@@ -1073,27 +1089,43 @@ function Shell({ offlineUpdateController = null }) {
     window.addEventListener('lw-install-active', onInstallActive);
     return () => window.removeEventListener('lw-install-active', onInstallActive);
   }, []);
-  const openCardSection = useCallback((section = DEFAULT_CARD_SECTION) => {
+  const openCardSection = useCallback((section = DEFAULT_CARD_SECTION, { tool, keepBack = false } = {}) => {
     if (installActiveRef.current) return;
-    markCardSectionNavigation();
-    flushProjectAutosave();
-    const params = new URLSearchParams(routeStore.read().slice(1));
+    // The rail can select the Card route already on screen. Record the
+    // choice even when there is no URL change for the resume effect to see.
+    resumeUserNavigated.current = true;
+    const currentHash = routeStore.read();
+    const params = new URLSearchParams(currentHash.slice(1));
+    const fromOtherScreen = studioViewFromHash(currentHash, viewOptions()) !== 'card';
     params.set('screen', 'card');
     params.set('section', isCardSection(section) ? section : DEFAULT_CARD_SECTION);
     params.delete('mode');
     params.delete('task');
     params.delete('intent');
-    // Arriving on Card from another screen is a step Back returns from;
-    // moving between Card sections replaces (simpler-journeys G2).
-    const fromOtherScreen = new URLSearchParams(routeStore.read().slice(1)).get('screen') !== 'card';
-    if (fromOtherScreen) routeStore.push(`#${params.toString()}`);
-    else routeStore.replace(`#${params.toString()}`);
+    params.delete('tool');
+    if (tool) params.set('tool', tool);
+    const nextHash = `#${params.toString()}`;
+    flushProjectAutosave();
+    if (currentHash === nextHash) return;
+    markCardSectionNavigation();
+    if (keepBack) routeStore.push(nextHash, { cardToolFrom: currentHash });
+    else if (fromOtherScreen) routeStore.push(nextHash);
+    else routeStore.replace(nextHash);
   }, [flushProjectAutosave, routeStore]);
+  const returnFromCardTool = useCallback((fallbackSection) => {
+    if (installActiveRef.current) return;
+    if (window.history.state?.cardToolFrom) {
+      flushProjectAutosave();
+      window.history.back();
+    } else {
+      openCardSection(fallbackSection);
+    }
+  }, [flushProjectAutosave, openCardSection]);
   const navigateStudio = useCallback((nextView) => {
     if (installActiveRef.current) return;
     const requested = String(nextView || '').toLowerCase();
-    if (requested === 'flash') { openCardSection('support'); return; }
-    if (requested === 'installer') { openCardSection('support'); return; }
+    if (requested === 'flash') { openCardSection('support', { tool: 'technician' }); return; }
+    if (requested === 'installer') { openCardSection('support', { tool: 'guide' }); return; }
     if (requested === 'production') { openCardSection('workshop'); return; }
     if (requested === 'settings') { openCardSection('preferences'); return; }
     if (requested === 'setup') { openCardSection('setup'); return; }
@@ -1107,6 +1139,21 @@ function Shell({ offlineUpdateController = null }) {
     if (studioViewFromHash(routeStore.read(), viewOptions()) === 'discovery') {
       routeStore.replace(cardSetupReturnHashRef.current || '#screen=layout');
     }
+  }, [routeStore]);
+
+  // A direct replacement URL is the entrance to one check. Once consumed,
+  // keep the current discovery screen and its Back entry, but clear the
+  // old pin so reloading opens the card's current configured outputs.
+  const clearCardSetupReplacement = useCallback(() => {
+    const current = new URLSearchParams(routeStore.read().slice(1));
+    const onDiscovery = current.get('screen') === 'discovery';
+    const params = onDiscovery ? current : new URLSearchParams(cardSetupHashRef.current.slice(1));
+    if (!params.has('replace')) return;
+    params.delete('replace');
+    params.delete('pin');
+    const next = `#${params.toString()}`;
+    cardSetupHashRef.current = next;
+    if (onDiscovery) routeStore.replace(next);
   }, [routeStore]);
 
   const completeCardSetup = useCallback(() => {
@@ -1479,10 +1526,14 @@ function Shell({ offlineUpdateController = null }) {
   // verified command-ready link OR a lifecycle already past the connection
   // question (ready, or confirming — a verified transport whose remaining
   // evidence is not the Connect panel's job).
-  const cardLinkEstablished = connected
+  const bridgeStatusConfirmed = cardLink.transport !== 'bridge'
+    || (Boolean(cardLink.validatedBootId)
+      && cardLink.readiness?.bootId === cardLink.validatedBootId
+      && cardLink.readiness?.cardId === cardLink.card?.id);
+  const cardLinkEstablished = bridgeStatusConfirmed && (connected
     || (isCardTransportConnected(cardLink) && cardLink?.cardBlank === true)
     || cardLifecycle?.state === 'ready'
-    || cardLifecycle?.state === 'confirming';
+    || cardLifecycle?.state === 'confirming');
   const cardLinkEstablishedRef = useRef(cardLinkEstablished);
   cardLinkEstablishedRef.current = cardLinkEstablished;
   const connectCloseArmedRef = useRef(false);
@@ -1701,6 +1752,10 @@ function Shell({ offlineUpdateController = null }) {
     // Another window changed the card since this browser saved it: that is
     // the stale-save conflict, owned by the save banner, never a footer write.
     && !cardChangedSinceSeen(projectLifecycle.installation, cardLink.readiness);
+  const openInstalledCardControl = useCallback(() => {
+    setConnectionCenterOpen(false);
+    setCardControlOpen(true);
+  }, []);
   const openCardControl = useCallback(() => {
     // Ready → direct card controls. Length drift → length-only write.
     // Needs attention / Needs project → guided Setup. Everything else
@@ -1735,7 +1790,7 @@ function Shell({ offlineUpdateController = null }) {
       );
       return;
     }
-    if (surface === 'card-control') setCardControlOpen(true);
+    if (surface === 'card-control') openInstalledCardControl();
     else if (surface === 'setup' || commissioningShouldSuppressConnectOverlay(inspectCardCommissioning().flow)) {
       setCardControlOpen(false);
       setConnectionCenterOpen(false);
@@ -1744,7 +1799,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, cardLink, flushProjectAutosave, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
+  }, [cardLifecycle, cardLink, flushProjectAutosave, openInstalledCardControl, openSetupTask, ownEditPending, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -2553,18 +2608,16 @@ function Shell({ offlineUpdateController = null }) {
         openMatchingCardProject: cloudLibrary.openMatchingCardProject,
         onMatchedProjectLoaded: onMatchedCardProjectLoaded,
         onMatchedProjectVerified: onMatchedCardProjectVerified,
-        openCardControl,
+        openInstalledCardControl,
         cardLifecycle,
         saveProjectToCard,
       }}
     >
-    <div className="app">
+    <div className="app" onClickCapture={rememberCardSetupOpener}>
       <TopBar
         projectName={projectName || 'Untitled'}
-        // Card Home (setup / overview / settings / support) names and renames the
-        // project in its own status row. Preferences, install and workshop are
-        // takeovers with no such row, so the crumb stays there.
-        showProject={!(underlyingView === 'card' && ['setup', 'overview', 'settings', 'support'].includes(underlyingCardRoute?.section))}
+        // Card Home already displays the project name in its status row.
+        showProject={!(underlyingView === 'card' && ['setup', 'overview'].includes(underlyingCardRoute?.section))}
         lifecycleLabel={projectHeaderLifecycleLabel}
         hasUnsavedChanges={projectHasUnsavedChanges}
         onRenameProject={setProjectName}
@@ -2595,6 +2648,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenProjects={onLoad}
               go={navigateStudio}
               onOpenSection={openCardSection}
+              onReturnFromTool={returnFromCardTool}
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
               pendingInstallationVerification={pendingInstallationVerification}
@@ -2637,6 +2691,7 @@ function Shell({ offlineUpdateController = null }) {
             cardHost={cardLink.host || cardStatus.host}
             cardLink={cardLink}
             discoveryHash={view === 'discovery' ? routeHash : cardSetupHashRef.current}
+            takeOpener={takeCardSetupOpener}
             go={next => {
               // A discovery completion explicitly leaves this flow. The rail
               // still uses navigateStudio so an idle dock can follow the owner.
@@ -2647,6 +2702,7 @@ function Shell({ offlineUpdateController = null }) {
             onDisconnect={disconnectCardSetup}
             onComplete={completeCardSetup}
             onSaveToCard={saveCardSetupToCard}
+            onReplacementSettled={clearCardSetupReplacement}
             onMinimizedChange={next => {
               if (next) {
                 setCardSetupPersistent(true);

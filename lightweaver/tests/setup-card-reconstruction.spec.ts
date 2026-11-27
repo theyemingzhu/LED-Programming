@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test('card reconstruction preserves installed playlist and startup look', async ({ page }) => {
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
@@ -106,9 +106,13 @@ async function dispatchCardLink(page, events) {
   }, events);
 }
 
-test('a card project reconstructed via "Use this card\'s project" shows the partial-copy label in Projects', async ({ page }) => {
-  const status = legacyReconstructStatus();
+async function exerciseInstalledProjectReconstruction(page: Page, looksReadable: boolean) {
+  const status = legacyReconstructStatus({ lookCount: 2 });
+  const cardRequests: string[] = [];
+  let cardOnline = true;
   await page.route('http://lightweaver.local/**', route => {
+    cardRequests.push(route.request().method());
+    if (!cardOnline) return route.abort('connectionrefused');
     const url = new URL(route.request().url());
     if (url.pathname === '/api/status' || url.pathname === '/api/firmware-info') {
       return route.fulfill({
@@ -120,9 +124,17 @@ test('a card project reconstructed via "Use this card\'s project" shows the part
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, state: 'known-good', hasCandidate: false, outputs: status.outputs }) });
     }
-    // Patterns/zones readback 404s — a reconstruction must still happen from
-    // the status skeleton alone, exactly as reconstructInstalledCardState's
-    // `patterns`/`zones` null-tolerant path assumes.
+    if (url.pathname === '/api/patterns' && looksReadable) {
+      return route.fulfill({ json: {
+        currentId: 'fire', currentIndex: 1,
+        patterns: [
+          { id: 'aurora', label: 'Aurora', mode: 'procedural', zones: [{ id: 'strip-1', label: 'Output 1', patternId: 'aurora' }] },
+          { id: 'fire', label: 'Fire', mode: 'procedural', zones: [{ id: 'strip-1', label: 'Output 1', patternId: 'fire' }] },
+        ],
+      } });
+    }
+    // Older cards can lack the optional zones endpoint. A missing look list
+    // is different: opening it could drop installed looks on the next save.
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
   });
   await page.addInitScript(({ cardId, firmwareVersion, buildId }) => {
@@ -131,15 +143,8 @@ test('a card project reconstructed via "Use this card\'s project" shows the part
   }, status);
 
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
-  // Open a DIFFERENT, non-starter project first so neither auto-adoption path
-  // fires on its own (lw-setup.jsx's "adopt wiring from card" skeleton-only
-  // shortcut and the "adopt by default" effect both require the open project
-  // to be the card's own project or an untouched starter — see their shared
-  // `openIsSameProject`/`openIsUntouched` guards). That forces the owner-driven
-  // "Use this card's project" button, which alone runs the real 'reconstruct'
-  // strategy (lib/cardProjectAdoption.js's runReconstructStrategy) through
-  // `reconstructInstalledCardState` — the skeleton-only shortcut never sets
-  // `origin` and is out of this ticket's scope.
+  // Use a distinct draft so the test exercises the owner's explicit adoption
+  // action and verifies that switching preserves the previous work.
   await page.evaluate(async () => {
     const { createDefaultProject } = await import('/src/lib/projectModel.js');
     const project = createDefaultProject();
@@ -157,13 +162,54 @@ test('a card project reconstructed via "Use this card\'s project" shows the part
     readiness: status,
   }]);
 
-  await expect(page.getByTestId('installed-project-open')).toBeVisible({ timeout: 10000 });
-  await page.getByTestId('installed-project-open').click();
-  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 10000 });
+  const adopt = page.getByRole('button', { name: 'Open installed project', exact: true });
+  await expect(adopt).toBeVisible({ timeout: 10000 });
+  await adopt.click();
 
+  if (!looksReadable) {
+    await expect(page.getByRole('alert').filter({ hasText: 'Studio could not read every look on this card' })).toBeVisible();
+    await expect(page.getByTestId('card-draft-difference')).toContainText('My other piece');
+    await expect(adopt).toBeEnabled();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id))
+      .toBe('my-other-piece');
+    expect(cardRequests.every(method => method === 'GET')).toBe(true);
+    return;
+  }
+
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const library = JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}');
+    return {
+      id: project.id,
+      origin: project.origin,
+      looks: project.devices?.standaloneController?.looks?.map(look => look.label),
+      previousDraftSaved: library.records?.some(record => record.project?.id === 'my-other-piece'),
+    };
+  })).toMatchObject({
+    id: PROJECT_ID,
+    origin: { kind: 'card-partial', cardId: CARD_ID, at: expect.any(Number) },
+    looks: ['Aurora', 'Fire'],
+    previousDraftSaved: true,
+  });
   await page.getByTestId('topbar-projects').click();
   await expect(page.getByTestId('projects-panel')).toBeVisible();
   await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
+
+  cardOnline = false;
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('project-name-edit')).toHaveText('Reconstructed piece');
+  await page.getByTestId('topbar-projects').click();
+  await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
+  expect(cardRequests.every(method => method === 'GET')).toBe(true);
+}
+
+test('Open installed project saves a partial copy whose label survives an offline reload', async ({ page }) => {
+  await exerciseInstalledProjectReconstruction(page, true);
+});
+
+test('Open installed project preserves the draft when the installed look list cannot be read', async ({ page }) => {
+  await exerciseInstalledProjectReconstruction(page, false);
 });
 
 test('delayed reconstruction keeps a newer project edit and remains retryable', async ({ page }) => {

@@ -6,7 +6,7 @@ import { compileWiring } from './wiringCompiler.js';
 import { bakeSceneExpressionFlow } from './sceneExpressionRecording.js';
 import { createRecordedSequenceAsset, applyRecordedSequenceAsset, verifyStoredSequenceAsset } from './recordedSequenceAsset.js';
 import { assertRecordedMediaCurrentLayout, installRecordedMediaForRuntimePackage } from './cardRecordedMedia.js';
-import { makePortableProject, importPortableProjectMedia } from './projectTransfer.js';
+import { makePortableProject, importPortableProjectMedia, importProjectFromPickedFile } from './projectTransfer.js';
 import { syncRuntimePackageToCard } from './cardSectionSync.js';
 import { normalizeCardPlaylist, makeSequencePlaylistItem } from './cardPlaylist.js';
 import { bakePatternLabRecipe } from './lwseqBake.js';
@@ -15,9 +15,9 @@ import { createPatternLabHandoff, applyPatternLabHandoff } from './patternLabHan
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
 import { assertLwseqOutputTopology, toLwseqBytes } from './standaloneController.js';
-import { deleteRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
+import { deleteRecordedMedia, readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { createCloudLibraryClient } from './cloudLibraryClient.js';
-import { migrateProject } from './projectModel.js';
+import { createDefaultProject, migrateProject } from './projectModel.js';
 import { createAccountStore, createMemoryAccountRepository } from '../../functions/api/library/_shared/accountStore.js';
 import { createMemoryLibraryStore } from '../../functions/api/library/_shared/memoryStore.js';
 import { handleLibraryRequest } from '../../functions/api/library/_shared/router.js';
@@ -206,6 +206,26 @@ test('portable project backup contains exact media and restores its SHA-verified
   assert.equal(restored.devices.standaloneController.sequenceAssets[0].portableMedia, undefined);
   assert.deepEqual(await verifyStoredSequenceAsset(restored.devices.standaloneController.sequenceAssets[0]),
     await verifyStoredSequenceAsset(next.sequenceAssets[0]));
+});
+
+test('a corrupt portable bundle writes no earlier valid recording', async () => {
+  const { next } = await recorded('portable-validation-before-write');
+  const project = createDefaultProject();
+  project.devices.standaloneController = next;
+  const backup = await makePortableProject(project);
+  const assets = backup.devices.standaloneController.sequenceAssets;
+  const valid = assets[0];
+  const bad = structuredClone(valid);
+  bad.portableMedia.data = `${bad.portableMedia.data.slice(0, -4)}AAAA`;
+  assets.push(bad);
+  const hash = valid.portableMedia.sha256;
+  await deleteRecordedMedia(hash);
+  await assert.rejects(() => importProjectFromPickedFile({}, {
+    readProjectFile: async (_file, onRead) => onRead(backup),
+    replaceProject: () => assert.fail('corrupt recordings must not replace the project'),
+    clearBrowserAssociation: () => assert.fail('corrupt recordings must not detach the active record'),
+  }), /SHA-256|invalid|incomplete/i);
+  await assert.rejects(() => readRecordedMedia(hash), { code: 'recorded_media_missing' });
 });
 
 test('an assigned buyer opens the owner’s artwork and verified recording without the owner’s browser storage', async () => {

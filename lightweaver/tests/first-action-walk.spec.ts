@@ -7,13 +7,8 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
-import {
-  cardState,
-  MATRIX_CARD_ID,
-  MATRIX_BUILD_ID,
-  MATRIX_FIRMWARE_VERSION,
-  type CardStateSpec,
-} from './harness/cardStates';
+import { cardState, MATRIX_CARD_ID } from './harness/cardStates';
+import { bootSetUp } from './ux/journeySeed';
 
 const CONNECT_BUDGET_MS = 15000;
 const CONNECTED = /^connected-(direct|bridge)$/;
@@ -108,68 +103,34 @@ function expectOneFirstAction(report: FirstActionReport, allowed: RegExp, note: 
   expect(report.firstButton, `${report.step}: ${note} — first button must be that same action`).toMatch(allowed);
 }
 
-async function connectIfNeeded(page: Page, note: string) {
-  if (CONNECTED.test(await linkState(page))) return;
-  const find = page.getByTestId('setup-connect-card');
-  if (await find.count()) await find.click();
+async function pairFromSetup(page: Page, note: string) {
+  const pair = page.getByTestId('setup-connect-card');
+  await expect(pair).toHaveText('Connect this card', { timeout: CONNECT_BUDGET_MS });
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
+  await pair.click();
   await waitConnectedUnaided(page, note);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id))
+    .toBe(MATRIX_CARD_ID);
 }
 
-async function seedKnownCard(page: Page, spec: CardStateSpec) {
-  await page.addInitScript(({ id, firmwareVersion, buildId }) => {
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
-    localStorage.setItem('lw_card_host', 'lightweaver.local');
-    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
-  }, { id: MATRIX_CARD_ID, firmwareVersion: spec.firmwareVersion, buildId: spec.buildId });
-}
+async function expectInstalledPlayback(page: Page, card: CardSimulator) {
+  const previousPattern = card.playingId();
+  const targetPattern = card.state.patterns.find(pattern => pattern.id !== previousPattern)!;
+  const writesBefore = card.requests.filter(request => request.method === 'POST').length;
+  await page.getByRole('button', { name: 'Control installed project', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: / controls$/ });
+  const pattern = drawer.getByRole('combobox', { name: 'Pattern', exact: true });
+  await expect(pattern).toBeEnabled();
+  await expect(pattern).toHaveValue(previousPattern);
+  expect(card.requests.filter(request => request.method === 'POST')).toHaveLength(writesBefore);
 
-async function seedCompleteProject(page: Page, spec: CardStateSpec) {
-  await page.addInitScript(({ id, firmwareVersion, buildId, project }) => {
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
-    localStorage.setItem('lw_card_host', 'lightweaver.local');
-    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
-    localStorage.setItem('lw_autosave_v3', JSON.stringify({
-      version: 3,
-      id: project.projectId,
-      name: 'Matrix piece',
-      layout: {
-        starterPending: false,
-        strips: [{ id: 'strip-1', pixels: project.pixels, pin: project.pin }],
-        wiring: {
-          verified: true,
-          runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
-        },
-      },
-      portRoles: [{ port: 'out1', role: 'strip', pin: project.pin, pixelCount: project.pixels }],
-      devices: {
-        standaloneController: {
-          led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
-        },
-      },
-    }));
-    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
-      version: 2,
-      dirty: false,
-      persistedDestination: null,
-      installation: {
-        cardId: id,
-        projectRevision: project.projectRevision,
-        projectFingerprint: project.projectFingerprint,
-        studioFingerprint: project.projectFingerprint,
-      },
-    }));
-  }, {
-    id: MATRIX_CARD_ID,
-    firmwareVersion: MATRIX_FIRMWARE_VERSION,
-    buildId: MATRIX_BUILD_ID,
-    project: {
-      projectId: spec.projectId,
-      projectRevision: spec.projectRevision,
-      projectFingerprint: spec.projectFingerprint,
-      pixels: spec.pixels,
-      pin: spec.pin,
-    },
-  });
+  await pattern.selectOption(targetPattern.id);
+  await card.waitForPlaying(targetPattern.id, 8000);
+  await expect(pattern).toHaveValue(targetPattern.id);
+  expect(card.requests.filter(request => request.method === 'POST').slice(writesBefore).map(request => request.path))
+    .toEqual(['/api/control']);
+  await drawer.getByRole('button', { name: 'Close card controls' }).click();
+  await expect(drawer).toBeHidden();
 }
 
 async function dispatchCardLinkEvents(page: Page, events: Record<string, unknown>[]) {
@@ -187,7 +148,13 @@ test('[FA-unplugged] no card answering: Find my card is first', async ({ page })
   await expect(page.getByTestId('setup-connect-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   const report = await captureStep(page, 'fa-unplugged');
   expect(report.heading).toMatch(/start lightweaver|set up your lightweaver/i);
-  expectOneFirstAction(report, /set up this card|plug in and find card|find my card/i, 'unplugged');
+  expectOneFirstAction(report, /^Set up this card$/, 'unplugged');
+  await expect(page.getByTestId('board-setup-connect')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Board Manager', exact: true })).toBeVisible();
+  await page.getByRole('group', { name: 'Start', exact: true }).getByRole('button', { name: 'Set up this card', exact: true }).click();
+  const installer = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(installer.getByTestId('installer-setup-progress')).toBeVisible();
+  await expect(installer.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
 });
 
 test('[FA-plugged-blank] a plugged-in empty card offers one-tap pairing before find the lights', async ({ page }) => {
@@ -195,18 +162,20 @@ test('[FA-plugged-blank] a plugged-in empty card offers one-tap pairing before f
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-connect-card')).toHaveText(/pair this card/i, {
+  await expect(page.getByTestId('setup-connect-card')).toHaveText(/connect this card/i, {
     timeout: CONNECT_BUDGET_MS,
   });
   const firstPaint = await captureStep(page, 'fa-plugged-blank-first');
-  expectOneFirstAction(firstPaint, /pair this card/i, 'plugged-in unpaired card');
+  expectOneFirstAction(firstPaint, /connect this card/i, 'plugged-in unpaired card');
 
-  await connectIfNeeded(page, 'FA-plugged-blank connect');
+  await pairFromSetup(page, 'FA-plugged-blank connect');
   await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'discover-lights', {
     timeout: CONNECT_BUDGET_MS,
   });
   const after = await captureStep(page, 'fa-plugged-blank-connected');
   expectOneFirstAction(after, /find and count the lights/i, 'plugged-in blank card');
+  await page.getByRole('button', { name: 'Find and count the lights', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Find my strips' })).toBeVisible();
 });
 
 test('[FA-plugged-loaded] a plugged-in loaded card pairs explicitly, then opens on that project', async ({ page }) => {
@@ -214,38 +183,35 @@ test('[FA-plugged-loaded] a plugged-in loaded card pairs explicitly, then opens 
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-connect-card')).toHaveText(/pair this card/i, {
+  await expect(page.getByTestId('setup-connect-card')).toHaveText(/connect this card/i, {
     timeout: CONNECT_BUDGET_MS,
   });
   const firstPaint = await captureStep(page, 'fa-plugged-loaded-first');
-  expectOneFirstAction(firstPaint, /pair this card/i, 'plugged-in unpaired card');
+  expectOneFirstAction(firstPaint, /connect this card/i, 'plugged-in unpaired card');
 
-  await connectIfNeeded(page, 'FA-plugged-loaded connect');
-  await expect.poll(async () => (await readFirstAction(page, 'poll')).journeyTask, {
-    timeout: CONNECT_BUDGET_MS,
-  }).not.toBe('connect-card');
+  await pairFromSetup(page, 'FA-plugged-loaded connect');
+  const home = page.getByTestId('card-installed-home');
+  await expect(home).toContainText(spec.projectName);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').name))
+    .toBe(spec.projectName);
   const after = await captureStep(page, 'fa-plugged-loaded-connected');
-
-  expect(
-    after.installed === 'Installed project matches' && /untitled/i.test(after.project),
-    'Installed project matches is a lie while Studio is still on Untitled',
-  ).toBe(false);
   expect(after.firstHeading).not.toMatch(/newer card release|update/i);
-  expect(after.firstPrimary).toMatch(/use this card|load |open patterns/i);
-  expect(after.primaryCount).toBe(1);
+  expectOneFirstAction(after, /^Control installed project$/, 'paired loaded card');
 
-  // Back: LED count and colour order stay a door after the project is in play.
+  await expectInstalledPlayback(page, card);
   await page.getByTestId('setup-identity-lights').click();
+  await expect(page.getByTestId('setup-lights-action')).toBeFocused();
   const back = await captureStep(page, 'fa-plugged-loaded-back-to-lights');
-  await expect(page.getByTestId('setup-lights-action')).toBeVisible();
-  expect(
-    back.reviewLightsVisible || /review|find|count|colour|color/i.test(back.firstPrimary + back.firstButton),
-    'a loaded project must still open LED count / colour order',
-  ).toBeTruthy();
-  expect(back.primaryCount, 'going back to lights must not add a second primary').toBe(1);
-  expect(back.firstPrimary).toMatch(/open patterns|use this card|load /i);
+  expect(back.reviewLightsVisible).toBe(true);
+  expectOneFirstAction(back, /^Control installed project$/, 'lights stay a door');
 
-  expect(firstPaint.firstPrimary).toMatch(/pair this card/i);
+  const boardSetup = page.getByTestId('board-setup-connect');
+  await expect(boardSetup).toHaveAccessibleName('Set up this card');
+  await expect(boardSetup).not.toHaveClass(/\bprimary\b/);
+  await boardSetup.click();
+  const installer = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(installer.getByTestId('installer-setup-progress')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: / controls$/ })).toHaveCount(0);
 });
 
 test('[FA-outdated] an outdated card puts Update first', async ({ page }) => {
@@ -325,38 +291,78 @@ test('[FA-resume-usb-wifi] saved exact preserving update opens its USB resume ac
 
 
 test('[FA-wifi-saved] saved home Wi-Fi continues to the next unfinished step', async ({ page }) => {
-  const spec = cardState('installed-match');
-  const card = createCardSimulator(spec);
-  await seedCompleteProject(page, spec);
-  await card.install(page);
+  const card = await bootSetUp(page);
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
+  const savedFingerprint = await page.evaluate(async projectId => {
+    const { listProjectLibraryRecords } = await import('/src/lib/projectStorage.js');
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const records = await listProjectLibraryRecords();
+    return cardProjectFingerprint(records.find(record => record.project.id === projectId)?.project);
+  }, card.state.projectId);
+  expect(savedFingerprint).toBe(card.state.projectFingerprint);
+
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'FA-wifi-saved connect');
-  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-complete', 'true', {
-    timeout: CONNECT_BUDGET_MS,
-  });
+  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-complete', 'true');
   const report = await captureStep(page, 'fa-wifi-saved');
   expect(report.firstHeading).not.toMatch(/join the|setup network/i);
-  expectOneFirstAction(report, /open patterns/i, 'Wi-Fi already saved');
+  expectOneFirstAction(report, /^Control installed project$/, 'Wi-Fi already saved');
+
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  const projects = page.getByRole('dialog', { name: 'Projects' });
+  await projects.getByRole('button', { name: `Open ${card.state.projectName}`, exact: true }).click();
+  await expect(projects).toBeHidden();
+  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft matches the installed project.');
+  await expectInstalledPlayback(page, card);
 
   await page.getByTestId('setup-identity-lights').click();
-  await expect(page.getByTestId('setup-lights-action')).toBeVisible();
+  await expect(page.getByTestId('setup-lights-action')).toBeFocused();
   const back = await captureStep(page, 'fa-wifi-saved-back-to-lights');
-  expectOneFirstAction(back, /open patterns/i, 'lights stay a door, not a second next step');
+  expectOneFirstAction(back, /^Control installed project$/, 'lights stay a door');
 });
 
 test('[FA-remembered] a remembered complete install still opens lights as a door, not as the next step', async ({ page }) => {
-  const spec = cardState('installed-match');
-  const card = createCardSimulator(spec);
-  await seedCompleteProject(page, spec);
-  await seedKnownCard(page, spec);
-  await card.install(page);
+  const card = await bootSetUp(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'FA-remembered connect');
-  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-complete', 'true', {
-    timeout: CONNECT_BUDGET_MS,
-  });
+  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-complete', 'true');
   const report = await captureStep(page, 'fa-remembered-complete');
   expect(report.heading).toMatch(/matrix piece|your lightweaver|lightweaver card/i);
   expect(report.firstHeading).not.toMatch(/newer card release|update/i);
-  expectOneFirstAction(report, /open patterns/i, 'remembered complete install');
+  expectOneFirstAction(report, /^Control installed project$/, 'remembered complete install');
+  await expectInstalledPlayback(page, card);
 });
+
+test('installed control leaves the footer’s pending draft save alone', async ({ page }) => {
+  const card = await bootSetUp(page);
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'ready');
+  await page.getByTestId('setup-project-name-edit').click();
+  await page.getByRole('textbox', { name: 'Project name', exact: true }).fill('Unsaved matrix draft');
+  await page.getByRole('textbox', { name: 'Project name', exact: true }).press('Enter');
+  const footer = page.getByTestId('card-link-status');
+  await expect(footer).toHaveAttribute('data-lifecycle-state', 'content-mismatch');
+  await expect(footer).toHaveAccessibleName(/Save to card/);
+
+  await expectInstalledPlayback(page, card);
+  await expect(footer).toHaveAccessibleName(/Save to card/);
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Unsaved matrix draft');
+  expect(card.state.projectName).toBe('Matrix piece');
+});
+
+for (const differentProject of [false, true]) {
+  test(`connection dialog names ${differentProject ? 'a different project' : 'a different revision of the same project'}`, async ({ page }) => {
+    const card = await bootSetUp(page);
+    await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'ready');
+    card.state.projectRevision += 1;
+    if (differentProject) card.state.projectId = 'other-installed-piece';
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'project-mismatch');
+    await page.getByTestId('board-setup-connect').click();
+    const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+    await expect(dialog.getByRole('heading', { name: 'Card connected', exact: true })).toBeVisible();
+    await expect(dialog).toContainText(differentProject
+      ? 'This card holds a different project from the one open in Studio.'
+      : 'This card holds the same project at a different revision.');
+  });
+}

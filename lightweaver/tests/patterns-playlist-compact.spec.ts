@@ -306,11 +306,11 @@ test('Patterns no longer reuses "On the card now" as a per-tap confirmed label',
 
 // ── Item 8: no dead menu wrapper around a single button ─────────────────────
 
-test('Playlist "Copy chip config" is a plain toolbar button, not a menu wrapper', async ({ page }) => {
+test('Playlist "Copy card config" is a plain toolbar button, not a menu wrapper', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await gotoPlaylist(page, project);
 
-  const copyButton = page.getByRole('button', { name: 'Copy chip config' });
+  const copyButton = page.getByRole('button', { name: 'Copy card config' });
   await expect(copyButton).toBeVisible();
   const hasMenuAncestor = await copyButton.evaluate((el) => Boolean(el.closest('.pm-menu')));
   expect(hasMenuAncestor).toBe(false);

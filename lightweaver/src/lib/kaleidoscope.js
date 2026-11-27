@@ -197,7 +197,12 @@ export function reprojectStripKaleidoscope(strip, newPixelCount) {
   const nextPixelCount = Math.max(0, Math.trunc(Number(newPixelCount) || 0));
   if (!strip || nextPixelCount === oldPixelCount) return { strip, resetPointIndices: [] };
   if (!strip.kaleidoscope) {
-    return { strip: { ...strip, pixelCount: nextPixelCount }, resetPointIndices: [] };
+    const { reflectionPointDraft, ...rest } = strip;
+    return { strip: {
+      ...rest, pixelCount: nextPixelCount,
+      ...(Number.isInteger(reflectionPointDraft) && nextPixelCount > 0 && oldPixelCount > 0
+        ? { reflectionPointDraft: projectIndex(reflectionPointDraft, oldPixelCount, nextPixelCount) } : {}),
+    }, resetPointIndices: [] };
   }
   const { value, resetPointIndices } = reprojectKaleidoscope(
     strip.kaleidoscope,

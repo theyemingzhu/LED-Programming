@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { normalizeCardProjectEvidence } from '../../../lib/cardIdentity.js';
-import { correlateCardDeploymentReadinessEvidence, waitForCardDeploymentVerification } from '../../../lib/cardDeployment.js';
+import { classifyCardDeploymentResume, correlateCardDeploymentReadinessEvidence, waitForCardDeploymentVerification } from '../../../lib/cardDeployment.js';
 
 const source = await readFile(new URL('./CardPushControl.jsx', import.meta.url), 'utf8');
 
@@ -21,9 +21,60 @@ test('final card verification combines project identity with fresh runtime readi
 
 test('a resumed or expiring wiring test re-reads the exact card and clears stale confirmation controls', () => {
   assert.match(source, /resume-physical-test[\s\S]*expiresAt/);
-  assert.match(source, /wiringTestState !== 'testing'[\s\S]*getCardWiringStatus/);
+  assert.match(source, /!\['testing', 'unverified'\]\.includes\(wiringTestState\)[\s\S]*getCardWiringStatus/);
   assert.match(source, /status\.cardId === expectedCardId/);
   assert.match(source, /setWiringCandidate\(null\)[\s\S]*dispatchAction\(\{ type: 'fail'/);
+});
+
+test('reading an uncertain activation only resumes its exact staged or active transaction', async () => {
+  const start = source.indexOf('  const readWiringActivation = async () => {');
+  const end = source.indexOf('  const finishWiringTest = async', start);
+  assert.ok(start > 0 && end > start);
+  const activationId = 'same-light-test';
+  const exactStatus = {
+    activationId, cardId: 'card-a', buildId: 'build-a',
+    projectRevision: 1, projectFingerprint: 'exact-project', remainingMs: 35_000,
+  };
+  const attempt = { host: 'lightweaver.local', prepared: {
+    cardId: exactStatus.cardId, buildId: exactStatus.buildId,
+    config: { projectRevision: exactStatus.projectRevision, projectFingerprint: exactStatus.projectFingerprint },
+  } };
+  for (const [status, next, showsTest] of [
+    [{ ...exactStatus, state: 'staged' }, 'staged', false],
+    [{ ...exactStatus, state: 'testing' }, 'testing', true],
+    [{ ...exactStatus, state: 'testing', cardId: 'card-b' }, 'activation-unverified', false],
+    [{ ...exactStatus, state: 'testing', activationId: 'other-test' }, 'activation-unverified', false],
+  ]) {
+    let phase;
+    let checks = 0;
+    let candidate;
+    const deps = {
+      wiringCandidate: { attempt, activationId },
+      setWiringTestState: value => { phase = value; },
+      assertCurrentAttempt: value => assert.equal(value, attempt),
+      getCardLinkState: () => ({ transport: 'direct' }),
+      getCardWiringStatus: async ({ host, transport, timeoutMs }) => {
+        assert.deepEqual({ host, transport, timeoutMs }, { host: attempt.host, transport: 'direct', timeoutMs: 15_000 });
+        checks += 1;
+        return status;
+      },
+      CARD_SLOW_READ_MS: 15_000,
+      classifyCardDeploymentResume,
+      setPushStatus: () => {},
+      setWiringCandidate: value => { candidate = value; },
+      showActiveWiringTest: async verifiedAttempt => {
+        assert.equal(verifiedAttempt, attempt);
+        phase = 'testing';
+      },
+      CardPushError: Error,
+      dispatchAction: () => assert.fail('recovery must not reset to a new install'),
+    };
+    const read = new Function(...Object.keys(deps), `${source.slice(start, end)}\nreturn readWiringActivation;`)(...Object.values(deps));
+    await read();
+    assert.equal(checks, 1);
+    assert.equal(phase, next);
+    assert.equal(Boolean(candidate?.expiresAt), showsTest);
+  }
 });
 
 // Captured from the paired GPIO 18 / 41-pixel card after its successful
@@ -66,6 +117,7 @@ test('verified reboot readback remains installed when Studio changes, and Retry 
   const changedError = Object.assign(new Error('Studio project changed'), { reason: 'project-changed' });
   const deps = {
     attempt, response: { requiresReboot: true }, cleanHost: attempt.host,
+    cardIsRestarting: true, bootBeforeSave: 'boot-before-save', restartPlanned: true, noteCardRestartSettled: () => {},
     failedAttemptRef, standaloneController: {}, onInstalled: () => {},
     setPushStatus: value => statuses.push(value), setInstallRestarting: () => {},
     dispatchAction: value => actions.push(value), markProjectInstalled: () => assert.fail('stale local project was marked installed'),

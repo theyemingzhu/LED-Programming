@@ -47,7 +47,7 @@ for (const shape of ['settling', 'steady-13s'] as const) test(`Find my strips Sa
   });
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click({ timeout: 45_000 });
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click({ timeout: 45_000 });
   await expect.poll(() => linkConnected(page), { timeout: 40_000 }).toBe(true);
   await page.getByTestId('setup-lights-action').click();
 

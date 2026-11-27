@@ -134,6 +134,18 @@ test('legacy card entrances still resolve and are left in the URL as written', (
   assert.deepEqual(cardRouteFromHash('#screen=pattern'), { section: DEFAULT_CARD_SECTION, supportTool: '' });
 });
 
+test('Card support destinations are refreshable and unknown tools open the directory', () => {
+  for (const tool of ['technician', 'guide', 'json', 'recovery', 'deployment', 'connection-log']) {
+    const hash = `#screen=card&section=support&tool=${tool}`;
+    assert.equal(reconcile(hash), hash);
+    assert.deepEqual(cardRouteFromHash(hash), { section: 'support', supportTool: tool });
+  }
+  assert.deepEqual(cardRouteFromHash('#screen=card&section=support&tool=unknown'), {
+    section: 'support', supportTool: '',
+  });
+  assert.equal(reconcile('#screen=card&section=settings&tool=color-order'), '#screen=card&section=settings&tool=color-order');
+});
+
 test('a fragment that is not a route does not invent a screen', () => {
   assert.equal(studioViewFromHash('#v3', options), 'layout');
   assert.equal(studioViewFromHash('', options), 'layout');

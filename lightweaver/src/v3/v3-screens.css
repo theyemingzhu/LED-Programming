@@ -14,43 +14,12 @@
 }
 .screen-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 
-/* Unified Card workspace: one scroll surface. Hardware and Advanced fold under Home. */
+/* Card workspace pages share one scroll surface. */
 .card-workspace-screen { overflow: hidden; }
 .card-workspace {
   width: 100%; height: 100%; min-width: 0; min-height: 0;
   display: grid; grid-template-rows: minmax(0, 1fr);
 }
-.card-page-fold {
-  margin-top: 22px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-  background: var(--bg-panel);
-}
-.card-page-fold > summary {
-  list-style: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--lw-tap, 44px);
-  padding: 0 16px;
-  color: var(--text-hi);
-  font-size: 14px;
-  font-weight: 650;
-}
-.card-page-fold > summary::-webkit-details-marker { display: none; }
-.card-page-fold > summary::before {
-  content: '▸';
-  font-size: 11px;
-  color: var(--accent);
-}
-.card-page-fold[open] > summary::before { content: '▾'; }
-.card-page-fold > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
-}
-.card-page-fold-body { padding: 0 16px 18px; }
 .card-workspace-body {
   min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
   padding: 24px clamp(14px, 3vw, 34px) 56px;
@@ -75,18 +44,30 @@
 .card-overview-signal.connecting { background: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent); }
 .card-overview-signal.failure { background: var(--danger); }
 .card-overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.card-support { display: grid; gap: 22px; }
-.card-support-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.card-support-grid > button {
-  min-width: 0; min-height: 92px; display: grid; align-content: start; gap: 5px; padding: 15px;
-  border: 1px solid var(--border-soft); border-radius: var(--r-md); background: var(--bg-panel);
-  color: var(--text-mid); text-align: left;
+.card-workspace-tools-header,
+.card-tools-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--card-tools-gap);
 }
-.card-support-grid > button:hover,
-.card-support-grid > button.selected { border-color: var(--accent-line); background: var(--accent-soft); }
-.card-support-grid strong { color: var(--text-hi); font-size: 13px; }
-.card-support-grid span { font-size: 11.5px; line-height: 1.45; }
-.card-support-tool { min-width: 0; padding-top: 20px; border-top: 1px solid var(--border-hair); }
+.card-workspace-tools-header { justify-content: space-between; }
+.card-tools-nav { margin-block: var(--card-tools-gap); }
+.card-support-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--card-tools-gap);
+}
+.card-workspace-screen .card-support-grid > .btn {
+  display: grid;
+  justify-content: stretch;
+  min-width: 0;
+  height: auto;
+  padding-block: var(--card-tools-gap);
+  white-space: normal;
+  text-align: start;
+}
+.card-support-grid span { color: var(--text-mid); }
 .card-support-panel { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--border-soft); border-radius: var(--r-md); background: var(--bg-panel); }
 .card-support-panel h2, .card-support-panel p { margin: 0; }
 .card-support-panel p { max-width: 70ch; color: var(--text-mid); line-height: 1.55; }
@@ -104,7 +85,6 @@
 @media (max-width: 720px) {
   .card-workspace-body { padding: 18px 12px 42px; }
   .card-support-grid { grid-template-columns: minmax(0, 1fr); }
-  .card-support-grid > button { min-height: 80px; }
 }
 
 .screen-recovery {
@@ -325,7 +305,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 /* Studio-hosted physical light discovery. The local HTTP card page stays a
    separate passive bridge utility; it is never embedded into HTTPS Studio. */
 .card-setup-backdrop {
-  position: fixed; z-index: 1200; inset: 0;
+  position: fixed; z-index: 1310; inset: 0;
   display: grid; place-items: center; padding: 20px;
   background: oklch(0.08 0.006 70 / .76);
 }
@@ -357,7 +337,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 }
 .card-setup-overlay-close {
   width: var(--lw-tap, 44px); height: var(--lw-tap, 44px); flex: 0 0 auto; display: grid; place-items: center;
-  margin: -5px -5px 0 0; border-radius: var(--r-sm); color: var(--text-lo);
+  margin-right: -5px; border-radius: var(--r-sm); color: var(--text-mid);
 }
 .card-setup-overlay-close:hover:not(:disabled) { color: var(--text-hi); background: var(--bg-elev); }
 .card-setup-overlay-close:disabled { cursor: wait; opacity: .38; }
@@ -367,7 +347,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   padding: 8px 14px; border-top: 1px solid var(--border-hair); background: var(--bg-app);
 }
 .card-setup-overlay-safety { display: flex; flex-wrap: wrap; gap: 8px; }
-.card-setup-overlay-foot > p { margin: 0; color: var(--text-lo); font-size: 11.5px; line-height: 1.4; }
+.card-setup-overlay-foot > p { margin: 0; color: var(--text-mid); font-size: 11.5px; line-height: 1.4; }
 .card-setup-overlay-foot .btn { min-height: var(--lw-tap, 44px); max-width: 100%; height: auto; white-space: normal; text-align: left; }
 .card-setup-overlay-foot .btn:disabled { cursor: wait; opacity: .42; }
 .card-setup-light-status,

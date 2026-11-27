@@ -19,6 +19,7 @@ import {
   estimateLwseqBytes,
   toLwseqBytes,
 } from './standaloneController.js';
+import { OUTPUT_PLAYBACK_ORDER } from './wiringCompiler.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 
 export const MAX_BAKE_FPS = 24;
@@ -287,9 +288,10 @@ function validateOfflineAudio(audioLanes, recipe, durationSeconds, lastBakeTime)
   return audioLanes;
 }
 
-function physicalHashProjection({ strips, wiring, physicalPixels, outputs, groups, hidden, render, symmetry, sidesMirrored }) {
+function physicalHashProjection({ strips, wiring, physicalPixels, outputs, groups, hidden, render, symmetry, sidesMirrored }, legacyLogicalPlayback) {
   return {
     version: 1,
+    ...(legacyLogicalPlayback ? {} : { playbackOrder: OUTPUT_PLAYBACK_ORDER }),
     strips,
     outputs,
     physicalOrder: physicalPixels.map(pixel => ({
@@ -312,7 +314,7 @@ function physicalHashProjection({ strips, wiring, physicalPixels, outputs, group
   };
 }
 
-function prepareBake(input = {}) {
+function prepareBake(input = {}, { legacyLogicalPlayback = false } = {}) {
   if (!input.wiring || typeof input.wiring !== 'object') {
     throw new TypeError('Known physical wiring is required for Pattern Lab bake');
   }
@@ -356,7 +358,7 @@ function prepareBake(input = {}) {
     input.strips,
     input.groups || [],
     undefined,
-    { requireSendReady: true },
+    { requireSendReady: true, physicalPlaybackOrder: !legacyLogicalPlayback },
   );
   if (!physicalPixels.length) throw new TypeError('Physical wiring contains no pixels to bake');
   assertLwseqPixelCount(physicalPixels.length);
@@ -399,6 +401,8 @@ function prepareBake(input = {}) {
   // side 1's colours). The look's own choice travels with it.
   const symmetry = input.symmetry ? clonePlainData(input.symmetry) : null;
   const sidesMirrored = input.sidesMirrored !== false;
+  const playbackOrderChanged = input.wiring.runs.some(run => run.type === 'strip'
+    && run.physicalDirection === 'source-reverse' && run.source.to > run.source.from);
   const layoutProjection = physicalHashProjection({
     symmetry,
     sidesMirrored,
@@ -409,7 +413,7 @@ function prepareBake(input = {}) {
     groups: input.groups === undefined ? [] : clonePlainData(input.groups),
     hidden: input.hidden === undefined ? {} : clonePlainData(input.hidden),
     render,
-  });
+  }, legacyLogicalPlayback || !playbackOrderChanged);
   assertPatternLabJsonSafe(layoutProjection);
   return {
     recipe,
@@ -448,8 +452,8 @@ export function estimatePatternLabBake(input = {}) {
   return estimatePreparedBake(prepareBake(input));
 }
 
-export async function hashPatternLabBakePhysicalOrder(input = {}) {
-  const prepared = prepareBake(input);
+export async function hashPatternLabBakePhysicalOrder(input = {}, options) {
+  const prepared = prepareBake(input, options);
   return sha256(canonicalBytes(prepared.layoutProjection), input.signal);
 }
 
@@ -458,14 +462,16 @@ export async function hashPatternLabBakePhysicalOrder(input = {}) {
  * recording keeps the mirrored-or-own choice it was baked with, so a later flip
  * of the live choice must not make it look stale: with symmetry set, both
  * choices are candidates (the sides and their order still must match exactly).
- * Without symmetry there is exactly one candidate, the pre-symmetry hash.
+ * Older recordings keep their byte-for-byte logical-order fingerprint, and
+ * are recognized as stored, never silently mirrored or rebaked.
  */
 export async function patternLabBakeLayoutHashCandidates(input = {}) {
-  const hashes = [await hashPatternLabBakePhysicalOrder(input)];
-  if (input.symmetry) {
-    hashes.push(await hashPatternLabBakePhysicalOrder({ ...input, sidesMirrored: input.sidesMirrored === false }));
-  }
-  return hashes;
+  const choices = input.symmetry ? [input, { ...input, sidesMirrored: input.sidesMirrored === false }] : [input];
+  const hashes = await Promise.all(choices.flatMap(choice => [
+    hashPatternLabBakePhysicalOrder(choice),
+    hashPatternLabBakePhysicalOrder(choice, { legacyLogicalPlayback: true }),
+  ]));
+  return [...new Set(hashes)];
 }
 
 function renderOptionsAt(recipe, time) {
@@ -649,9 +655,9 @@ function yieldToHost() {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
-export async function bakePatternLabRecipe(input = {}) {
+export async function bakePatternLabRecipe(input = {}, options) {
   throwIfAborted(input.signal);
-  const prepared = prepareBake(input);
+  const prepared = prepareBake(input, options);
   throwIfAborted(input.signal);
   const bytes = createLwseqBuffer(prepared);
   const workerRenderer = canUseWorker(prepared) ? createWorkerRenderer(prepared, input.signal) : null;

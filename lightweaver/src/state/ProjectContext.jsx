@@ -39,7 +39,7 @@ import {
   readAutosaveQuarantine,
   readProjectLifecycleRecord,
   readPreferredStartupProject,
-  readStorageJsonWithBackup,
+  readRestorableProjectJson,
   writeProjectLifecycleRecord,
   writeRestorableProjectJsonWithBackup,
 } from '../lib/projectStorage.js';
@@ -508,9 +508,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     dispatchLayout({ type: 'layout/setWiring', wiring: result.wiring });
     return result;
   }, [wiring, strips]);
-  const updateStripKaleidoscope = useCallback((id, kaleidoscope, { recordHistory = true } = {}) => {
+  const updateStripKaleidoscope = useCallback((id, kaleidoscope, { recordHistory = true, reflectionPointDraft = null } = {}) => {
     if (recordHistory) dispatchLayout({ type: 'layout/pushHistory' });
-    dispatchLayout(layoutActions.updateKaleidoscope(id, kaleidoscope));
+    dispatchLayout(layoutActions.updateKaleidoscope(id, kaleidoscope, reflectionPointDraft));
   }, []);
   const replaceLayoutGeometry = useCallback((nextStrips, options = {}) => {
     const normalized = Array.isArray(nextStrips) ? nextStrips : [];
@@ -886,9 +886,16 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // ── Auto-load from localStorage on mount ─────────────────────────────────
   const didLoadRef = useRef(false);
   const restoredFromLibraryRef = useRef(false);
+  const recoveryBaselineRef = useRef(null);
   useEffect(() => {
     if (didLoadRef.current) return;
     didLoadRef.current = true;
+    try {
+      recoveryBaselineRef.current = {
+        primary: localStorage.getItem(LS_AUTOSAVE_KEY),
+        backup: localStorage.getItem(LS_AUTOSAVE_BACKUP_KEY),
+      };
+    } catch { /* no reliable baseline for an unload write */ }
     try {
       if (initialProjectEnvelope?.project && initialProjectEnvelope?.contentHash) {
         repositoryHeadRef.current = {
@@ -921,8 +928,8 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         setAutosaveQuarantine({ at: quarantineRecord.at, reason: quarantineRecord.reason });
       }
 
-      const legacyProject = savedProject ? null : readStorageJsonWithBackup(LS_AUTOSAVE_LEGACY_KEY, '');
-      const legacyLayoutProject = readStorageJsonWithBackup(LS_LAYOUT_LEGACY_KEY, '');
+      const legacyProject = savedProject ? null : readRestorableProjectJson(LS_AUTOSAVE_LEGACY_KEY).payload;
+      const legacyLayoutProject = readRestorableProjectJson(LS_LAYOUT_LEGACY_KEY).payload;
       const project = resolveStartupProject({
         savedProject,
         legacyProject,
@@ -1073,10 +1080,18 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     ));
   }, [projectLifecycle, serializeProject]);
 
+  const saveBrowserRecovery = useCallback((expectedCopies) => (
+    writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject(), {
+      expectedCopies,
+      onMirrored: text => { recoveryBaselineRef.current = { primary: text, backup: text }; },
+    })
+  ), [serializeProject]);
+
   const flushProjectAutosave = useCallback(() => {
     clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
     try {
-      const saved = writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject());
+      const saved = saveBrowserRecovery();
       if (saved) setLastSaved(Date.now());
       if (saved && repository?.save) {
         const project = serializeProject();
@@ -1101,17 +1116,36 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     } catch {
       return false;
     }
-  }, [repository, serializeProject]);
+  }, [repository, saveBrowserRecovery, serializeProject]);
 
   useEffect(() => {
-    clearTimeout(saveTimerRef.current);
     // A saved library copy recovered over an unreadable primary must not
     // immediately erase the old primary and backup merely by being opened.
     if (deferAutosaveForSavedLibraryRestore(restoredFromLibraryRef.current, projectLifecycle)) return undefined;
     restoredFromLibraryRef.current = false;
     saveTimerRef.current = setTimeout(flushProjectAutosave, 500);
-    return () => clearTimeout(saveTimerRef.current);
-  }, [flushProjectAutosave, projectLifecycle]);
+    const savePendingRecovery = () => {
+      const current = projectLifecycleRef.current;
+      if (saveTimerRef.current === null || !hasUnsavedChanges(current)
+        || current.generation !== projectLifecycle.generation
+        || current.editedRevision !== projectLifecycle.editedRevision) return;
+      // Only the current browser draft can be saved synchronously on exit.
+      // Leave the repository queue and its conflict handling to the normal flush.
+      try {
+        if (saveBrowserRecovery(recoveryBaselineRef.current)) return;
+        // A page held in the back/forward cache must not later run the same
+        // stale timer against a newer draft it already declined to overwrite.
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      } catch { /* previous recovery copies remain */ }
+    };
+    window.addEventListener('pagehide', savePendingRecovery);
+    return () => {
+      window.removeEventListener('pagehide', savePendingRecovery);
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    };
+  }, [flushProjectAutosave, projectLifecycle, saveBrowserRecovery]);
 
   const loadProject = useCallback((data) => {
     return applyProject(data);
@@ -1127,6 +1161,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       candidate,
       validate: value => migrateProject(value),
       dirty: hasUnsavedChanges(projectLifecycleRef.current),
+      canApply: options.canApply,
       confirmDiscard: options.confirmDiscard || (validated => requestReplacementConfirmation({
         currentName: projectName,
         incomingName: validated?.name,
