@@ -2,6 +2,7 @@ import {
   candidateCardHosts,
   canPushDirectlyToCard,
   CARD_HOST_FALLBACKS,
+  CARD_SPECIFIC_DISCOVERY_HEAD_START_MS,
   readStoredCardHost,
 } from './cardConnection.js';
 import { normalizeCardIdentity, readPersistedCardIdentity, persistCardIdentity } from './cardIdentity.js';
@@ -12,7 +13,34 @@ import {
   reportDirectCardStatus,
 } from './cardLink.js';
 import { readCardStatusEnvelope } from './cardPushClient.js';
-import { connectCardTransport } from './cardTransport.js';
+import { activateCardTransport, probeCardTransport } from './cardTransport.js';
+
+async function probeRememberedCard(hosts, { expectedCardId, probeTransport }) {
+  const [preferred, ...fallbacks] = hosts;
+  if (!preferred) return null;
+
+  const controller = new AbortController();
+  const probe = async host => {
+    const result = await probeTransport({ host, expectedCardId, signal: controller.signal });
+    if (!result?.connected) throw new Error('Card route unavailable');
+    return result;
+  };
+  const preferredProbe = probe(preferred);
+  let timer;
+  const fallbackProbes = new Promise(resolve => {
+    timer = setTimeout(resolve, CARD_SPECIFIC_DISCOVERY_HEAD_START_MS);
+    preferredProbe.catch(resolve);
+  }).then(() => Promise.any(fallbacks.map(probe)));
+
+  try {
+    return await Promise.any([preferredProbe, fallbackProbes]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
 
 function persistAuthority(persistIdentity, expectedCard, authority) {
   persistIdentity({
@@ -25,7 +53,8 @@ function persistAuthority(persistIdentity, expectedCard, authority) {
 }
 
 // Restore the exact card Studio already paired with. Bridge handoffs retain
-// priority; ordinary public-Studio reloads use one read-only local status GET.
+// priority. A short lead for the preferred host usually needs one local GET,
+// and a stale route cannot delay a responding fallback by a full timeout.
 // A first visit with no remembered card still probes the two well-known
 // addresses a just-plugged-in card answers on — only when this page can talk
 // to the LAN. That probe only reports the card as found; the owner's explicit
@@ -41,7 +70,8 @@ function readPreservingUpdateSession() {
 
 export async function bootstrapStudioCardConnection({
   bootstrapLink = bootstrapCardLink,
-  connectTransport = connectCardTransport,
+  probeTransport = probeCardTransport,
+  activateTransport = activateCardTransport,
   readIdentity = readPersistedCardIdentity,
   readHost = readStoredCardHost,
   candidateHosts = candidateCardHosts,
@@ -56,7 +86,7 @@ export async function bootstrapStudioCardConnection({
   readUpdateSession = readPreservingUpdateSession,
 } = {}) {
   const bridgeState = await bootstrapLink();
-  if (isConnected(bridgeState)) return bridgeState;
+  if (isConnected(bridgeState) || bridgeState?.handoffCorrelation) return bridgeState;
 
   const expectedCard = readIdentity();
   if (!expectedCard?.id) {
@@ -82,11 +112,14 @@ export async function bootstrapStudioCardConnection({
   }
 
   const hosts = candidateHosts(readHost(), expectedCard);
-  let authority = null;
-  for (const host of hosts) {
-    authority = await connectTransport({ host, expectedCardId: expectedCard.id });
-    if (authority?.connected) break;
-  }
+  const probe = await probeRememberedCard(hosts, { expectedCardId: expectedCard.id, probeTransport });
+  const current = getLinkState();
+  if (isConnected(current) || current?.handoffCorrelation) return current;
+  if (!probe || readIdentity()?.id !== expectedCard.id) return bridgeState;
+  const authority = activateTransport(probe, {
+    expectedCardId: expectedCard.id,
+    expectedPersistedCardId: expectedCard.id,
+  });
   if (!authority?.connected) return bridgeState;
 
   // Restoring a pairing writes down where the card is, which boot answered, and
@@ -107,7 +140,7 @@ export async function bootstrapStudioCardConnection({
   // what an official update always produces, and `classifyPairedCardReadiness`
   // accepts it everywhere. The offer that mattered — "this is a DIFFERENT card"
   // — is `isDifferentCardMismatch`, which is unaffected: nothing here can be
-  // reached by another card, because `connectTransport` was given
+  // reached by another card, because `probeTransport` was given
   // `expectedCard.id` and refuses any other id as `wrong-card`.
   persistAuthority(persistIdentity, expectedCard, authority);
   return authority;
