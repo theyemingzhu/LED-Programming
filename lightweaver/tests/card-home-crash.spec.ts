@@ -30,7 +30,7 @@ test('a card that crashed says so in Health and copies the details', async ({ pa
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openCardHome(page, watchdogCrash);
   const line = page.getByTestId('card-crash-line');
-  await expect(line).toContainText('Last crash: The card stopped responding (task watchdog) while idle, after 7.57 hours running. It has done this 2 times.');
+  await expect(line).toContainText('Last crash: The card stopped responding (task watchdog) after 7.57 hours running. The card has recorded 2 unexpected resets in total.');
   await page.getByTestId('card-crash-copy').click();
   await expect(page.getByTestId('card-crash-copied')).toHaveText(/Copied/);
   const copied = await page.evaluate(() => navigator.clipboard.readText());

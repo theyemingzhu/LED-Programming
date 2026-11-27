@@ -45,19 +45,24 @@ test('malformed records are unreadable, never guessed', () => {
 test('the plain-language line names the cause, the activity and the count', () => {
   const line = describeCardCrash(parseCardCrashReport({ lastCrash: recorded }));
   assert.match(line, /task watchdog/);
-  assert.match(line, /saving a project/);
+  assert.match(line, /Recent activity involved project or wiring settings/);
   assert.match(line, /7\.57 hours/);
-  assert.match(line, /2 times/);
+  assert.match(line, /2 unexpected resets in total/);
   const first = describeCardCrash(parseCardCrashReport({ lastCrash: { ...recorded, sequence: 1, reason: 'mystery', phase: 'x' } }));
   assert.match(first, /restarted unexpectedly/);
-  assert.match(first, /1 time\./);
+  assert.match(first, /1 unexpected reset in total/);
+});
+
+test('an HTTP breadcrumb reports a recent request without claiming the request was still running', () => {
+  const report = parseCardCrashReport({ lastCrash: { ...recorded, sequence: 5, phase: 'http' } });
+  assert.equal(describeCardCrash(report), 'The card stopped responding (task watchdog) after 7.57 hours running. The card recorded a recent HTTP request. The card has recorded 5 unexpected resets in total.');
 });
 
 test('the Health line speaks only when there is something to say', async () => {
   const { cardCrashLine } = await import('./cardCrashReport.js');
   assert.equal(cardCrashLine(parseCardCrashReport({})), '');
   assert.equal(cardCrashLine(parseCardCrashReport({ lastCrash: 'x' })), 'The card reports a crash record Studio cannot read.');
-  assert.match(cardCrashLine(parseCardCrashReport({ lastCrash: recorded })), /stopped responding \(task watchdog\) while saving a project, after 7\.57 hours/);
+  assert.match(cardCrashLine(parseCardCrashReport({ lastCrash: recorded })), /stopped responding \(task watchdog\) after 7\.57 hours/);
 });
 
 test('copied crash details name the build and every trace address', async () => {
@@ -68,6 +73,8 @@ test('copied crash details name the build and every trace address', async () => 
   });
   assert.match(text, /Firmware: 1\.2\.7 \(build 2895\)/);
   assert.match(text, /Card: lw-b0fe81f61b44/);
+  assert.match(text, /Total unexpected resets: 2/);
+  assert.match(text, /Recorded phase: configSave/);
   assert.match(text, /Backtrace: 0x420a1b2c 0x4037f001/);
   const bare = formatCardCrashDetails(parseCardCrashReport({ lastCrash: { ...recorded, pc: '0x00000000', backtrace: [] } }));
   assert.match(bare, /Backtrace: none recorded/);
