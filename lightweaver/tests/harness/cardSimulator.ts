@@ -1001,6 +1001,16 @@ export function createCardSimulator(
       state.playlistPlaying = false;
       return;
     }
+    // A pattern written to ONE section of a card with several leaves the card
+    // with no current look, as firmware does (ZonePattern selection clears
+    // activePatternId). Measured on the real card 2026-11-25.
+    const zoneTarget = typeof body.zone === 'string' ? body.zone.trim() : '';
+    if (zoneTarget && state.zoneIds.length > 1) {
+      state.currentIndex = -1;
+      state.currentId = '';
+      state.playlistPlaying = false;
+      return;
+    }
     const index = state.patterns.findIndex(pattern => pattern.id === requested);
     // A card asked for a pattern it does not hold keeps playing what it had.
     // It does not invent a list entry.
@@ -1188,7 +1198,9 @@ export function createCardSimulator(
         return ok(Number.isInteger(limit) ? { ...body, patterns: (body.patterns || []).slice(0, limit) } : body);
       }
       case '/api/zones':
-        return ok({ syncZones: true, kaleidoscopeMappings: [], zones: zonesFor(state) });
+        // Linked by default; a spec may unlink the sections (as on the real card)
+        // with `card.state.syncZones = false`.
+        return ok({ syncZones: (state as { syncZones?: boolean }).syncZones !== false, kaleidoscopeMappings: [], zones: zonesFor(state) });
       case '/api/control':
         if (state.commandReady === false) {
           return {

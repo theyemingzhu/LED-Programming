@@ -305,6 +305,12 @@ test('Show it on the lights streams the look to the card, follows the frame, and
   await seedPiece(page, LOTUS);
   // The piece is drawn first; then a card is on the network.
   const card = createCardSimulator(cardState('playing'));
+  // Two sections, like the real card: restoring them one at a time would
+  // leave the card with no current look.
+  card.state.zoneIds = ['outer', 'inner'];
+  (card.state as { syncZones?: boolean }).syncZones = false;
+  const lookBefore = card.state.currentId;
+  expect(lookBefore).toBeTruthy();
   await card.install(page);
   await seedKnownCard(page);
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -334,6 +340,8 @@ test('Show it on the lights streams the look to the card, follows the frame, and
   await live.uncheck();
   await expect(note).toHaveAttribute('data-state', 'restored', { timeout: 20_000 });
   await expect(note).toContainText("The card's own look is back.");
+  expect(card.state.currentId, 'the card is back on the look it was playing').toBe(lookBefore);
+  expect(card.state.currentIndex).toBeGreaterThanOrEqual(0);
   await page.waitForTimeout(500);
   const after = card.frames.length;
   await page.waitForTimeout(800);

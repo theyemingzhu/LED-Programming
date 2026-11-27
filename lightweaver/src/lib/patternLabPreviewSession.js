@@ -1,6 +1,7 @@
 import { createCardFrameStream } from './cardFrameStream.js';
 import {
   pushLivePreviewToCard,
+  readCardPatternsFromCard,
   readCardZonesFromCard,
   resetLiveOutputOnCard,
 } from './cardLiveControl.js';
@@ -31,7 +32,42 @@ function restoreLookFromZone(zone) {
   return { ...look, zone: String(zone.id), syncZones: false };
 }
 
+// The card's current look, when it is playing one of its saved looks.
+// Restoring section by section puts every pattern back but leaves the card
+// with no current look, so a card that named one is restored by that look.
+function snapshotLookId(snapshot) {
+  const id = String(snapshot?.currentLookId || '').trim();
+  return id && id.length <= 96 ? id : '';
+}
+
+export async function readPreviewSnapshot(options = {}) {
+  const zones = await readCardZonesFromCard(options);
+  let currentLookId = '';
+  try {
+    const patterns = await readCardPatternsFromCard(options);
+    if (Number(patterns?.currentIndex) >= 0) currentLookId = String(patterns.currentId || '');
+  } catch {
+    // Without the look list the section-by-section restore still applies.
+  }
+  return zones && typeof zones === 'object' ? { ...zones, currentLookId } : zones;
+}
+
 function snapshotLooks(snapshot) {
+  const lookId = snapshotLookId(snapshot);
+  if (lookId) {
+    return [{
+      look: { patternId: lookId },
+      options: {
+        exactCardPatternId: lookId,
+        installedControlPatch: true,
+        expectedControlPatch: { patternId: lookId },
+      },
+    }];
+  }
+  return snapshotZoneLooks(snapshot).map(look => ({ look, options: {} }));
+}
+
+function snapshotZoneLooks(snapshot) {
   if (Array.isArray(snapshot?.zones) && snapshot.zones.length) {
     const looks = snapshot.zones
       .filter(zone => zone && String(zone.id || '').trim())
@@ -50,7 +86,7 @@ export function createPatternLabPreviewSession({
   host = '',
   fps = 18,
   fallbackLook = {},
-  readSnapshot = options => readCardZonesFromCard(options),
+  readSnapshot = options => readPreviewSnapshot(options),
   createStream = options => createCardFrameStream(options),
   restoreLook = (look, options) => pushLivePreviewToCard(look, options),
   resetOutput = (look, options) => resetLiveOutputOnCard(look, options),
@@ -78,8 +114,8 @@ export function createPatternLabPreviewSession({
       await resetOutput(fallbackLook, { host });
       return;
     }
-    for (const look of looks) {
-      await restoreLook(look, { host, latestOnly: false });
+    for (const { look, options } of looks) {
+      await restoreLook(look, { ...options, host, latestOnly: false });
     }
   }
 
