@@ -1,0 +1,157 @@
+diff --git a/firmware/lightweaver-controller/src/main.cpp b/firmware/lightweaver-controller/src/main.cpp
+index 97d24c8b..6962f907 100644
+--- a/firmware/lightweaver-controller/src/main.cpp
++++ b/firmware/lightweaver-controller/src/main.cpp
+@@ -3262,21 +3262,38 @@ bool runtimeRename(const String& newPieceName, const String& newHostname, String
+     message = "nvs unavailable";
+     return false;
+   }
+-  if (newPieceName.length()) {
+-    runtimeConfig.pieceName = newPieceName;
+-    pieceName = newPieceName;
+-    prefs.putString("pieceName", newPieceName);
+-  }
+   if (newHostname.length()) {
+-    runtimeConfig.wifi.hostname = newHostname;
+-    // Persist via the wifi JSON path so it sticks across reboots
++    // Edit the saved record so renaming does not start a new Wi-Fi handoff.
+     JsonDocument doc;
+-    doc["ssid"] = runtimeConfig.wifi.ssid;
+-    doc["password"] = runtimeConfig.wifi.password;
++    if (prefs.isKey("wifi")) {
++      const String savedWifi = prefs.getString("wifi", "");
++      if (deserializeJson(doc, savedWifi) || !doc.is<JsonObject>()) {
++        prefs.end();
++        message = "saved wifi settings could not be read";
++        return false;
++      }
++    } else {
++      doc["ssid"] = runtimeConfig.wifi.ssid;
++      doc["password"] = runtimeConfig.wifi.password;
++    }
+     doc["hostname"] = newHostname;
+     String serialized;
+-    serializeJson(doc, serialized);
+-    prefs.putString("wifi", serialized);
++    if (doc.overflowed() || serializeJson(doc, serialized) != measureJson(doc) ||
++        prefs.putString("wifi", serialized) != serialized.length()) {
++      prefs.end();
++      message = "wifi hostname could not be saved";
++      return false;
++    }
++    runtimeConfig.wifi.hostname = newHostname;
++  }
++  if (newPieceName.length()) {
++    if (prefs.putString("pieceName", newPieceName) != newPieceName.length()) {
++      prefs.end();
++      message = "piece name could not be saved";
++      return false;
++    }
++    runtimeConfig.pieceName = newPieceName;
++    pieceName = newPieceName;
+   }
+   prefs.end();
+   message = "saved";
+diff --git a/firmware/lightweaver-controller/tests/saved-network-storage-native.mjs b/firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
+index cdd76e7a..d4f6b519 100644
+--- a/firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
++++ b/firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
+@@ -9,6 +9,8 @@ const json = resolve(root, '.pio/libdeps/esp32-s3-n16r8/ArduinoJson/src');
+ assert.ok(existsSync(join(json, 'ArduinoJson.h')), 'run pio build first to install the pinned ArduinoJson dependency');
+ const source = readFileSync(join(root, 'src/LightweaverStorage.cpp'), 'utf8');
+ const body = source.slice(source.indexOf('bool saveWifiConfigJson('), source.indexOf('String runtimeStatusJson('));
++const runtime = readFileSync(join(root, 'src/main.cpp'), 'utf8');
++const rename = runtime.slice(runtime.indexOf('bool runtimeRename('), runtime.indexOf('void runtimeSetCustomHue('));
+ const dir = mkdtempSync(join(tmpdir(), 'lw-wifi-storage-'));
+ try {
+  writeFileSync(join(dir, 'test.cpp'), `
+@@ -18,18 +20,39 @@ try {
+ #include "${join(root, 'src/LightweaverWifiCredentialPolicy.h')}"
+ using String = std::string;
+ struct WifiConfig {String ssid,password,hostname;};
+-struct RuntimeConfig {WifiConfig wifi;};
++struct RuntimeConfig {WifiConfig wifi; String pieceName;};
+ static int writes=0;
+ static bool writeOk=true;
+ static String stored;
++static String savedPieceName;
++static String pieceName;
++static RuntimeConfig runtimeConfig;
++static bool wifiKeyExists = false;
++static bool openOk = true;
++static bool pieceWriteOk = true;
+ constexpr const char* NVS_NAMESPACE="lightweaver";
+ constexpr const char* NVS_WIFI_KEY="wifi";
++constexpr const char* NVS_PIECE_NAME_KEY="pieceName";
+ struct Preferences {
+- bool begin(const char*, bool){return true;}
+- size_t putString(const char*,const String& value){writes++; if(!writeOk)return 0;stored=value;return value.length();}
++ bool begin(const char*, bool) { return openOk; }
++ bool isKey(const char* key) { return String(key) == NVS_WIFI_KEY && wifiKeyExists; }
++ String getString(const char*, const String& fallback) { return wifiKeyExists ? stored : fallback; }
++ size_t putString(const char* key, const String& value) {
++   writes++;
++   if (String(key) == NVS_PIECE_NAME_KEY) {
++     if (!pieceWriteOk) return 0;
++     savedPieceName = value;
++   } else {
++     if (!writeOk) return 0;
++     stored = value;
++     wifiKeyExists = true;
++   }
++   return value.length();
++ }
+  void end(){}
+ };
+ ${body}
++${rename}
+ int main(){
+  RuntimeConfig cfg;cfg.wifi={"Gallery","secret-for-test","my-card"};String message;
+  assert(saveWifiConfigJson(R"({"reuseSaved":true})",cfg,message));
+@@ -48,6 +71,46 @@ int main(){
+  assert(cfg.wifi.password.empty());
+  assert(!saveWifiConfigJson(R"({"reuseSaved":true,"ssid":"Other"})",cfg,message));
+  assert(!saveWifiConfigJson(R"({"ssid":"Gallery","password":null})",cfg,message));
++
++ runtimeConfig.wifi = {"Gallery", "secret-for-test", "my-card"};
++ pieceName = runtimeConfig.pieceName = "Original piece";
++ stored = R"({"ssid":"Gallery","password":"secret-for-test","hostname":"my-card","proven":true,"channel":6,"future":{"version":2}})";
++ assert(runtimeRename("", "renamed-card", message));
++ assert(runtimeConfig.wifi.hostname == "renamed-card");
++ assert(!deserializeJson(saved, stored));
++ assert(saved["ssid"] == "Gallery" && saved["password"] == "secret-for-test");
++ assert(saved["hostname"] == "renamed-card");
++ assert(saved["proven"] == true && saved["channel"] == 6 && saved["future"]["version"] == 2);
++
++ const String renamedRecord = stored;
++ writeOk = false;
++ assert(!runtimeRename("New piece", "other-card", message));
++ assert(runtimeConfig.wifi.hostname == "renamed-card" && stored == renamedRecord);
++ assert(pieceName == "Original piece" && runtimeConfig.pieceName == "Original piece");
++ writeOk = true;
++
++ pieceWriteOk = false;
++ assert(!runtimeRename("New piece", "", message));
++ assert(pieceName == "Original piece" && runtimeConfig.pieceName == "Original piece");
++ pieceWriteOk = true;
++
++ openOk = false;
++ assert(!runtimeRename("", "other-card", message));
++ assert(runtimeConfig.wifi.hostname == "renamed-card" && stored == renamedRecord);
++ openOk = true;
++
++ for (const String& invalidRecord : {String(""), String("[]"), String("{malformed}")}) {
++   stored = invalidRecord;
++   assert(!runtimeRename("", "other-card", message));
++   assert(runtimeConfig.wifi.hostname == "renamed-card" && stored == invalidRecord);
++ }
++
++ wifiKeyExists = false;
++ assert(runtimeRename("New piece", "first-name", message));
++ assert(pieceName == "New piece" && savedPieceName == "New piece");
++ assert(!deserializeJson(saved, stored));
++ assert(saved["hostname"] == "first-name" && saved["ssid"] == "Gallery");
++ assert(saved["password"] == "secret-for-test");
+ }
+ `);
+  execFileSync('c++', ['-std=c++17','-Wall','-Wextra','-Werror','-I'+json,join(dir,'test.cpp'),'-o',join(dir,'test')]);
