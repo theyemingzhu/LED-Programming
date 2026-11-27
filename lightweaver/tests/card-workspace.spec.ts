@@ -2785,14 +2785,8 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
       runtimePackage: Record<string, unknown>,
       options: Record<string, unknown>,
     ) => {
-      const fixture = (window as any).__blankProductionPath;
-      const start = fixture.messageTypes.length;
-      fixture.capturedPush = structuredClone({ runtimePackage, options });
-      try {
-        return await cardPushClient.pushConfigToCard(runtimePackage, options);
-      } finally {
-        fixture.pushTypes = fixture.messageTypes.slice(start);
-      }
+      (window as any).__blankProductionPath.capturedPush = structuredClone({ runtimePackage, options });
+      return cardPushClient.pushConfigToCard(runtimePackage, options);
     };
 
     return { hostBeforeFinal, ackTimeoutMs: cardLink.CARD_LINK_PING_TIMEOUT_MS };
@@ -2879,7 +2873,6 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     return {
       types,
       configsSent,
-      pushTypes: fixture.pushTypes,
       authorityAfterRestore,
       capturedPush: fixture.capturedPush,
       expectedFreshEvidence: fixture.expectedFreshEvidence,
@@ -2895,12 +2888,10 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
   expect(productionPath.capturedPush.runtimePackage.config.kaleidoscopeMappings).toHaveLength(1);
   expect(productionPath.capturedPush.options.cardEvidence).toEqual(productionPath.expectedFreshEvidence);
   expect(productionPath.types).not.toContain('wiring-candidate');
-  // Scope command ordering to the actual push; the provisioning screen may
-  // independently compare firmware before the owner presses Restore.
-  const configIndex = productionPath.pushTypes.indexOf('config');
+  const configIndex = productionPath.types.indexOf('config');
   expect(configIndex).toBeGreaterThanOrEqual(0);
-  expect(productionPath.pushTypes.slice(0, configIndex)).not.toContain('firmware-info');
-  expect(productionPath.types.slice(productionPath.types.indexOf('config') + 1)).toContain('firmware-info');
+  expect(productionPath.types.slice(0, configIndex)).not.toContain('firmware-info');
+  expect(productionPath.types.slice(configIndex + 1)).toContain('firmware-info');
   expect(productionPath.recoveryCleared).toBe(true);
   expect(productionPath.replacement).toMatchObject({ ok: true, state: 'retargeted' });
   expect(productionPath.replacementState).toMatchObject({
