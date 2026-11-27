@@ -19,9 +19,9 @@
 // actually measured.
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
-import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
+import { CARD_HOSTS, createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_HOST, MATRIX_PATTERNS } from './harness/cardStates';
-import { installHttpsStudio, installFakeCardBridge, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
 import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
 
@@ -43,43 +43,19 @@ async function seedKnownCard(page: Page) {
   }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, host: MATRIX_HOST });
 }
 
-/**
- * Refuse ONLY `connectCardTransport`'s direct-transport probe
- * (cardTransport.js's `connectCardTransportOnce`), while leaving every other
- * request to the card — including the background link's own `/api/status`
- * poll (cardConnection.js's `probeCardStatusHost`, which sends no headers at
- * all) and the bridge's postMessage relay (which never goes over HTTP) —
- * working normally.
- *
- * The two `/api/status` reads are otherwise identical requests to the same
- * URL, so the only thing that tells them apart is the probe's explicit
- * `Accept: application/json` header (cardTransport.js always sends it; the
- * background poll sends no headers object, so Chromium defaults to the
- * wildcard "any type" Accept value).
- * Registered AFTER `card.install(page)` so it is tried FIRST (Playwright
- * matches routes in reverse registration order) and falls through to the
- * simulator's own handler for everything that is not the probe.
- */
-async function refuseDirectTransportProbe(page: Page, host: string) {
-  const maybeRefuse = async (route: Route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const isProbe = request.method() === 'GET'
-      && url.pathname === '/api/status'
-      && (request.headers()['accept'] || '') === 'application/json';
-    if (isProbe) return route.abort('connectionrefused');
-    return route.fallback();
-  };
-  await page.route(`http://${host}/**`, maybeRefuse);
-  await page.route(`https://${host}/**`, maybeRefuse);
+// Refuse direct HTTP at the chosen addresses. The independently routed card
+// popup can still reach the very same simulator via its normal bridge.
+async function refuseDirectRoutes(page: Page, hosts: readonly string[]) {
+  for (const host of hosts) {
+    for (const scheme of ['http', 'https']) {
+      await page.route(`${scheme}://${host}/**`, route => route.abort('connectionrefused'));
+    }
+  }
 }
 
 /**
  * Delay the first `times` direct-transport probes to `host` by `delayMs`
- * before letting the simulator answer normally. Same probe signature as
- * `refuseDirectTransportProbe` above (the explicit `Accept: application/json`
- * header `cardTransport.js` always sends, which the background link's own
- * unheaded `/api/status` poll never carries).
+ * before letting the simulator answer normally. Match the explicit JSON Accept header so background status polling is unaffected.
  *
  * Exists because Playwright's mocked network answers a probe in well under a
  * millisecond — too fast for a scripted click to reliably land before it
@@ -108,10 +84,7 @@ async function delayDirectTransportProbe(page: Page, host: string, delayMs: numb
   await page.route(`https://${host}/**`, maybeDelay);
 }
 
-/** Count `window.open` calls without breaking whatever it currently does —
- * registered AFTER `installFakeCardBridge` (when present) so it wraps that
- * fixture's own fake-tab-returning override instead of being clobbered by
- * it (both are addInitScripts; they apply in registration order). */
+/** Count open calls while preserving real browser popup behavior. */
 async function countWindowOpen(page: Page) {
   await page.addInitScript(() => {
     const inner = window.open?.bind(window);
@@ -149,17 +122,7 @@ async function settlesConnected(page: Page, timeoutMs: number): Promise<boolean>
   return false;
 }
 
-/**
- * Get to "connected" the way the background link does on its own — a
- * remembered card on a reachable direct transport settles unaided, per
- * [T1]'s "clicks: 0" (and the background poll is never the thing refused in
- * the fallback test below, only the probe is). Established BEFORE the
- * pattern tap in both tests so `cardLink.transport` reads 'direct', not
- * 'bridge', at tap time — otherwise `resolveCardBridgePreference`'s first
- * check (an established bridge transport always stays on the bridge, same
- * as CardControlDrawer) would short-circuit before ever running the probe
- * this ticket is actually about.
- */
+/** Wait for the remembered card to establish its direct link. */
 async function ensureConnectedDirect(page: Page) {
   const settled = await settlesConnected(page, CONNECT_BUDGET_MS);
   if (!settled) throw new Error('background link never reached connected-direct — check the card simulator routes');
@@ -202,47 +165,50 @@ test('[J17-direct] on an https Studio origin, clicking a pattern reaches the car
   expect(card.unhandled, 'Studio called a card endpoint the simulator does not model').toEqual([]);
 });
 
-test('[J17-direct-fallback] when the direct probe cannot connect, the pop-up path still opens exactly once, with no crash', async ({ page }) => {
-  const crashes: string[] = [];
-  page.on('pageerror', error => crashes.push(String(error.message)));
-
+test('[J17-direct-alternate] another reachable address for the same card previews directly', async ({ page }) => {
   const card = createCardSimulator(spec);
   await card.install(page);
-  // Only `connectCardTransport`'s own probe is refused — background link
-  // maintenance and the bridge's postMessage relay both stay healthy, so
-  // this models a card whose direct-authority path specifically cannot
-  // connect (a stricter router, a Local Network Access permission never
-  // granted) while everything else about it — reachability, its own page in
-  // another tab — is fine.
-  await refuseDirectTransportProbe(page, MATRIX_HOST);
+  await refuseDirectRoutes(page, [MATRIX_HOST]);
   await installHttpsStudio(page, testBaseURL);
-  await installFakeCardBridge(page, card, MATRIX_HOST);
   await countWindowOpen(page);
   await seedKnownCard(page);
 
   await page.goto(`${STUDIO_ORIGIN}/#screen=pattern`, { waitUntil: 'domcontentloaded' });
-  expect(page.url().startsWith(STUDIO_ORIGIN), 'the page did not actually land on the https origin').toBe(true);
-
   await ensureConnectedDirect(page);
+  const [control] = await Promise.all([
+    page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/control', { timeout: 5000 }),
+    page.locator(`.pm-cards .pmcard[data-pattern-id="${target.id}"]`).click(),
+  ]);
+  expect(CARD_HOSTS.filter(host => host !== MATRIX_HOST)).toContain(new URL(control.url()).hostname);
+  await card.waitForPlaying(target.id, 5000);
+  expect(await openCount(page)).toBe(0);
+});
 
-  const tile = page.locator(`.pm-cards .pmcard[data-pattern-id="${target.id}"]`);
-  await expect(tile, `no pattern tile for "${target.id}"`).toHaveCount(1, { timeout: 15000 });
-  await tile.click();
+test('[J17-direct-fallback] when every direct address is refused, one card popup opens', async ({ page }) => {
+  const crashes: string[] = [];
+  page.on('pageerror', error => crashes.push(error.message));
+  const card = createCardSimulator(spec);
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  const bridge = await installPracticeCardPopup(page, card, { hosts: CARD_HOSTS });
+  await countWindowOpen(page);
+  await seedKnownCard(page);
 
-  // The scope here is exactly the fallback DECISION, not the bridge's own
-  // send — a cold bridge acquisition racing the app's readiness catch-up
-  // (patternAccessRef lagging one poll cycle behind a just-opened bridge) is
-  // a separate, pre-existing behaviour of `scheduleVerifiedBridgePreview` /
-  // `scheduleLivePreview` that predates this ticket and reproduces the same
-  // way on old code; asserting a play-through here would couple this test
-  // to that unrelated race. So: give the async probe-then-fallback sequence
-  // a moment to run, then assert what F17-A actually promises — the pop-up
-  // opened exactly once, and nothing crashed.
-  await expect.poll(() => openCount(page), { timeout: 5000, intervals: [100] }).toBe(1);
-  await page.waitForTimeout(500);
+  await page.goto(`${STUDIO_ORIGIN}/#screen=pattern`, { waitUntil: 'domcontentloaded' });
+  await ensureConnectedDirect(page);
+  expect(await openCount(page)).toBe(0);
 
-  expect(await openCount(page), 'the fallback must open the card pop-up exactly once, not zero or repeatedly').toBe(1);
-  expect(crashes, 'the screen crashed').toEqual([]);
+  // Reload after a network change invalidates the previous page's authority.
+  // The paired card is still remembered, but none of its direct routes work.
+  await refuseDirectRoutes(page, CARD_HOSTS);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  expect(await openCount(page)).toBe(0);
+  await page.locator(`.pm-cards .pmcard[data-pattern-id="${target.id}"]`).click();
+
+  await expect.poll(() => bridge.relays.some(relay => relay.type === 'status')).toBe(true);
+  expect(bridge.navigations.map(navigation => navigation.host)).toEqual([MATRIX_HOST]);
+  expect(await openCount(page)).toBe(1);
+  expect(crashes).toEqual([]);
 });
 
 // F20/F21 — the FIRST tap after a hard load, landing before `cardLink` has

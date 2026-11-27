@@ -68,6 +68,7 @@ import {
   readStoredCardHost,
   writeStoredCardHost,
 } from '../lib/cardConnection.js';
+import { isCardTransportConnected } from '../lib/cardConnectionFlow.js';
 import { buildCardRuntimePackageFromProject } from '../lib/cardRuntimeProject.js';
 import { classifyCardReadiness, installedProjectIdFromCardStatus } from '../lib/cardReadiness.js';
 import { markCardEditIntentAbandoned } from '../lib/cardEditIntent.js';
@@ -636,7 +637,9 @@ function writeSectionDisplayOrder(projectId, ids) {
     }, [closeColorOrder, colorOrderOpen]);
 
     // ── real engine state ───────────────────────────────────────────────
-    const [cardHost, setCardHost] = useState(readStoredCardHost);
+    const [rememberedHost, setCardHost] = useState(readStoredCardHost);
+    // Background discovery can verify the paired card at a new address after this screen mounts.
+    const cardHost = isCardTransportConnected(cardLink) ? cardLink.host || rememberedHost : rememberedHost;
     const [status, setStatus] = useState("");
     const [statusKind, setStatusKind] = useState("");
     const [recoveryConfirmation, setRecoveryConfirmation] = useState('');
