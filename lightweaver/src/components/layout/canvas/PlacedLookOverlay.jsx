@@ -57,7 +57,7 @@ export function PlacedLookPicture({ look, time }) {
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 const CORNER_NAMES = ['top left', 'top right', 'bottom right', 'bottom left'];
 
-// The frame: drag inside to move it, drag a corner to size it, arrow keys
+// The frame: drag the move handle, drag a corner to size it, arrow keys
 // nudge it. Everything is in artwork units, so it stays put when the view
 // zooms; only the line weights and handle sizes follow the screen.
 export function PlacedLookFrame({ look, svgRef, scale, spaceRef }) {
@@ -105,7 +105,7 @@ export function PlacedLookFrame({ look, svgRef, scale, spaceRef }) {
   });
   return (
     <g className="lw-placed-look" data-testid="placed-look-frame" tabIndex={0} role="group"
-       aria-label="Placed look frame. Drag it to move it, drag a corner to size it, or use the arrow keys."
+       aria-label="Placed look frame. Drag the move handle or use arrow keys to move it. Drag a corner to resize it."
        data-x={x.toFixed(2)} data-y={y.toFixed(2)}
        data-half-width={halfWidth.toFixed(2)} data-half-height={halfHeight.toFixed(2)}
        transform={turned(look)}
@@ -119,9 +119,21 @@ export function PlacedLookFrame({ look, svgRef, scale, spaceRef }) {
        }}>
       <rect className="lw-placed-look-body" data-testid="placed-look-body"
             x={-halfWidth} y={-halfHeight} width={halfWidth * 2} height={halfHeight * 2}
-            fill="transparent" stroke="var(--text-mid)" strokeOpacity="0.75" strokeWidth={scale * 1.5}
-            strokeDasharray={`${scale * 7} ${scale * 6}`}
-            style={{ cursor: 'grab', touchAction: 'none' }} {...dragHandlers('move')}/>
+            fill="none" stroke="var(--text-mid)" strokeOpacity="0.75" strokeWidth={scale * 1.5}
+            strokeDasharray={`${scale * 7} ${scale * 6}`} pointerEvents="none"/>
+      <g className="lw-placed-look-move" data-testid="placed-look-move"
+         aria-label="Move placed look frame"
+         transform={`translate(0 ${-halfHeight - scale * 22}) scale(${scale})`}
+         {...dragHandlers('move')}>
+        <title>Move placed look frame</title>
+        <circle r="20" fill="transparent"/>
+        <g pointerEvents="none" strokeWidth="1.5">
+          <path d="M0 10v12" stroke="var(--text-mid)" strokeOpacity="0.75"/>
+          <circle r="10" fill="var(--bg-canvas)" stroke="var(--text-hi)" strokeOpacity="0.9"/>
+          <path d="M-6 0H6M0 -6V6M-3 -2L-6 0l3 2M3 -2L6 0 3 2M-2 -3L0 -6l2 3M-2 3L0 6l2 -3"
+                fill="none" stroke="var(--text-hi)" strokeLinecap="round" strokeLinejoin="round"/>
+        </g>
+      </g>
       {CORNERS.map(([i, j], index) => (
         <g key={index} className="lw-placed-look-corner" data-testid={`placed-look-corner-${index}`}
            aria-label={`Size from the ${CORNER_NAMES[index]} corner`}

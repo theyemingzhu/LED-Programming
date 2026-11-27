@@ -69,8 +69,11 @@ const LIVE_WORDS = {
 // is now: every change to the frame or a dial shows on the strips at once.
 // Stopping (untick, None, leaving Layout) puts the card's own look back, the
 // same session Pattern Lab's live preview uses.
-function usePlacedLookLive({ enabled, look, strips, compiledWiring, symmetry, host }) {
+function usePlacedLookLive({ enabled, look, strips, compiledWiring, symmetry, host, cardId, projectId }) {
   const [status, setStatus] = useState(null);
+  const selection = useRef({ host, cardId, projectId });
+  selection.current = { host, cardId, projectId };
+  const transition = useRef(Promise.resolve());
   const latest = useRef({ look, strips, compiledWiring, symmetry });
   latest.current = { look, strips, compiledWiring, symmetry };
   const running = enabled && Boolean(look) && Boolean(compiledWiring?.ok);
@@ -83,19 +86,24 @@ function usePlacedLookLive({ enabled, look, strips, compiledWiring, symmetry, ho
       return now.look ? placedLookPhysicalFrame(now.look, now.strips, now.compiledWiring, (Date.now() - started) / 1000, { symmetry: now.symmetry }) : [];
     };
     const session = createPatternLabPreviewSession({
-      host, fps: LIVE_FPS,
+      host: selection.current.host, fps: LIVE_FPS,
+      validateCurrent: () => selection.current.projectId === projectId && selection.current.cardId === cardId,
       onStateChange: next => { if (!cancelled) setStatus(next); },
     });
     const timer = setInterval(() => { session.push(frameNow()); }, Math.round(1000 / LIVE_FPS));
-    session.start(frameNow()).catch(error => { if (!cancelled) setStatus({ state: 'error', error }); });
+    void transition.current.then(async () => {
+      if (!cancelled) await session.start(frameNow());
+    }).catch(error => { if (!cancelled) setStatus({ ...session.status(), state: 'error', error }); });
     return () => {
       clearInterval(timer);
       cancelled = true;
-      // Say how stopping ended (the card's own look back, or not).
-      void session.stop('user').then(() => setStatus(session.status()))
+      setStatus({ state: 'stopping' });
+      transition.current = session.stop('user').then(() => setStatus(session.status()))
         .catch(error => setStatus({ ...session.status(), state: 'error', error }));
     };
-  }, [running, host]);
+    // Discovery may find the same card at another address. Keep the session
+    // on its starting address while the paired card and project stay the same.
+  }, [running, cardId, projectId]);
   return status;
 }
 
@@ -115,13 +123,15 @@ function Dial({ id, label, min, max, step = 1, value, onChange }) {
 export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compiledWiring = null, artworkCentre = null }) {
   const look = usePlacedLookPreview();
   const symmetryFocus = useSymmetryFocus();
-  const { standaloneController, setStandaloneController } = useProject();
+  const { standaloneController, setStandaloneController, projectId } = useProject();
   const card = useCardStatus({ enabled: Boolean(look) });
+  const cardId = card.status?.cardId;
   const [liveWanted, setLiveWanted] = useState(false);
   const live = usePlacedLookLive({
-    enabled: liveWanted && card.connected, look, strips, compiledWiring, symmetry, host: card.host || '',
+    enabled: liveWanted && card.connected, look, strips, compiledWiring, symmetry, host: card.host || '', cardId, projectId,
   });
   useEffect(() => { if (!look) setLiveWanted(false); }, [look]);
+  useEffect(() => { setLiveWanted(false); }, [projectId, cardId]);
   const [recording, setRecording] = useState(null);
   const recordedFor = useRef(null);
   // The recording this try-out was last saved as (or opened from): saving
@@ -234,20 +244,21 @@ export function PlacedLookControl({ strips, hidden = {}, symmetry = null, compil
             )}
             <label className="la-placed-check">
               <input type="checkbox" data-testid="placed-look-live" checked={liveWanted}
-                     disabled={!card.connected || !compiledWiring?.ok}
+                     disabled={!card.connected || !compiledWiring?.ok || live?.state === 'stopping'}
                      onChange={event => setLiveWanted(event.target.checked)}/>
               Show it on the lights
             </label>
             <p className="la-symmetry-note" role="status" data-testid="placed-look-live-note"
-               data-state={liveWanted && card.connected ? live?.state || 'starting' : live?.state === 'restored' || live?.state === 'error' ? live.state : 'off'}>
+               data-state={live?.state || (liveWanted && card.connected ? 'starting' : 'off')}>
               {!card.connected
                 ? 'Connect the card to see this look on the strips.'
                 : !compiledWiring?.ok
                 ? 'Finish the wiring in Wire first: the lights follow the order they are wired in.'
                 : liveWanted
-                ? (live?.state === 'error' ? `The lights could not follow: ${live.error?.message || 'the card did not take the stream'}.` : LIVE_WORDS[live?.state] || LIVE_WORDS.starting)
-                : live?.state === 'restored' ? LIVE_WORDS.restored
-                : live?.state === 'error' ? `The card's own look could not be put back: ${live.error?.message || 'no answer'}. Recover lights on Card Home.`
+                ? (live?.state === 'error' ? `The lights could not follow: ${live.error?.message?.replace(/\.$/, '') || 'the card did not take the stream'}.` : LIVE_WORDS[live?.state] || LIVE_WORDS.starting)
+                : live?.state === 'superseded' ? live.error?.message || LIVE_WORDS.superseded
+                : LIVE_WORDS[live?.state] && live?.state !== 'stopped' ? LIVE_WORDS[live.state]
+                : live?.state === 'error' ? `The card's own look could not be put back: ${live.error?.message?.replace(/\.$/, '') || 'no answer'}. Recover lights on Card Home.`
                 : 'Nothing is sent to the card until you tick this.'}
             </p>
             <button type="button" className="btn la-placed-quiet" data-testid="placed-look-centre"

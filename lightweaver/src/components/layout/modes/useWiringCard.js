@@ -30,6 +30,7 @@ export function useWiringCard() {
   const profile = confirmedBoardProfile(cardId);
   const supportedPins = (hasLiveCard && capacity.outputPins) || CARD_HARDWARE_CAPABILITIES.supportedOutputPins;
   return {
+    link: cardLink,
     state,
     profile,
     supportedPins,

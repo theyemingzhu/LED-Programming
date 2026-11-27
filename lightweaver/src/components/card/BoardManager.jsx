@@ -79,7 +79,7 @@ export function BoardManagerEntry({ cardId, onOpen, onConnect }) {
       </div>
       <div className="lw-board-actions">
         {onConnect && (
-          <button type="button" className="btn primary" data-testid="setup-connect-card" onClick={onConnect}>Set up this card</button>
+          <button type="button" className="btn" data-testid="board-setup-connect" onClick={onConnect}>Set up this card</button>
         )}
         <button type="button" className="btn" onClick={onOpen}>Board Manager</button>
       </div>

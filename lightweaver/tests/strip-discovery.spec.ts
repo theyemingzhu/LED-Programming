@@ -244,12 +244,13 @@ async function dispatchBlankCard(page: any, { routeToDiscovery = true, reportedM
 async function startDiscoveryOnGpio16(page: any) {
   const panel = page.getByTestId('strip-discovery');
   await expect(panel).toBeVisible();
-  // Idempotent: the port may already be lit from an earlier step, and clicking a
-  // lit port turns it off.
-  if (await page.getByTestId('discovery-probe-16').getAttribute('aria-pressed') !== 'true') {
-    await page.getByTestId('discovery-probe-16').click();
-  }
-  await page.getByTestId('discovery-start').click();
+  // The first press opens the question and removes the pin picker. A caller
+  // that already selected GPIO 16 can answer without changing the active test.
+  const pin = panel.getByTestId('discovery-probe-16');
+  const question = panel.getByRole('heading', { name: 'Did the strip on GPIO 16 light up?', exact: true });
+  await expect(pin.or(question)).toBeVisible();
+  if (await pin.isVisible()) await pin.click();
+  await panel.getByTestId('discovery-start').click();
 }
 
 // Combined flow (todo/plans/find-strips-redesign.md §6): one colour row, then
@@ -496,6 +497,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
       expect(card.reboots).toBe(rebootsBefore);
     });
 
+    await expect(page.getByTestId('discovery-found').getByText('Visually confirmed', { exact: true })).toHaveCount(2);
     await expect(page.getByTestId('discovery-output-row')).toHaveCount(2);
     await expect(page.getByTestId('card-setup-close')).toBeEnabled();
     await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
@@ -535,8 +537,10 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Layout', exact: true })
       .click({ trial: true, timeout: 1000 })).rejects.toThrow();
+    expect(card.beaconPinned).toBe(16);
     await page.getByTestId('card-setup-restore').click();
-    await expect(page.getByTestId('discovery-probe-16')).toHaveAttribute('aria-pressed', 'true');
+    await expect(setup.getByRole('heading', { name: 'Did the strip on GPIO 16 light up?', exact: true })).toBeVisible();
+    await expect(setup.getByRole('button', { name: 'Yes', exact: true })).toBeEnabled();
     expect(card.beaconPinned).toBe(16);
     expect(card.configs.length).toBe(configsBefore);
     expect(card.reboots).toBe(rebootsBefore);
@@ -622,9 +626,9 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await dispatchBlankCard(page);
     await expect(page.getByTestId('strip-discovery')).toBeVisible();
 
-    // Tapping the card drawing stops the sweep and lights the tapped pin.
+    // Picking an eligible pin stops the sweep and lights that pin.
     await page.getByTestId('discovery-probe-18').click();
-    await expect(page.getByTestId('discovery-probe-18')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('heading', { name: 'Did the strip on GPIO 18 light up?' })).toBeVisible();
     await expect.poll(() => card.beaconPinned, {
       message: 'the card must be lighting the port the owner named',
     }).toBe(18);
@@ -634,28 +638,30 @@ test.describe('a blank card whose firmware applies its first config', () => {
 
     // Picking a different port moves the light rather than lighting both, or the
     // owner could not tell which port answered.
+    await page.getByTestId('discovery-try-another').click();
+    await expect(page.getByTestId('discovery-probe-18')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('discovery-probe-21').click();
-    await expect(page.getByTestId('discovery-probe-21')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('discovery-probe-18')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByRole('heading', { name: 'Did the strip on GPIO 21 light up?' })).toBeVisible();
     await expect.poll(() => card.beaconPinned).toBe(21);
 
     // Tapping the lit pin again turns it off, so a probe can be stopped
     // without leaving the screen.
+    await page.getByTestId('discovery-try-another').click();
+    await expect(page.getByTestId('discovery-probe-18')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('discovery-probe-21').click();
-    await expect(page.getByTestId('discovery-probe-21')).toHaveAttribute('aria-pressed', 'false');
     await expect.poll(() => card.beaconPinned).toBeNull();
   });
 
-  test('the sweep lights each pin the card can light in turn, with no pin numbers, and That\u2019s mine picks it', async ({ page }) => {
+  test('the sweep lights each pin the card can light in turn, identifies it, and That\u2019s mine picks it', async ({ page }) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('discovery-plan')).toHaveAttribute('data-find-mode', 'watch');
     await expect.poll(() => card.beaconPins.length, { timeout: 15000 }).toBeGreaterThanOrEqual(3);
     expect(card.beaconPins.slice(0, 3)).toEqual(BEACON_PORTS.slice(0, 3));
     expect(card.beaconRefused).toEqual([]);
-    await expect(page.locator('[data-testid="discovery-pin-map"] .lw-pinpicker-label').filter({ hasText: /^\d+$/ })).toHaveCount(0);
     const lit = page.locator('[data-testid="discovery-pin-map"] .is-pulse[data-pin="17"]');
     await expect(lit).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('discovery-sweep-pin')).toHaveText('Testing GPIO 17');
     await page.waitForTimeout(700);
     await page.getByTestId('discovery-sweep-mine').click();
     await expect.poll(() => card.configs.length).toBeGreaterThan(0);
@@ -700,11 +706,13 @@ test.describe('a blank card whose firmware applies its first config', () => {
 
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
+    await expect(page.getByTestId('discovery-probe-39')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-probe-38')).toBeVisible();
+    await page.getByRole('button', { name: 'Full pinout' }).click();
     const map = page.getByTestId('discovery-pin-map');
     await expect(map).toContainText('Confirmed bench board');
     await expect(map.locator('[data-pin="39"]')).toContainText('External control');
     await expect(page.getByTestId('discovery-probe-39')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-probe-38')).toBeVisible();
     expect(card.beaconPins).not.toContain(39);
   });
 
@@ -719,12 +727,13 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('discovery-probe-39')).toBeVisible();
-    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('GPIOs 35–37');
-    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('PSRAM');
     await expect(page.getByTestId('discovery-probe-36')).toHaveCount(0);
     await expect(page.getByTestId('discovery-probe-37')).toHaveCount(0);
     await page.getByTestId('discovery-probe-39').click();
     await expect.poll(() => card.beaconPinned).toBe(39);
+    await page.getByRole('button', { name: 'Full pinout' }).click();
+    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('GPIOs 35–37');
+    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('PSRAM');
     const pinMap = page.getByTestId('discovery-pin-map');
     await expect(pinMap.locator('[data-pin="39"]')).toContainText('LED available · JTAG');
     await expect(pinMap.locator('[data-pin="12"]')).toContainText('microSD SCK');
@@ -736,6 +745,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await pinMap.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await pinMap.screenshot({ path: testInfo.outputPath('gpio39-discovery-mobile.png') });
+    await page.getByRole('button', { name: 'Back to strip check' }).click();
     await page.getByTestId('discovery-start').click();
     await expect.poll(() => card.configs.length).toBeGreaterThan(0);
     expect(card.configs[0].led.outputs.map((output: { pin: number }) => output.pin)).toEqual([39]);
@@ -859,6 +869,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
       && frame[46] === '3C003C' && frame[45] === '281400' && frame[47] === '281400')).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('lightweaver-end-check-desktop.png') });
     await page.getByTestId('discovery-end-yes').click();
+    await expect(page.getByTestId('discovery-found').getByRole('listitem')).toContainText('Visually confirmed');
     await expect(page.getByTestId('discovery-result-16')).toHaveText('Strip 1 · 47 lights');
     await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
   });
@@ -989,9 +1000,26 @@ test.describe('a blank card whose firmware applies its first config', () => {
       await page.getByTestId('discovery-end-add-strip').click();
     }
     await page.getByTestId('discovery-probe-21').click();
-    await expect(page.getByTestId('discovery-output-limit')).toBeVisible();
+    await expect(page.getByTestId('discovery-output-limit')).toContainText('use a second card for the rest');
     await expect(page.getByTestId('discovery-start')).toBeDisabled();
     expect(card.configs).toHaveLength(4);
+  });
+
+  test('a retained count is distinct from a light count confirmed on this visit', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('lw_port_roles_v1', JSON.stringify([{ pin: 17, role: 'strip', pixelCount: 31 }]));
+    });
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    await startDiscoveryOnGpio16(page);
+    await showCountingRuler(page);
+    await countTo(page, 47);
+    await page.getByTestId('discovery-end-yes').click();
+    const counts = page.getByTestId('discovery-found');
+    await expect(counts.getByRole('listitem').filter({ has: page.getByTestId('discovery-result-16') }))
+      .toHaveText(/47 lights.*Visually confirmed/);
+    await expect(counts.getByRole('listitem').filter({ has: page.getByTestId('discovery-result-17') }))
+      .toHaveText(/31 lights.*Last counted/);
   });
 
   test('the probe question offers an explicit relight control', async ({ page }) => {

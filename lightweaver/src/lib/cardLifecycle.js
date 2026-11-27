@@ -18,10 +18,8 @@ const LABELS = Object.freeze({
   'update-rolled-back': 'Update rolled back',
   'update-required': 'Needs attention',
   'setup-required': 'Needs project',
-  // Not "Needs attention": nothing is wrong. The card is healthy and holds this
-  // same project at an older revision, and the whole remedy is to save. The
-  // alarming label sat beside an identity row that said the project matched,
-  // and it is the single line owners said made them stop trusting the screen.
+  // The card is healthy. The connection panel explains whether the installed
+  // copy has a different ID or has drifted from the open project.
   'project-mismatch': 'Save to card',
   // Same chip as project-mismatch: typed layout length drifted from the card.
   // The physical strip stays at last saved length until the owner clicks.
@@ -130,19 +128,24 @@ const DIRECT_CONNECT_READY_COPY = 'This exact card and installed project are rea
 
 const DIRECT_CONNECT_WAITING_COPY = 'This exact card answered, but Studio is still verifying its installed project before ordinary controls are enabled.';
 
-// Status, not celebration: the card is fine, it just holds an older save of
-// the same project. The remedy is the existing "Use this card's project" /
-// Setup save route, not a fresh diagnosis.
-const DIRECT_CONNECT_PROJECT_MISMATCH_COPY = "This card holds the same project at a different revision. Use the card's copy, or save this one to the card.";
-
 // Every other terminal state (a blank card, a runtime that answered but is
 // not ready, etc.) gets its own one-sentence verdict built from the same
 // label map the footer chip and identity row already use, so a future state
 // automatically gets a real sentence instead of silently falling into the
 // waiting copy.
-export function directConnectVerdictCopy(state) {
+export function directConnectVerdictCopy(state, lifecycle) {
   if (state === 'ready') return DIRECT_CONNECT_READY_COPY;
-  if (state === 'project-mismatch') return DIRECT_CONNECT_PROJECT_MISMATCH_COPY;
+  if (state === 'project-mismatch') {
+    const { projectIdRelationship, projectRevisionDiffers } = lifecycle || {};
+    const evidence = projectIdRelationship === 'different'
+      ? 'This card holds a different project from the one open in Studio.'
+      : projectIdRelationship === 'same' && projectRevisionDiffers
+        ? 'This card holds the same project at a different revision.'
+        : projectIdRelationship === 'same'
+          ? 'Studio has not matched the open project to the copy on this card.'
+          : 'Studio could not confirm which project this card holds.';
+    return `${evidence} Use the card's copy, or save this one to the card.`;
+  }
   if (!state || DIRECT_CONNECT_WAITING_STATES.has(state)) return DIRECT_CONNECT_WAITING_COPY;
   return `This exact card answered. Card status: ${lifecycleLabel(state).toLowerCase()}.`;
 }
@@ -185,12 +188,6 @@ export function cardReportedLedCount(readiness = {}) {
   return fromOutputs > 0 ? fromOutputs : 0;
 }
 
-function sameProjectId(project, readiness) {
-  const studioProjectId = sanitizeProjectId(project?.id || project?.projectId);
-  const cardProjectId = sanitizeProjectId(readiness?.projectId || readiness?.piece?.id);
-  return Boolean(studioProjectId && cardProjectId && studioProjectId === cardProjectId);
-}
-
 function lengthDiffers(project, readiness) {
   const studio = studioTypedLedCount(project);
   const card = cardReportedLedCount(readiness);
@@ -231,9 +228,12 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null, 
   const cardFingerprint = normalizedFingerprint(readiness.projectFingerprint);
   const studioRevision = Number(project?.revision ?? project?.projectRevision);
   const cardRevision = Number(readiness.projectRevision);
-  const exactRevision = Number.isSafeInteger(studioRevision) && studioRevision >= 0
-    && Number.isSafeInteger(cardRevision) && cardRevision >= 0
-    && studioRevision === cardRevision;
+  const revisionsKnown = Number.isSafeInteger(studioRevision) && studioRevision >= 0
+    && Number.isSafeInteger(cardRevision) && cardRevision >= 0;
+  const exactRevision = revisionsKnown && studioRevision === cardRevision;
+  const projectIdRelationship = !studioProjectId || !cardProjectId ? 'unknown'
+    : studioProjectId === cardProjectId ? 'same' : 'different';
+  const sameProjectId = projectIdRelationship === 'same';
   // A card flashed before fingerprint reporting answers with an empty
   // fingerprint for a project it genuinely holds. When the Studio side's
   // binding is a verified installation record made against that empty value
@@ -242,9 +242,7 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null, 
   const exactFingerprint = cardFingerprint
     ? Boolean(studioFingerprint && studioFingerprint === cardFingerprint)
     : project?.legacyFingerprintBinding === true;
-  const exactProject = Boolean(studioProjectId && cardProjectId && studioProjectId === cardProjectId)
-    && exactFingerprint
-    && exactRevision;
+  const exactProject = sameProjectId && exactFingerprint && exactRevision;
   const verifiedTransport = exactCard && CONNECTED_STATES.has(link.state);
   const commandReady = verifiedTransport
     && readiness.runtimePhase === 'ready'
@@ -318,10 +316,10 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null, 
     && readiness.provisionalSetup === true
     && readiness.commandReady === true
     && readiness.runtimePhase === 'ready') state = 'discovery-setup';
-  else if (commandReady && sameProjectId(project, readiness) && lengthDiffers(project, readiness)) {
+  else if (commandReady && sameProjectId && lengthDiffers(project, readiness)) {
     state = 'length-mismatch';
   }
-  else if (commandReady && sameProjectId(project, readiness) && liveContentDiffers(project)) {
+  else if (commandReady && sameProjectId && liveContentDiffers(project)) {
     state = 'content-mismatch';
   }
   else if (commandReady && !exactProject) state = 'project-mismatch';
@@ -360,6 +358,8 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null, 
     exactCard,
     exactProject,
     exactRevision,
+    projectIdRelationship,
+    projectRevisionDiffers: revisionsKnown && !exactRevision,
     commandReady,
     installedControlsReady: commandReady && Boolean(readiness.bootId) && !readiness.safeMode
       && (!link.validatedBootId || link.validatedBootId === readiness.bootId)

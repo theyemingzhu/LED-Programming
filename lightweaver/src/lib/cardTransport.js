@@ -1,4 +1,4 @@
-import { cardHostToUrl, isLocalCardHost, normalizeCardHost, rememberCardHost, writeStoredCardHost } from './cardConnection.js';
+import { cardHostToUrl, isLocalCardHost, normalizeCardHost, rememberCardHost, rememberVerifiedPairedCardHost, writeStoredCardHost } from './cardConnection.js';
 import {
   normalizeCardIdentity,
   persistCardIdentity,
@@ -313,71 +313,99 @@ export function createTransportAuthority({
   return Object.freeze(authority);
 }
 
-async function connectCardTransportOnce({
+export async function probeCardTransport({
   host,
   expectedCardId = readPersistedCardIdentity()?.id || '',
   fetchImpl = globalThis.fetch,
-  link = getSharedCardLink(),
   transport = CARD_TRANSPORTS.DIRECT,
-  ownerCapability = '',
+  signal,
+  timeoutMs = 4000,
 } = {}) {
   const normalizedHost = normalizeCardHost(host);
   if (!isLocalCardHost(normalizedHost)) throw new TypeError('A valid local Lightweaver card host is required.');
   const baseUrl = transport === CARD_TRANSPORTS.LOCAL ? '' : cardHostToUrl(normalizedHost);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, timeoutMs);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    let response;
-    try {
-      response = await fetchImpl(`${baseUrl}/api/status`, {
-        method: 'GET', cache: 'no-store', credentials: 'omit',
-        signal: controller.signal,
-        ...(transport === CARD_TRANSPORTS.DIRECT ? { targetAddressSpace: 'local' } : {}),
-        // Keep this read-only probe CORS-safelisted. Released cards accept an
-        // ordinary JSON GET, but did not advertise the former custom header, so
-        // browsers rejected that preflight before identity could be read.
-        headers: { Accept: 'application/json' },
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    controller.signal.throwIfAborted();
+    const response = await fetchImpl(`${baseUrl}/api/status`, {
+      method: 'GET', cache: 'no-store', credentials: 'omit',
+      signal: controller.signal,
+      ...(transport === CARD_TRANSPORTS.DIRECT ? { targetAddressSpace: 'local' } : {}),
+      // Keep this plain JSON GET CORS-safelisted for released cards.
+      headers: { Accept: 'application/json' },
+    });
     const status = await parseJsonResponse(response);
+    controller.signal.throwIfAborted();
     const exact = exactStatus(status, { expectedCardId, host: normalizedHost });
     if (!exact.ok) return failure(exact.reason, normalizedHost, {
       expectedCardId: String(expectedCardId || ''), observedCardId: exact.observedCardId,
       ...(exact.observedCard ? { observedCard: exact.observedCard, readiness: status } : {}),
     });
-    const acknowledgedAt = new Date().toISOString();
-    // Owner-initiated connect with no remembered card IS the pair. Background
-    // discovery uses reportDirectCardStatus({ allowAdopt: false }) and must
-    // stay unpaired; this path is the one-tap Connect button.
-    if (!expectedCardId && exact.card?.id) {
-      persistCardIdentity(exact.card, { acknowledgedAt });
-      rememberCardHost(normalizedHost);
-      writeStoredCardHost(normalizedHost);
-    } else if (expectedCardId && exact.card?.id) {
-      // The remembered card answered on firmware Studio may not have written
-      // down — the ordinary state after an official update (F13). This is the
-      // first moment the new build is proven, so the note is brought current
-      // WHOLE here: firmwareVersion, buildId and buildNumber together, or not
-      // at all. A different id never reaches this line (exactStatus refuses it
-      // as `wrong-card`), and a card whose firmware has not moved is a no-op.
-      refreshExpectedCardFirmware(exact.card, { acknowledgedAt });
-    }
-    link?.dispatch?.({
-      type: 'direct-status', connected: true, host: normalizedHost,
-      card: exact.card,
-      expectedCard: expectedCardId ? { id: expectedCardId } : exact.card,
-      allowAdopt: !expectedCardId,
-      readiness: status, acknowledgedAt,
-    });
-    revokeActiveCardTransportAuthority();
-    activeTransportAuthority = createTransportAuthority({ transport, host: normalizedHost, status, card: exact.card, link, fetchImpl, ownerCapability });
-    return activeTransportAuthority;
+    return { connected: true, host: normalizedHost, card: exact.card, readiness: status };
   } catch (cause) {
     if (cause?.reason === 'wrong-card') throw cause;
     return failure('direct-unavailable', normalizedHost, { cause });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
+}
+
+export function activateCardTransport(probe, {
+  expectedCardId = readPersistedCardIdentity()?.id || '',
+  expectedPersistedCardId = readPersistedCardIdentity()?.id || '',
+  fetchImpl = globalThis.fetch,
+  link = getSharedCardLink(),
+  transport = CARD_TRANSPORTS.DIRECT,
+  ownerCapability = '',
+  signal,
+  acknowledge = true,
+} = {}) {
+  if (!probe.connected) return probe;
+  const { host, card, readiness: status } = probe;
+  if (signal?.aborted || (readPersistedCardIdentity()?.id || '') !== expectedPersistedCardId) {
+    return failure('connection-superseded', host);
+  }
+  if (!card?.id || (expectedCardId && card.id !== expectedCardId)
+    || (expectedPersistedCardId && card.id !== expectedPersistedCardId)) {
+    return failure('wrong-card', host, { expectedCardId, observedCardId: card?.id });
+  }
+  const evidence = exactStatus(status, { host, expectedCardId: card.id });
+  if (!evidence.ok) return failure(evidence.reason, host);
+  if (!acknowledge) {
+    const checked = link?.getState?.();
+    if (checked?.state !== 'connected-direct' || checked.host !== host || checked.card?.id !== card.id
+      || checked.validatedBootId !== evidence.bootId) return failure('connection-superseded', host);
+  }
+  if (acknowledge) {
+    const acknowledgedAt = new Date().toISOString();
+    if (!expectedCardId) {
+      persistCardIdentity(card, { acknowledgedAt });
+      rememberCardHost(host);
+      writeStoredCardHost(host);
+    } else {
+      refreshExpectedCardFirmware(card, { acknowledgedAt });
+      rememberVerifiedPairedCardHost(host, card.id);
+    }
+    link?.dispatch?.({
+      type: 'direct-status', connected: true, host, card,
+      expectedCard: expectedCardId ? { id: expectedCardId } : card,
+      allowAdopt: !expectedCardId,
+      readiness: status, acknowledgedAt,
+    });
+  }
+  revokeActiveCardTransportAuthority();
+  activeTransportAuthority = createTransportAuthority({ transport, host, status, card, link, fetchImpl, ownerCapability });
+  return activeTransportAuthority;
+}
+
+async function connectCardTransportOnce(options) {
+  const expectedPersistedCardId = readPersistedCardIdentity()?.id || '';
+  return activateCardTransport(await probeCardTransport(options), { ...options, expectedPersistedCardId });
 }
 
 /**

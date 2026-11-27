@@ -147,7 +147,7 @@ test('[C1] Layout still opens from the light check, and nothing is written to th
   test.setTimeout(150_000);
   const card = await blankCard(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await page.getByTestId('setup-lights-action').click();
   await findStrip(page, { via: 'tap', pin: 18, count: 41 });
   await expect(page.getByTestId('discovery-save-to-card')).toBeVisible({ timeout: 15_000 });
@@ -265,7 +265,7 @@ test('[C8] "Yes, and add another strip" keeps the first strip and opens the port
   test.setTimeout(150_000);
   const card = await blankCard(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await page.getByTestId('setup-lights-action').click();
   await findStrip(page, { via: 'tap', pin: 18, count: 41, addAnother: true });
   await expect(page.getByTestId('discovery-probe-18')).toBeVisible({ timeout: 15_000 });

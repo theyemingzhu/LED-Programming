@@ -332,12 +332,8 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
   };
 }
 
-// The 'reconstruct' strategy: lw-setup's startFromCard, verbatim. Reads the
-// card's status (retrying over direct transport on http pages when the first
-// answer omits geometry), tolerates missing patterns/zones endpoints (a legacy
-// card must still adopt from the status skeleton alone), and hands the
-// reconstructed parts to the caller's applyCardParts. Returns a result instead
-// of reporting, so the calling screen keeps its own failure copy.
+// Reconstruct the verified card's geometry and complete look list. A switch
+// away from editable work saves it first, then rechecks the card's live project.
 async function runReconstructStrategy(deps, params = {}) {
   const { context, io, actions } = deps;
   const cardLink = context.cardLink;
@@ -483,11 +479,39 @@ async function runReconstructStrategy(deps, params = {}) {
   const reconstructionCardId = String(status?.cardId || cardLink?.card?.id || '').trim();
   try {
     if (!contextIsCurrent(status)) return cancelled(status);
+    let savedSnapshot;
+    if (params.preserveCurrentProject) {
+      let saved;
+      try {
+        saved = await actions.saveBeforeCardProjectSwitch?.();
+      } catch {
+        saved = { ok: false, reason: 'authoritative-save-failed' };
+      }
+      if (!saved?.ok || !saved.snapshot) {
+        return { ok: false, reason: 'save-before-adoption', message: projectSwitchSaveFailureMessage(saved?.reason), status };
+      }
+      savedSnapshot = saved.snapshot;
+    }
+    const canApply = () => contextIsCurrent(status) && (!savedSnapshot
+      || actions.isProjectSwitchSnapshotCurrent?.(savedSnapshot) === true);
+    if (!canApply()) return cancelled(status);
+
+    if (savedSnapshot) {
+      const fresh = await io.readCardStatusEnvelope({ host: readHost, transport: cardLink?.transport });
+      const expected = projectIdentity(status);
+      const actual = projectIdentity(fresh);
+      if (!canApply() || !contextIsCurrent(fresh)
+        || fresh?.cardId !== status?.cardId || fresh?.bootId !== status?.bootId
+        || actual.id !== expected.id || actual.revision !== expected.revision || actual.fingerprint !== expected.fingerprint) {
+        return cancelled(status);
+      }
+    }
     const applied = await actions.applyCardParts(
       reconstructInstalledCardState({ skeleton, patterns, zones, cardId: reconstructionCardId, firmwareInfo }),
       status,
+      { canApply },
     );
-    if (!applied?.ok) return { ok: false, reason: applied?.reason, status };
+    if (!applied?.ok) return { ok: false, reason: applied?.reason, message: applied?.message, status };
     return { ok: true, status };
   } catch (error) {
     return { ok: false, reason: '', error, status };

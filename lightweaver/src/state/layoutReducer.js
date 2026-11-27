@@ -142,7 +142,7 @@ export const layoutActions = {
   mergeStrips: (ids, merged) => ({ type: LayoutActions.MERGE_STRIPS, ids, merged }),
   groupStrips: (ids, groupId, name = '') => ({ type: LayoutActions.GROUP_STRIPS, ids, groupId, name }),
   updateStrip: (id, patch) => ({ type: LayoutActions.UPDATE_STRIP, id, patch }),
-  updateKaleidoscope: (id, kaleidoscope) => ({ type: LayoutActions.UPDATE_KALEIDOSCOPE, id, kaleidoscope }),
+  updateKaleidoscope: (id, kaleidoscope, reflectionPointDraft = null) => ({ type: LayoutActions.UPDATE_KALEIDOSCOPE, id, kaleidoscope, reflectionPointDraft }),
   setStripOffset: (id, x, y, pixels = null) => ({ type: LayoutActions.SET_STRIP_OFFSET, id, x, y, pixels }),
   setStripCountOverrides: overrides => ({ type: LayoutActions.SET_STRIP_COUNT_OVERRIDES, overrides }),
   setArtwork: payload => ({ type: LayoutActions.SET_ARTWORK, ...payload }),
@@ -292,6 +292,7 @@ export function layoutReducer(state, action) {
         reversed: !s.reversed,
         pixels: (s.pixels || []).slice().reverse(),
         ...(s.kaleidoscope ? { kaleidoscope: reverseKaleidoscope(s.kaleidoscope, s.pixelCount) } : {}),
+        ...(Number.isInteger(s.reflectionPointDraft) ? { reflectionPointDraft: s.pixelCount - 1 - s.reflectionPointDraft } : {}),
       });
       return { ...state, strips };
     }
@@ -328,6 +329,7 @@ export function layoutReducer(state, action) {
       const id = `strip-${state.nextStripSeq}`;
       const merged = { ...action.merged, id, sourceLayerId: null, sourcePathId: null };
       delete merged.kaleidoscope;
+      delete merged.reflectionPointDraft;
       const insertAt = state.strips.findIndex(s => picked.has(s.id));
       const remaining = state.strips.filter(s => !picked.has(s.id));
       const strips = [...remaining];
@@ -375,11 +377,13 @@ export function layoutReducer(state, action) {
       const strips = state.strips.map(strip => {
         if (strip.id !== action.id) return strip;
         if (!action.kaleidoscope) {
-          const { kaleidoscope: _removed, ...clean } = strip;
-          return clean;
+          const { kaleidoscope: _removed, reflectionPointDraft: _draft, ...clean } = strip;
+          return Number.isInteger(action.reflectionPointDraft)
+            ? { ...clean, reflectionPointDraft: action.reflectionPointDraft } : clean;
         }
         return {
           ...strip,
+          reflectionPointDraft: undefined,
           kaleidoscope: {
             ...action.kaleidoscope,
             offsets: [...action.kaleidoscope.offsets],

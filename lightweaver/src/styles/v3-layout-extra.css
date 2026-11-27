@@ -879,3 +879,9 @@
   user-select: none;
   pointer-events: none;
 }
+
+/* Only the selected reflection point has a removal action beside it. */
+.la-kaleidoscope-stepper.has-remove {
+  grid-template-columns: 36px minmax(0, 1fr) 36px auto;
+}
+.la-kaleidoscope-stepper > .la-reflection-remove { white-space: nowrap; }

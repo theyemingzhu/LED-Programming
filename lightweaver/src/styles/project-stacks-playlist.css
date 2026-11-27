@@ -42,6 +42,26 @@
 .pm .pl-stack-head .pl-art { width: 42px; height: 28px; flex: none; }
 .pl-stack-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 5px; color: var(--text-mid); font-size: 12px; }
 .pl-stack-ineligible { color: var(--danger, #c85a50); }
+.pm .pl-stack-install-fixes {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: calc(var(--stack-space) * 2);
+  padding-inline-start: var(--stack-space);
+  border-inline-start: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: var(--stack-text);
+}
+.pm .pl-stack-install-fixes .stack-section-link { color: var(--accent-hi); }
+.pm .pl-row-section-fix {
+  grid-column: 3 / -1;
+  padding-inline-start: var(--stack-space);
+  font-size: var(--stack-text);
+}
+@media (max-width: 700px) {
+  .pm .pl-row-section-fix { grid-column: 1 / -1; }
+}
 .pl-stack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 4px; }
 .pl-stack-actions button, .pl-stack-actions a, .pl-stack-details-toggle {
   display: inline-flex;

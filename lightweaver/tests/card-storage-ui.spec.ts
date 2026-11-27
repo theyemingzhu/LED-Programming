@@ -45,12 +45,7 @@ async function gotoSavedProject(page, project, screen) {
   await page.addInitScript((savedProject) => {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
   }, project);
-  const route = screen === 'settings'
-    // Installed-match Home keeps its writer closed until this explicit task.
-    // Enter the current install flow so this case exercises capacity refusal,
-    // rather than expecting legacy Settings to expose an implicit card write.
-    ? '/#screen=card&section=setup&task=install-project&next=patterns'
-    : `/#screen=${screen}`;
+  const route = screen === 'settings' ? '/#screen=card&section=settings' : `/#screen=${screen}`;
   await page.goto(route, { waitUntil: 'domcontentloaded' });
 }
 
@@ -117,17 +112,28 @@ test('Settings renders an oversized project and reports exact capacity on save',
   page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
 
   await gotoSavedProject(page, project, 'settings');
-  await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
-
-  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
-  // The room line reads the same measurement before any push is attempted:
-  // an oversized project says how far over it is, in words, right here.
+  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
+  // Hardware settings reports capacity. The writing control is on Card Setup.
   await expect(page.getByTestId('card-storage-room')).toHaveText(/^Over the card's room by [\d,]+ bytes; remove a look or a section$/);
+
   const requestsBefore = requests.length;
+  await page.goto('/#screen=card&section=setup&task=install-project&next=patterns');
+  await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
+  const draftBefore = await page.evaluate(() => {
+    const draft = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return { id: draft.id, name: draft.name, playlist: draft.devices?.standaloneController?.playlist };
+  });
+  expect(draftBefore.id).toBe(project.id);
+  expect(draftBefore.playlist).toHaveLength(project.devices.standaloneController.playlist.length);
   await page.getByTestId('layout-send-to-card').click();
   await expect(page.locator('.la-card-push-banner')).toHaveText(
-    /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
+    /Card configuration is 14397 bytes, exceeding the 3968-byte flash storage limit\./,
   );
+  const draftAfter = await page.evaluate(() => {
+    const draft = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return { id: draft.id, name: draft.name, playlist: draft.devices?.standaloneController?.playlist };
+  });
+  expect(draftAfter).toEqual(draftBefore);
   // Setup refreshes identity after every operation, including a rejected one.
   // Capacity rejection must prevent config access and every card mutation.
   const cardRequests = requests.slice(requestsBefore).filter(request => request.url.startsWith('http://lightweaver.local/'));

@@ -154,6 +154,7 @@ export function useLayoutStrips(ctx) {
         reversed,
         pixels,
         ...(s.kaleidoscope ? { kaleidoscope: reverseKaleidoscope(s.kaleidoscope, s.pixelCount) } : {}),
+        ...(Number.isInteger(s.reflectionPointDraft) ? { reflectionPointDraft: s.pixelCount - 1 - s.reflectionPointDraft } : {}),
       };
     });
     pushLayoutHistory();
@@ -320,6 +321,7 @@ export function useLayoutStrips(ctx) {
       pixels: sampleStripPixels(pathData, pixelCount, source.reversed, x, y),
       // Reflection points are placed against a whole run; a cut invalidates them.
       kaleidoscope: undefined,
+      reflectionPointDraft: undefined,
       mergedFrom: undefined,
       // Neither half covers the artwork layer on its own any more, so neither
       // one claims it (same rule "Combine into one strip" applies).
@@ -417,6 +419,7 @@ export function useLayoutStrips(ctx) {
       pixels: sampleStripPixels(pathData, pixelCount, source.reversed, x, y),
       // Reflection points are placed against a whole run; a cut invalidates them.
       kaleidoscope: undefined,
+      reflectionPointDraft: undefined,
       mergedFrom: undefined,
       // No piece covers the artwork layer on its own any more, so none of
       // them claims it (same rule "Combine into one strip" applies).
@@ -629,6 +632,7 @@ export function useLayoutStrips(ctx) {
       color: nextColor(),
       pixels: member.pixels?.slice() || [],
       kaleidoscope: undefined,
+      reflectionPointDraft: undefined,
     };
     const insertAt = strips.findIndex(strip => strip.id === memberId) + 1;
     const withMember = [...strips];
@@ -861,6 +865,7 @@ export function useLayoutStrips(ctx) {
       mergedFrom: picked.map(s => ({ id: s.id, name: s.name, pixelCount: s.pixelCount })),
     };
     delete mergedStrip.kaleidoscope;
+    delete mergedStrip.reflectionPointDraft;
     const insertAt = strips.findIndex(s => pickedIds.has(s.id));
     const remaining = strips.filter(s => !pickedIds.has(s.id));
     const newStrips = [...remaining];

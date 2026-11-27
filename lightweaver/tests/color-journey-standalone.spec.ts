@@ -109,7 +109,6 @@ test('a supported mapped journey enters the project with its authored timing int
   await journeyStack.getByRole('button', { name: 'Edit Amber violet drift' }).click();
   await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
   await expect(page.getByTestId('look-save-preset')).toHaveText('Open in Lab');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-save-as-new').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await openControls(page);

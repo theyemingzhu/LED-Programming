@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { useOpenCardProject } from '../../../v3/CardPickup.jsx';
 import { useProject } from '../../../state/ProjectContext.jsx';
+import { StackSectionLinks } from '../../patterns/StackSectionLink.jsx';
 import { cardActionReducer, createCardActionState } from '../../../lib/cardAction.js';
 import {
   getCardHostname,
@@ -75,39 +76,39 @@ export function validateCardPushAttempt(attempt, projectLifecycle) {
 // Default to the shared link's own transport, same source app.jsx builds the
 // cardLink prop from everywhere else, so a caller with a fresher hint can
 // still override it.
-async function readReadyDeploymentEvidence(host, transport = getCardLinkState().transport) {
+async function readReadyDeploymentEvidence(host, transport = getCardLinkState().transport, timeoutMs) {
   const [project, status] = await Promise.all([
-    readCardProjectEvidence({ host, transport }),
-    readCardStatusEnvelope({ host, transport }),
+    readCardProjectEvidence({ host, transport, timeoutMs }),
+    readCardStatusEnvelope({ host, transport, timeoutMs }),
   ]);
   return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
 }
 
-async function waitForReadyDeploymentVerification(prepared, host, restart = null) {
+async function waitForReadyDeploymentVerification(prepared, host, { fromBootId, timeoutMs } = {}) {
   let readiness = null;
   const verification = await waitForCardDeploymentVerification(prepared, {
     readEvidence: async () => {
-      const evidence = await readReadyDeploymentEvidence(host);
+      const evidence = await readReadyDeploymentEvidence(host, undefined, timeoutMs);
       readiness = evidence.readiness;
       return evidence;
     },
     requireReady: true,
     // Every accepted save restarts the card (about 14 s on the real card).
     // Wait for the new boot instead of failing after a few seconds.
-    ...(restart ? {
+    ...(fromBootId !== undefined ? {
       restartWaitMs: CARD_RESTART_WAIT_MS,
-      restartFromBootId: restart.fromBootId || '',
+      restartFromBootId: fromBootId,
       intervalMs: 800,
     } : {}),
   });
   return { verification, readiness };
 }
 
-async function publishVerifiedReadiness(prepared, host) {
+async function publishVerifiedReadiness(prepared, host, timeoutMs) {
   const transport = getCardLinkState().transport;
   if (!['direct', 'bridge'].includes(transport)) return;
   for (let read = 0; read < 2; read += 1) {
-    const evidence = await readReadyDeploymentEvidence(host);
+    const evidence = await readReadyDeploymentEvidence(host, transport, timeoutMs);
     await waitForCardDeploymentVerification(prepared, {
       readEvidence: async () => evidence,
       attempts: 1,
@@ -234,6 +235,7 @@ export function CardPushControl({
     }
   };
   const [pushStatus, setPushStatus] = useState(() => (autoStart && !disabled ? 'Checking card…' : ''));
+  const [staleLookIds, setStaleLookIds] = useState([]);
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
   const [pushFallbackJson, setPushFallbackJson] = useState('');
   const [pushFallbackPackage, setPushFallbackPackage] = useState(null);
@@ -263,7 +265,9 @@ export function CardPushControl({
 
   const verifyWiringTestOutput = async attempt => {
     if (!attempt.verifyTestOutputs) return;
-    const status = await readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport });
+    const status = await readCardStatusEnvelope({
+      host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_SLOW_READ_MS,
+    });
     const verification = verifyCardWiringTestOutputs(attempt.prepared, status, attempt.bootBeforeTest);
     if (!verification.ok) {
       throw new CardPushError('wiring-test-unverified',
@@ -322,6 +326,7 @@ export function CardPushControl({
     // cross-tab lease deliberately permits nesting in this tab, so block a
     // second install synchronously at this component's entry point.
     if (installInFlightRef.current) return;
+    setStaleLookIds([]);
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     installInFlightRef.current = true;
     setStorageFull(false);
@@ -670,7 +675,7 @@ export function CardPushControl({
           // wait. A lost reply proves nothing about a restart: it is read back
           // as it is (F-D2: "has not come back after restarting" was shown
           // about a card that never restarted).
-          cardIsRestarting ? { fromBootId: bootBeforeSave } : null));
+          cardIsRestarting ? { fromBootId: bootBeforeSave || '' } : undefined));
         if (restartPlanned) { noteCardRestartSettled(); restartPlanned = false; }
       } catch (verifyError) {
         // Once a config may have reached the card, a failed read is
@@ -718,6 +723,13 @@ export function CardPushControl({
       }
     } catch (err) {
       setInstallRestarting(false);
+      if (err?.code === 'stack-sections-changed') {
+        const message = 'Update saved looks before installing.';
+        setStaleLookIds(err.lookIds);
+        dispatchAction({ type: 'fail', error: message });
+        setPushStatus(message);
+        return;
+      }
       if (err?.reason === 'card-changed-elsewhere') {
         dispatchAction({ type: 'reset' });
         setPushStatus('');
@@ -832,9 +844,8 @@ export function CardPushControl({
       const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
         host: wiringCandidate.attempt.host,
         transport: getCardLinkState().transport,
-        // The card restarts into the candidate (~14 s on lw-b0fe81f61b44) and
-        // may then take ~5 s per reply (D9). Same allowance as the read-back.
-        timeoutMs: 45000,
+        timeoutMs: CARD_RESTART_WAIT_MS,
+        requestTimeoutMs: CARD_SLOW_READ_MS,
       });
       setWiringCandidate(current => current ? {
         ...current,
@@ -844,10 +855,43 @@ export function CardPushControl({
       await showActiveWiringTest(wiringCandidate.attempt);
     } catch (error) {
       setLightTestActivity('');
-      setWiringTestState('failed');
-      setPushStatus(error.message || 'The test wiring did not start. The working setup remains safe.');
+      const exactStaged = error.reason === 'activation-staged' && classifyCardDeploymentResume({
+        ...wiringCandidate.attempt.prepared, activationId: wiringCandidate.activationId,
+      }, error.response) === 'resume-activation';
+      setWiringTestState(exactStaged ? 'staged' : 'activation-unverified');
+      setPushStatus(error.message || 'Studio could not read the light test status. Check again before starting or confirming a test.');
     }
     }));
+  };
+
+  const readWiringActivation = async () => {
+    if (!wiringCandidate) return;
+    setWiringTestState('checking-activation');
+    try {
+      const { attempt, activationId } = wiringCandidate;
+      assertCurrentAttempt(attempt);
+      const status = await getCardWiringStatus({
+        host: attempt.host, transport: getCardLinkState().transport, timeoutMs: CARD_SLOW_READ_MS,
+      });
+      const next = classifyCardDeploymentResume({ ...attempt.prepared, activationId }, status);
+      if (next === 'resume-activation') {
+        setWiringTestState('staged');
+        setPushStatus('This exact wiring change is staged. Start the light test when ready.');
+      } else if (status.state === 'testing' && (next === 'resume-physical-test' || next === 'resume-confirmation')) {
+        setWiringCandidate({ ...wiringCandidate, expiresAt: Date.now() + status.remainingMs, expiryChecks: 0 });
+        await showActiveWiringTest(attempt);
+      } else if (next === 'stage-new' && status.cardId === attempt.prepared.cardId && status.buildId === attempt.prepared.buildId) {
+        setWiringCandidate(null);
+        setWiringTestState('idle');
+        dispatchAction({ type: 'reset' });
+        setPushStatus('This card no longer has the light test. Read the current setup before sending another change.');
+      } else {
+        throw new CardPushError('candidate-conflict', 'This card did not report the same wiring change. Restore the setup or read the card again.');
+      }
+    } catch (error) {
+      setWiringTestState('activation-unverified');
+      setPushStatus(error.message || 'Studio could not read the light test status. Check again.');
+    }
   };
 
   const finishWiringTest = async visible => {
@@ -867,11 +911,16 @@ export function CardPushControl({
           setPushStatus(error.message);
           return;
         }
-        await confirmCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
+        await confirmCardWiringCandidate(wiringCandidate.activationId, {
+          host: wiringCandidate.attempt.host,
+          transport: getCardLinkState().transport,
+          timeoutMs: CARD_SLOW_READ_MS,
+        });
         setPushStatus('Verifying the confirmed wiring on the card…');
         const { verification } = await waitForReadyDeploymentVerification(
           wiringCandidate.attempt.prepared,
           wiringCandidate.attempt.host,
+          { timeoutMs: CARD_SLOW_READ_MS },
         );
         assertCurrentAttempt(wiringCandidate.attempt);
         dispatchAction({ type: 'confirm' });
@@ -906,7 +955,7 @@ export function CardPushControl({
     }));
     if (!confirmedAttempt) return;
     try {
-      await publishVerifiedReadiness(confirmedAttempt.prepared, confirmedAttempt.host);
+      await publishVerifiedReadiness(confirmedAttempt.prepared, confirmedAttempt.host, CARD_SLOW_READ_MS);
       const { mediaProject, prepared } = confirmedAttempt;
       const confirmedRunIds = (mediaProject?.compiledWiring?.runs || []).filter(run => run.type === 'strip').map(run => run.id);
       recordInstallerWiringConfirmation({ cardId: prepared.cardId, projectId: confirmedAttempt.projectId, wiring: mediaProject?.wiring, confirmedRunIds });
@@ -1072,6 +1121,7 @@ export function CardPushControl({
         >
           {(action.status === 'pending' || pushStatus === 'Checking card…' || clearState === 'busy') && <span className="lw-notice-spinner" aria-hidden="true" />}
           {pushStatus}
+          {staleLookIds.length > 0 && <StackSectionLinks lookIds={staleLookIds} looks={standaloneController.looks} />}
           {storageFull && cardHoldsTemporarySetup && (
             <button type="button" className="btn primary" data-testid="card-install-clear-temporary" disabled={clearState === 'busy'}
               title="Remove the temporary Find-my-strips setup from the card so your project has room." data-tooltip="Remove the temporary Find-my-strips setup from the card so your project has room." onClick={() => void clearTemporarySetupHere()}>
@@ -1129,6 +1179,11 @@ export function CardPushControl({
           )}
           {wiringTestState === 'staged' || wiringTestState === 'failed' ? (
             <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-testid="wiring-test-start" onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." data-testid="wiring-test-cancel" onClick={() => finishWiringTest(false)}>Cancel change</button></div>
+          ) : wiringTestState === 'activation-unverified' ? (
+            <div>
+              <button type="button" className="btn primary" title="Read the card’s current test status without starting the test again." data-tooltip="Read the card’s current test status without starting the test again." data-testid="wiring-test-read-status" onClick={readWiringActivation}>Read test status</button>
+              <button type="button" className="btn" title="Discard this wiring change and keep the card’s last working setup." data-tooltip="Discard this wiring change and keep the card’s last working setup." data-testid="wiring-test-cancel" onClick={() => finishWiringTest(false)}>Cancel change</button>
+            </div>
           ) : wiringTestState === 'testing' ? (
             <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." data-testid="wiring-test-confirm" onClick={() => finishWiringTest(true)}>{installerSetup ? 'Keep this setup' : 'The lights look correct'}</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>{installerSetup ? 'Restore previous setup' : 'No, restore working setup'}</button></div>
           ) : wiringTestState === 'unverified' ? (

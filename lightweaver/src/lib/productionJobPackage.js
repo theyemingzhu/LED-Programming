@@ -72,7 +72,7 @@ const SNAPSHOT_KEYS = ['devices', 'id', 'layout', 'name', 'version'];
 const SNAPSHOT_LAYOUT_KEYS = ['patchBoard', 'strips', 'wiring'];
 const SNAPSHOT_DEVICES_KEYS = ['standaloneController'];
 const STRIP_REQUIRED_KEYS = ['id', 'name', 'pixelCount'];
-const STRIP_OPTIONAL_KEYS = ['angle', 'brightness', 'closed', 'color', 'emit', 'generatedLayout', 'hueShift', 'kaleidoscope', 'layoutRole', 'pathData', 'patternId', 'pixels', 'reversed', 'sourceLayerId', 'sourcePathId', 'speed', 'svgLength', 'visible', 'x', 'y'];
+const STRIP_OPTIONAL_KEYS = ['angle', 'brightness', 'closed', 'color', 'emit', 'generatedLayout', 'hueShift', 'kaleidoscope', 'layoutRole', 'pathData', 'patternId', 'pixels', 'reflectionPointDraft', 'reversed', 'sourceLayerId', 'sourcePathId', 'speed', 'svgLength', 'visible', 'x', 'y'];
 const STANDALONE_KEYS = ['activeLookId', 'controls', 'defaultLook', 'led', 'looks', 'outputs', 'playlist', 'runtimeMode'];
 const STANDALONE_OPTIONAL_KEYS = ['activeLookId', 'looks', 'runtimeMode'];
 const STANDALONE_REQUIRED_KEYS = STANDALONE_KEYS.filter(key => !STANDALONE_OPTIONAL_KEYS.includes(key));
@@ -251,6 +251,11 @@ function validateRestoreSnapshot(snapshot) {
     requiredText(strip.name, 'Restore strip name', 160);
     if (!Number.isSafeInteger(strip.pixelCount) || strip.pixelCount <= 0) throw new Error('Restore strip pixel count is invalid');
     if (strip.pixels !== undefined && (!Array.isArray(strip.pixels) || strip.pixels.length !== strip.pixelCount)) throw new Error('Restore strip pixels must match pixel count');
+    // Editor-only metadata may restore one point, but never enables a card mapping.
+    if (Object.hasOwn(strip, 'reflectionPointDraft') && (
+      !Number.isSafeInteger(strip.reflectionPointDraft) || strip.reflectionPointDraft < 0
+      || strip.reflectionPointDraft >= strip.pixelCount || strip.kaleidoscope !== undefined
+    )) throw new Error('Restore strip reflection point draft is invalid');
     if (strip.kaleidoscope !== undefined) {
       exactKeys(strip.kaleidoscope, KALEIDOSCOPE_KEYS, 'restore snapshot strip kaleidoscope');
       if (typeof strip.kaleidoscope.enabled !== 'boolean') {

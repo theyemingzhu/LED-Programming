@@ -701,9 +701,13 @@ export function buildMirroredLedRepairPackage(runtimePackage = {}, options = {})
 }
 
 async function postControlPayloadToHost(host, payload, options = {}) {
-  const authority = options.authority || getActiveCardTransportAuthority(host);
+  const authority = options.authority || (!options.pinTransport && getActiveCardTransportAuthority(host));
   if (authority) return authority.request('/api/control', { method: 'POST', body: payload });
-  await guardDirectCardMutation(host, { fetchImpl: options.fetchImpl, timeoutMs: options.timeoutMs || 2500 });
+  await guardDirectCardMutation(host, {
+    fetchImpl: options.fetchImpl, timeoutMs: options.timeoutMs || 2500,
+    expected: options.expectedCardId ? { id: options.expectedCardId } : null,
+  });
+  requireCurrentPreviewIntent(options);
   const url = `${cardHostToUrl(host)}/api/control`;
   const body = JSON.stringify(payload);
   const ctrl = new AbortController();
@@ -728,6 +732,17 @@ async function postControlPayloadToHost(host, payload, options = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// A restore uses card readback values directly. Preview payload defaults and
+// Studio strip calibration would both change the output we're putting back.
+export async function postPreviewRestoreControl(payload, options) {
+  const { host, authority, timeoutMs = 2500 } = options;
+  requireCurrentPreviewIntent(options);
+  const reply = await (!authority && (hasVerifiedBridgeForHost(host) || isMixedContentBlocked())
+    ? sendCardBridgeRequest('control', payload, { host, timeoutMs })
+    : postControlPayloadToHost(host, payload, options));
+  return requireLivePreviewAcknowledgement(requireBoundedControlObject(reply), {}, options);
 }
 
 async function postRecoverLightsToHost(host, payload, options = {}) {
@@ -782,8 +797,8 @@ async function postIdentifyToHost(host, options = {}) {
 async function readCardZones(host, input = {}) {
   const options = typeof input === 'number' ? { timeoutMs: input } : input;
   const timeoutMs = options.timeoutMs || 1200;
-  let authority = options.authority || getActiveCardTransportAuthority(host);
-  if (!authority && options.expectedCardId) {
+  let authority = options.authority || (!options.pinTransport && getActiveCardTransportAuthority(host));
+  if (!authority && !options.pinTransport && options.expectedCardId) {
     const acquired = await (options.connectTransportImpl || connectCardTransport)({
       host,
       expectedCardId: options.expectedCardId,
@@ -1114,12 +1129,12 @@ async function retryLivePreviewAfterRestart(host, look, options, authority, rest
 }
 
 async function pushLivePreviewToHost(host, look, options = {}) {
-  const authority = options.authority || getActiveCardTransportAuthority(host);
+  const authority = options.authority || (!options.pinTransport && getActiveCardTransportAuthority(host));
   if (authority) {
     try {
       return await sendLivePreviewThroughAuthority(host, look, options, authority);
     } catch (error) {
-      if (error?.reason !== CARD_RESTARTED_REASON) throw error;
+      if (options.pinTransport || error?.reason !== CARD_RESTARTED_REASON) throw error;
       return retryLivePreviewAfterRestart(host, look, options, authority, error);
     }
   }

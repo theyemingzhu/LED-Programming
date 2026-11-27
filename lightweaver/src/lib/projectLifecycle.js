@@ -381,10 +381,12 @@ export async function replaceProjectSafely({
   apply,
   dirty = false,
   confirmDiscard = () => true,
+  canApply = () => true,
 }) {
   const validated = await validate(candidate);
   if (!validated) return { ok: false, reason: 'invalid' };
   if (dirty && !(await confirmDiscard(validated))) return { ok: false, reason: 'cancelled' };
+  if (canApply() !== true) return { ok: false, reason: 'cancelled' };
   await apply(validated);
   return { ok: true, project: validated };
 }

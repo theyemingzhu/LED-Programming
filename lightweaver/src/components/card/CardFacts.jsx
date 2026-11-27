@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { WIRING_DISCOVERY_LINK, WiringPinEvidence, WiringReplacementLinks, wiringPinEvidence } from './WiringPinEvidence.jsx';
 import { isUncountedHeadroomCount } from '../../lib/discoveryCommit.js';
+import { designPixelTotal } from '../../lib/designCapacity.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { pushLiveHardwareToCard } from '../../lib/cardLiveControl.js';
 import { readCardStatusEnvelope } from '../../lib/cardPushClient.js';
@@ -23,7 +25,7 @@ import { cardCrashLine, formatCardCrashDetails, parseCardCrashReport } from '../
 //   power limit       supply amps typed in the row; the card caps itself at
 //                     80% (withPowerSupplySettings, the same writer as Wire)
 //   brightness limit  a fader in the row (led.brightnessLimit)
-//   outputs / pins    Layout → Wire (structure stays Layout's)
+//   outputs / pins    Installer for a re-test, Layout for planned wiring
 //   artwork placement Layout → Draw, optional
 //   card release      the update screen
 //   health            Verified blank cards continue setup; configured cards
@@ -45,7 +47,6 @@ function discoveryEvidence(project) {
   const strips = Array.isArray(project?.layout?.strips) ? project.layout.strips : [];
   const stripTotal = strips.reduce((sum, strip) => sum + (Number(strip?.pixelCount) > 0 ? Number(strip.pixelCount) : 0), 0);
   return {
-    outputs,
     count: stripTotal > 0 && outputs.length > 0
       ? stripTotal
       : outputs.reduce((sum, output) => sum + Number(output.pixelCount || 0), 0),
@@ -111,17 +112,17 @@ function formatWhen(at) {
 
 export function CardFacts({
   currentProject, cardLink, cardHost, firmwareStatus, arrival, pendingInstallationVerification,
-  onReviewInstalledLooks, go, health = null, countEditor = null,
+  onReviewInstalledLooks, onCheckColors, go, health = null, countEditor = null,
 }) {
-  const { standaloneController, setStandaloneController } = useProject();
+  const { wiring, compiledWiring, standaloneController, setStandaloneController } = useProject();
   const led = currentProject?.devices?.standaloneController?.led || {};
   const evidence = discoveryEvidence(currentProject);
-  const outputs = evidence.outputs;
-  const pins = outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
+  const pinEvidence = wiringPinEvidence({ wiring, compiledWiring, portRoles: currentProject?.portRoles, cardLink, projectId: currentProject?.id, origin: currentProject?.origin });
   const count = evidence.counted ? Number(evidence.count || 0) : 0;
   const colorConfirmed = readCardCommissioningVerification({ standaloneController: currentProject?.devices?.standaloneController }).colorConfirmed;
   const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
   const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
+  const designCount = drawn ? designPixelTotal(strips) : 0;
   const powerLimit = Number.isFinite(Number(led.maxMilliamps)) && Number(led.maxMilliamps) > 0 ? Math.round(Number(led.maxMilliamps)) : 0;
   const onCardLimit = installedPowerLimit(cardLink);
   const powerSupply = readPowerSupplySettings(standaloneController);
@@ -236,19 +237,23 @@ export function CardFacts({
   return (
     <section className="lw-mod lw-facts" data-testid="card-facts" aria-label="This card">
       <div className="lw-mod-head">
-        <span className={`lw-led${outputs.length ? ' is-live' : ''}`} aria-hidden="true" />
+        <span className={`lw-led${pinEvidence.livePins !== null ? ' is-live' : ''}`} aria-hidden="true" />
         <span className="t">This card</span>
         <span className="m">ESP32-S3{installedBuild ? ` · release ${installedBuild}` : ''}</span>
       </div>
       <div className="lw-facts-grid">
         <div className="lw-facts-col">
-          <Row label="Outputs" testId="fact-outputs">
-            <Readout dim={!pins.length}>{pins.length ? pins.map(pin => `GPIO ${pin}`).join(' · ') : 'None yet'}</Readout>
-            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw&panel=specs')}>Change wiring</button>
+          <Row label="Outputs" testId="fact-outputs" note={<WiringPinEvidence evidence={pinEvidence} />}>
+            <div className="wiring-pin-actions">
+              <a className="btn" href={WIRING_DISCOVERY_LINK}>Change wiring</a>
+              <a className="btn" href="#screen=layout&mode=draw&panel=specs">Open Layout</a>
+              <WiringReplacementLinks slots={pinEvidence.replaceSlots} />
+            </div>
           </Row>
           <Row
-            label={outputs.length === 1 ? 'Lights on output 1' : 'Lights'}
-            hint={countEditor?.saves ? 'Saved to the card with a light test' : countEditor?.apply ? 'Set lights the strip to the count' : (count ? 'Counted to the last lit light' : 'Find my strips counts them')}
+            label={designCount ? 'Design lights' : 'Light count'}
+            hint={pinEvidence.countHistoryUnknown ? 'Last counted: unknown'
+              : pinEvidence.lastCount ? `Last counted: ${pinEvidence.lastCount.toLocaleString()}` : 'No count recorded'}
             testId="fact-lights"
             note={countEditor?.message ? <p role="status" className="hh" data-testid="fact-lights-message">{countEditor.message}</p> : null}
           >
@@ -274,14 +279,14 @@ export function CardFacts({
               </div>
             ) : (
               <>
-                <Readout dim={!count}>{count || 'Not counted'}</Readout>
+                <Readout dim={!designCount}>{designCount || 'No design count'}</Readout>
                 <button type="button" className="btn" onClick={() => go(drawn ? '#screen=layout&mode=draw' : '#screen=discovery')}>Change count</button>
               </>
             )}
           </Row>
           <Row
             label="Color order"
-            hint={colorConfirmed ? 'Confirmed on the strip' : 'Not confirmed. Try an order, then Check colors.'}
+            hint={colorConfirmed ? 'Last confirmed on the strip' : 'Not confirmed. Try an order, then Check colors.'}
             hintTone={colorConfirmed ? '' : 'warn'}
             testId="fact-color-order"
             note={colorStatus.text ? <p role="status" className={`hh${colorStatus.kind === 'err' ? ' is-warn' : ''}`} data-testid="fact-color-status">{colorStatus.text}</p> : null}
@@ -297,7 +302,7 @@ export function CardFacts({
                 >{order}</button>
               ))}
             </div>
-            <button type="button" className="btn" onClick={() => go('#screen=card&section=settings&tool=color-order')}>Check colors</button>
+            <button type="button" className="btn" onClick={onCheckColors}>Check colors</button>
           </Row>
           <Row label="Artwork placement" hint={resumeLayout ? (arrival.tasks.lights === 'verified' ? 'Lights verified' : 'Artwork in progress') : 'Optional'} testId="fact-artwork" last>
             <Readout dim={!drawn}>{drawn ? (strips.length === 1 ? '1 strip' : `${strips.length} strips`) : 'Not drawn'}</Readout>

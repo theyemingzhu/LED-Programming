@@ -473,13 +473,14 @@ export async function verifyExpectedCardAtHost(host, {
   storage = defaultStorage(),
   expected = null,
   timeoutMs = 1500,
+  endpoints = ['firmware-info', 'status'],
 } = {}) {
   const resolvedHost = normalizeHost(host);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     let lastPayload = null;
-    for (const endpoint of ['firmware-info', 'status']) {
+    for (const endpoint of endpoints) {
       const response = await fetchImpl(`http://${resolvedHost}/api/${endpoint}`, { signal: ctrl.signal });
       if (!response?.ok) continue;
       lastPayload = await response.json().catch(() => null);

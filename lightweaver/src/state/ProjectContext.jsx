@@ -508,9 +508,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     dispatchLayout({ type: 'layout/setWiring', wiring: result.wiring });
     return result;
   }, [wiring, strips]);
-  const updateStripKaleidoscope = useCallback((id, kaleidoscope, { recordHistory = true } = {}) => {
+  const updateStripKaleidoscope = useCallback((id, kaleidoscope, { recordHistory = true, reflectionPointDraft = null } = {}) => {
     if (recordHistory) dispatchLayout({ type: 'layout/pushHistory' });
-    dispatchLayout(layoutActions.updateKaleidoscope(id, kaleidoscope));
+    dispatchLayout(layoutActions.updateKaleidoscope(id, kaleidoscope, reflectionPointDraft));
   }, []);
   const replaceLayoutGeometry = useCallback((nextStrips, options = {}) => {
     const normalized = Array.isArray(nextStrips) ? nextStrips : [];
@@ -1127,6 +1127,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       candidate,
       validate: value => migrateProject(value),
       dirty: hasUnsavedChanges(projectLifecycleRef.current),
+      canApply: options.canApply,
       confirmDiscard: options.confirmDiscard || (validated => requestReplacementConfirmation({
         currentName: projectName,
         incomingName: validated?.name,

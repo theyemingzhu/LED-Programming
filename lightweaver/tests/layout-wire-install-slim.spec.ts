@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Wire keeps every strip tool. Test & Install is the check + install, not a
 // second copy of the strip list.
@@ -45,13 +45,13 @@ async function openLayout(page: any, hash = '#screen=layout') {
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
-async function openCardInstall(page: any, fixture: object) {
-  await page.goto('/#screen=card&section=setup&task=install-project', { waitUntil: 'domcontentloaded' });
-  await page.evaluate((data) => {
-    localStorage.clear();
+async function openLegacyCardInstall(page: Page, fixture: object) {
+  await page.route('http://{lightweaver.local,192.168.4.1}/**', route => route.abort());
+  await page.addInitScript(data => {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
   }, fixture);
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project$/);
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
 }
 
@@ -81,7 +81,6 @@ test('Wire keeps strip tools visible and drops the always-true first-to-last lab
   await expect(detail.getByRole('button', { name: /Reverse data direction/ })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Set first LED' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Edit Kaleidoscope reflection points' })).toBeVisible();
-  await expect(detail.getByRole('button', { name: /Split / })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -91,11 +90,24 @@ test('Wire keeps strip tools visible and drops the always-true first-to-last lab
 
   await expect(page.getByTestId('gpio-group-16')).toBeVisible();
   await expect(page.getByTestId('gpio-group-16')).not.toContainText('first → last');
-  await expect(page.locator('.panel-head', { hasText: 'LED strips' })).not.toContainText('wiring order');
+  await expect(page.locator('.la-led-strips-heading').filter({ hasText: 'wiring order' })).toHaveCount(0);
+
+  const rows = page.locator('.la-strip-row');
+  const ledTotal = page.getByRole('spinbutton', { name: 'Total LEDs', exact: true });
+  const originalTotal = await ledTotal.inputValue();
+  await detail.getByRole('button', { name: 'Divide Line into sections', exact: true }).press('Enter');
+  await detail.getByRole('spinbutton', { name: 'Number of sections to divide Line into' }).fill('2');
+  await detail.getByRole('button', { name: 'Divide Line into 2 sections', exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(page.getByTestId('connected-parent')).toContainText(`2 parts · ${originalTotal} LEDs`);
+  await rows.first().locator('.layer-name').click();
+  await page.getByRole('button', { name: /^Merge .* with / }).press('Enter');
+  await expect(rows).toHaveCount(1);
+  await expect(ledTotal).toHaveValue(originalTotal);
 });
 
 test('old Test & Install URL is a Card checklist, not a second strip editor', async ({ page }) => {
-  await openCardInstall(page, project({
+  await openLegacyCardInstall(page, project({
     designPixels: 44, outputPin: 16, countedPin: 16, countedPixels: 44,
   }));
 
@@ -103,7 +115,7 @@ test('old Test & Install URL is a Card checklist, not a second strip editor', as
   await expect(page.getByTestId('setup-phase-connect')).toContainText('Connect to your card');
   await expect(page.getByTestId('setup-phase-connect')).toHaveAttribute('data-status', 'current');
   await expect(page.getByTestId('setup-phase-lights')).toContainText('Find and verify the lights');
-  await expect(page.getByTestId('setup-connect-card')).toHaveText('Pair this card');
+  await expect(page.getByTestId('setup-connect-card')).toHaveText('Find my card');
   await expect(page.getByTestId('project-led-chipset')).toHaveCount(0);
 
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
@@ -116,20 +128,20 @@ test('old Test & Install URL is a Card checklist, not a second strip editor', as
   await expect(page.getByTestId('project-led-chipset')).toBeVisible();
 });
 
-test('a matching card does not reprint the plan; a wrong GPIO still offers the fix', async ({ page }) => {
+test('matching GPIOs stay quiet with a visible re-test', async ({ page }) => {
   await openLayoutTools(page, project({
     designPixels: 41, outputPin: 18, countedPin: 18, countedPixels: 41,
   }));
   await expect(page.getByTestId('wire-capacity')).toHaveCount(0);
-  await expect(page.getByTestId('wire-recount')).toBeHidden();
-
-  const advanced = page.getByTestId('advanced-installation-tools');
-  await advanced.locator('summary').first().click();
+  await expect(page.getByTestId('pin-mismatch-out1')).toHaveCount(0);
   await expect(page.getByTestId('wire-recount')).toBeVisible();
+});
 
+test('different GPIO records offer a visible re-test', async ({ page }) => {
   await openLayoutTools(page, project({
     designPixels: 400, outputPin: 16, countedPin: 18, countedPixels: 41,
   }));
-  await expect(page.getByTestId('wire-mismatch-18')).toBeVisible();
-  await expect(page.getByTestId('wire-adopt-18')).toBeVisible();
+  await expect(page.getByTestId('pin-mismatch-out1')).toContainText('Output 1 · GPIO 16');
+  await expect(page.getByRole('link', { name: 'Scan pins' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Replace GPIO 18' })).toHaveCount(0);
 });

@@ -85,6 +85,7 @@ import {
   parsePlaylistLengthMinutes,
 } from '../lib/playlistDuration.js';
 import '../styles/project-stacks-playlist.css';
+import { StackSectionLink, stackEditHref } from '../components/patterns/StackSectionLink.jsx';
 
 function readPlaylistSource(projectId, hasStacks) {
   try {
@@ -324,17 +325,22 @@ function realPatternShape(patternId) {
     const hardwareConfigurationIssue = runtimeBuild.error
       ? String(runtimeBuild.error.message || runtimeBuild.error).replace('is already owned by an LED output or another control', 'is already used by an LED output or another control')
       : '';
+    const stackInstallBlockerIds = runtimeBuild.error?.code === 'stack-sections-changed'
+      ? runtimeBuild.error.lookIds
+      : null;
     const requireRuntimePackage = () => {
       if (!runtimePackage) throw runtimeBuild.error;
       return runtimePackage;
     };
+    const liveControlAuthority = (patternId, studioProject = runtimePackage) => decideLiveControlProjectAuthority({
+      connected: connected || cardLink?.readiness?.playbackReady === true,
+      studioProject,
+      cardStatus: cardLink?.readiness || {},
+      patternId,
+    });
+    const canAuditionOnAdd = (patternId) => Boolean(runtimePackage && liveControlAuthority(patternId).ok);
     const requireLiveControlAuthority = (patternId = '') => {
-      const authority = decideLiveControlProjectAuthority({
-        connected: connected || cardLink?.readiness?.playbackReady === true,
-        studioProject: requireRuntimePackage(),
-        cardStatus: cardLink?.readiness || {},
-        patternId,
-      });
+      const authority = liveControlAuthority(patternId, requireRuntimePackage());
       if (!authority.ok) {
         const error = new CardPushError(authority.reason || authority.state, authority.message);
         error.liveControlAuthority = true;
@@ -532,8 +538,10 @@ function realPatternShape(patternId) {
       return false;
     };
 
-    const previewSavedLookOnCard = async (savedLook) => {
+    const previewSavedLookOnCard = async (savedLook, { onAdd = false } = {}) => {
       if (!savedLook || recoveryPendingRef.current) return false;
+      const patternId = savedLook.defaultLook?.patternId || savedLook.preset || '';
+      if (onAdd && !canAuditionOnAdd(patternId)) return false;
       const sequence = ++previewSequence.current;
       const actionGeneration = ++cardActionGeneration.current;
       setPlaylistSyncing(false);
@@ -541,7 +549,7 @@ function realPatternShape(patternId) {
       setHandoffUrl('');
       setPlaylistStatus(null);
       try {
-        requireLiveControlAuthority(savedLook.defaultLook?.patternId || savedLook.preset || '');
+        requireLiveControlAuthority(patternId);
         const testStrip = readTestStrip();
         if (testStrip.enabled) {
           // A saved mix is normally several section targets across the real
@@ -892,8 +900,9 @@ function realPatternShape(patternId) {
       if (playlistContainsPattern(playlist, patternId)) { void previewPatternOnCard(patternId); return; }
       const item = makePatternPlaylistItem(patternId);
       if (!item) return;
-      writePlaylist([...playlist, item]);
-      void previewPatternOnCard(patternId);
+      if (writePlaylist([...playlist, item]) && canAuditionOnAdd(patternId)) {
+        void previewPatternOnCard(patternId);
+      }
     };
 
     const addCombo = (savedLook) => {
@@ -901,12 +910,12 @@ function realPatternShape(patternId) {
       if (playlistContainsCombo(playlist, savedLook.id)) { void previewSavedLookOnCard(savedLook); return; }
       try {
         if (stackNeedsSectionReview(savedLook, stackSummaries.get(savedLook.id))) {
-          throw new Error('Review sections in Patterns before adding this look.');
+          throw new Error('Update this look’s sections before adding it.');
         }
         const next = addProjectStacksToPlaylist(standaloneController, [savedLook.id]);
         if (!writePlaylist(next.playlist)) throw new Error('Playlist change was refused. Check this project’s wiring before trying again.');
         setStackFeedback(`${savedLook.label} added to playlist.`);
-        if (connected) void previewSavedLookOnCard(savedLook);
+        if (connected) void previewSavedLookOnCard(savedLook, { onAdd: true });
       } catch (error) {
         setStackFeedback(error instanceof RangeError ? `Not enough playlist slots. ${error.message}` : error.message);
       }
@@ -918,7 +927,7 @@ function realPatternShape(patternId) {
       if (!orderedIds.length) return;
       try {
         if (orderedIds.some(id => stackNeedsSectionReview(savedLookById.get(id), stackSummaries.get(id)))) {
-          throw new Error('Review sections in Patterns before adding these looks.');
+          throw new Error('Update the selected looks’ sections before adding them.');
         }
         const next = addProjectStacksToPlaylist(standaloneController, orderedIds);
         const added = next.playlist.length - (standaloneController?.playlist?.length || 0);
@@ -1052,7 +1061,7 @@ function realPatternShape(patternId) {
 
     // ── screen-scoped messages into the notice layer ───────────────────────
     React.useEffect(() => {
-      if (!hardwareConfigurationIssue) {
+      if (!hardwareConfigurationIssue || stackInstallBlockerIds) {
         dismissNoticeKey('playlist-hardware-warning');
         return;
       }
@@ -1065,7 +1074,7 @@ function realPatternShape(patternId) {
         source: 'playlist-hardware',
         action: { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
       });
-    }, [hardwareConfigurationIssue]);
+    }, [hardwareConfigurationIssue, stackInstallBlockerIds]);
 
     React.useEffect(() => {
       if (!playlistStatus) {
@@ -1150,13 +1159,21 @@ function realPatternShape(patternId) {
                 <button
                   className="btn primary"
                   disabled={!installGate.allowed}
-                  title={installGate.allowed ? undefined : installGate.message}
+                  title={stackInstallBlockerIds?.length ? 'Update the listed looks before installing.' : installGate.allowed ? undefined : installGate.message}
+                  aria-describedby={stackInstallBlockerIds?.length ? 'playlist-install-blockers' : undefined}
                   aria-label={playlistSyncing ? 'Sending…' : 'Install playlist on card'}
                   onClick={() => loadPlaylistToCard()}
                 >
                   {I.bolt}<span className="pl-install-label">{playlistSyncing ? 'Sending…' : 'Install playlist'}{!playlistSyncing && <span className="pl-install-location"> on card</span>}</span>
                 </button>
               </div>
+              {stackInstallBlockerIds?.length > 0 && <div className="pl-stack-install-fixes" id="playlist-install-blockers" data-testid="playlist-install-blockers">
+                <strong>Layout changed</strong>
+                {stackInstallBlockerIds.map(id => {
+                  const saved = savedLookById.get(id);
+                  return saved && <StackSectionLink key={id} look={saved} showName />;
+                })}
+              </div>}
             </header>
             <dialog className="pl-section-dialog" ref={sectionDialogRef} aria-labelledby="pl-section-dialog-title" onClose={() => {
               rowMenuTriggerRefs.current.get(sectionDialogEntryRef.current)?.focus();
@@ -1228,7 +1245,7 @@ function realPatternShape(patternId) {
                       <h2 className="t">Dial order</h2>
                       <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
                     </div>
-                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add saved looks</button>
+                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Browse looks &amp; patterns</button>
                   </div>
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
@@ -1241,6 +1258,7 @@ function realPatternShape(patternId) {
                     const savedLook = item.type === 'combo' ? savedLookById.get(item.lookId) : null;
                     const displayLabel = savedLook?.label || item.label;
                     const stackSummary = savedLook ? stackSummaries.get(savedLook.id) : null;
+                    const staleSections = stackSummary && stackNeedsSectionReview(savedLook, stackSummary);
                     const recorded = item.type === 'sequence' ? sequenceAssetById.get(item.sequenceAssetId) : null;
                     const p = item.type === 'sequence'
                       ? realPatternShape('aurora')
@@ -1314,7 +1332,7 @@ function realPatternShape(patternId) {
                             <span className="pl-dwell-unit">min</span>
                             <span className="pl-field-help" id={`playlist-length-help-${id}`}>Enter 0.02 to 60 minutes.</span>
                           </label>
-                          <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending || item.type === 'sequence'} title={item.type === 'sequence' ? 'Install this recording before playing it on the card' : undefined} onClick={() => setLiveItem(item)}>Live</button>
+                          <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending || item.type === 'sequence' || staleSections} title={item.type === 'sequence' ? 'Install this recording before playing it on the card' : staleSections ? 'Update this look’s sections first' : undefined} onClick={() => setLiveItem(item)}>Live</button>
                           <div className="pl-row-menu">
                             <button
                               className="plbtn pl-more"
@@ -1335,7 +1353,7 @@ function realPatternShape(patternId) {
                                 <button className="pl-row-menu-backdrop" aria-label="Close playlist row actions" onClick={() => closeRowMenu(true)} />
                                 <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${displayLabel}`}>
                                   {stackSummary && <>
-                                    <a role="menuitem" className="pl-row-menu-item pl-mobile-entry-action" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit look</a>
+                                    <a role="menuitem" className="pl-row-menu-item pl-mobile-entry-action" href={stackEditHref(savedLook.id)}>Edit look</a>
                                     <button role="menuitem" className="pl-row-menu-item pl-mobile-entry-action" onClick={() => {
                                       sectionDialogEntryRef.current = id;
                                       setInspectedLookId(savedLook.id);
@@ -1353,8 +1371,9 @@ function realPatternShape(patternId) {
                         {stackSummary && <div className="pl-row-stack-details">
                           <button type="button" className="pl-stack-details-toggle" aria-expanded={expandedStackIds.includes(`row-${id}`)} onClick={() => toggleStackDetails(`row-${id}`)}>{expandedStackIds.includes(`row-${id}`) ? 'Hide sections' : 'Show sections'}</button>
                           {expandedStackIds.includes(`row-${id}`) && <StackAssignments summary={stackSummary} />}
-                          <a className="pl-stack-details-toggle" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit look</a>
+                          {!staleSections && <a className="pl-stack-details-toggle" href={stackEditHref(savedLook.id)}>Edit look</a>}
                         </div>}
+                        {staleSections && <div className="pl-row-section-fix"><StackSectionLink look={savedLook} /></div>}
                       </article>
                     );
                   })}
@@ -1403,8 +1422,8 @@ function realPatternShape(patternId) {
                       <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
                     </div>
                     <div className="pl-card-tools-actions">
-                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
-                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
+                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy card config</button>
+                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download card config</button>
                       <button className="btn" onClick={openCard}>{I.open}Open card page</button>
                     </div>
                   </div>
@@ -1443,12 +1462,12 @@ function realPatternShape(patternId) {
                           <div className="pl-stack-meta">
                             <span>{summary.sectionCount} {summary.sectionCount === 1 ? 'section' : 'sections'}</span>
                             {added && <span>In playlist: {(stackPlaylistPositions.get(look.id) || []).join(', ')}</span>}
-                            {!eligible && <span className="pl-stack-ineligible">{needsReview ? 'Review sections' : 'Unavailable on card'}</span>}
+                            {!eligible && <span className="pl-stack-ineligible">{needsReview ? 'Sections changed' : 'Unavailable on card'}</span>}
                           </div>
-                          {!eligible && <p className="pl-stack-feedback">{needsReview ? 'Section layout changed. Open this look in Patterns to review its assignments.' : compatibility.reason}</p>}
+                          {!compatibility.ok && <p className="pl-stack-feedback">{compatibility.reason}</p>}
                           <div className="pl-stack-actions">
                             {eligible && <button type="button" className={!added ? 'pl-stack-primary' : undefined} disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add look'}</button>}
-                            <a href={`#screen=pattern&editStack=${encodeURIComponent(look.id)}`}>Edit look</a>
+                            {needsReview ? <StackSectionLink look={look} /> : <a href={stackEditHref(look.id)}>Edit look</a>}
                             <button type="button" aria-expanded={expanded} onClick={() => toggleStackDetails(look.id)}>{expanded ? 'Hide sections' : 'Show sections'}</button>
                           </div>
                           {expanded && <StackAssignments summary={summary} />}

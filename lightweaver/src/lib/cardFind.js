@@ -1,29 +1,6 @@
-// "Find my card" has to FIND the card.
-//
-// It used to open the Connection Center, which asked the owner to look at the
-// LEDs and describe what they saw before Studio tried anything at all. On a
-// screen that already displays the card's address, with a card sitting on the
-// network answering every request, that reads as the button doing nothing —
-// which is exactly how it was reported. A triage question is the right thing
-// to ask AFTER a real attempt has failed, never instead of one.
-//
-// There are two ways this browser can reach a card, and which one is available
-// is decided by the page's own protocol, not by anything the owner can see:
-//
-//   • A page served over http (the local Studio, the card's own page) can
-//     fetch the card directly. It can also sweep the addresses the card has
-//     previously answered on, which is the answer when the router has moved it.
-//   • A page served over https (led.mandalacodes.com — the address owners
-//     actually use) cannot fetch an http address at all. Its only route is the
-//     card's own page opened as a real tab, which then relays. Every other
-//     control on the connect panel is a dead end there.
-//
-// So this picks the route that can work and takes it, and only reports a
-// failure the owner can act on when none can.
-
 import {
   canPushDirectlyToCard,
-  discoverCardStatus,
+  candidateCardHosts,
   isLocalCardHost,
   normalizeCardHost,
   readStoredCardHost,
@@ -31,9 +8,19 @@ import {
   sweepKnownSubnetsForCard,
   DEFAULT_CARD_HOST,
 } from './cardConnection.js';
-import { readPersistedCardIdentity } from './cardIdentity.js';
-import { connectCardLink, reportDirectCardStatus } from './cardLink.js';
+import { cardIdentityForgotAfter, normalizeCardIdentity, readPersistedCardIdentity } from './cardIdentity.js';
+import { getCardBridgeState, sendCardBridgeRequest, startCardBridgeSearch } from './cardBridge.js';
+import { classifyCardReadiness } from './cardReadiness.js';
+import { getCardLinkState, getSharedCardLink, isCardLinkConnected, reportCardStatusEnvelope, reportDirectCardStatus } from './cardLink.js';
+import { activateCardTransport, probeCardTransport } from './cardTransport.js';
 import { pairDiscoveredCard } from './cardPairing.js';
+import { allowLanProbes, getActiveUsbInspection } from './usbInspection.js';
+
+export const CARD_FIND_TIMEOUT_MS = 45_000;
+export const CARD_FIND_HANDOFF_TIMEOUT_MS = 240_000;
+const DIRECT_PROBE_MS = 6_000;
+const CARD_PAGE_HOST_MS = 12_000;
+let activeSearch;
 
 export function bestKnownHost(link = {}) {
   const paired = readPersistedCardIdentity();
@@ -44,95 +31,274 @@ export function bestKnownHost(link = {}) {
   return stationIp || candidates[0] || DEFAULT_CARD_HOST;
 }
 
-/**
- * Race every known card address (stored host, history, mDNS, setup AP) with
- * a bounded timeout, then sweep any remembered subnet. This is what Connect
- * must do: a single fetch to lightweaver.local can stall on .local DNS while
- * the card is already answering on its station IP.
- */
-export async function locateReachableCard({
-  preferredHost = '',
-  expectedCard = readPersistedCardIdentity(),
-  timeoutMs = 2000,
-} = {}) {
-  const found = await discoverCardStatus({
-    preferredHost: preferredHost || bestKnownHost(),
-    expectedCard,
-    timeoutMs,
-    persist: true,
-  }).catch(() => null);
-  if (found?.connected) return found;
-  if (found?.reason === 'wrong-card' || found?.reason === 'identity-missing') return found;
+function pauseForCard(ms, signal) {
+  if (signal.aborted) return Promise.resolve();
+  const win = typeof window === 'undefined' ? null : window;
+  return new Promise(resolve => {
+    function wake() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', wake);
+      win?.removeEventListener?.('online', wake);
+      resolve();
+    }
+    const timer = setTimeout(wake, ms);
+    signal.addEventListener('abort', wake, { once: true });
+    win?.addEventListener?.('online', wake, { once: true });
+  });
+}
 
-  const swept = await sweepKnownSubnetsForCard({
-    expectedCard,
-    knownHosts: [
-      preferredHost,
-      readStoredCardHost(),
-      ...readStoredCardHostHistory(),
-    ],
-  }).catch(() => null);
-  if (swept) {
-    return { connected: true, host: swept.host, status: swept.status };
+function needsHandoffWindow(link, host, expected) {
+  return Boolean(link.handoffCorrelation
+    || ['wifi-network-switch', 'card-restarting'].includes(link.reason)
+    || host === '192.168.4.1'
+    || (expected?.id && (/^\d+\./.test(expected.address || '') || /^\d+\./.test(host))));
+}
+
+function connectionFailure(evidence, popupUnavailable) {
+  if (evidence?.reason === 'wrong-card') {
+    return { ...evidence, ok: false, message: `Wrong card: expected ${evidence.expectedCardId}, but found ${evidence.observedCardId || 'another Lightweaver'}. Writes remain blocked.` };
   }
-  return found || { connected: false, host: preferredHost || DEFAULT_CARD_HOST };
+  if (evidence?.reason === 'firmware-incompatible') {
+    return { ...evidence, ok: false, message: 'This card answered, but its firmware cannot provide the safety evidence Studio needs. Update this card to continue.' };
+  }
+  return {
+    ok: false,
+    reason: 'not-found',
+    message: popupUnavailable
+      ? 'No reply from the card. Check its power and Wi-Fi, allow local network access, or allow the card page to open.'
+      : 'No reply from the card. Check its power and that this device is on the card’s Wi-Fi, then try again.',
+  };
 }
 
-async function pairReachedCard(found) {
-  reportDirectCardStatus({
-    connected: true, host: found.host, status: found.status, allowAdopt: true,
-  });
-  const paired = await pairDiscoveredCard({
-    transport: 'direct',
-    host: found.host,
-    discoveredCard: { id: found.status?.cardId || '' },
-  });
-  return paired.ok
-    ? { ok: true, how: 'found-direct', host: found.host }
-    : { ok: false, reason: paired.reason, message: paired.message };
+function freshCardFound(card, host, how, readiness) {
+  return { ok: true, connected: false, how: 'found-unpaired', transport: how, card, host, readiness };
 }
 
+/**
+ * One user-initiated search, with one deadline and one accepted route. Direct
+ * probes are read-only until a matching winner is selected, and a card page
+ * earns its place with the same exact status evidence rather than a tab-open.
+ */
 export async function findAndConnectCard({
   link = {},
+  preferredHost = '',
+  exactHost = false,
+  bridgeFirst = false,
+  pair = false,
   onProgress = () => {},
-  directOnly = canPushDirectlyToCard(),
+  signal,
+  timeoutMs,
+  retryDelayMs,
 } = {}) {
-  // Already found and merely unpaired: pairing IS the whole job, and asking
-  // anything else here is the extra step owners kept reporting.
-  if (link.discoveredCard?.id) {
+  activeSearch?.abort();
+  if (signal?.aborted) return { ok: false, reason: 'cancelled' };
+  if (getActiveUsbInspection()) return { ok: false, reason: 'usb-inspection', message: 'Finish the USB inspection before connecting over Wi-Fi.' };
+  if (pair && link.discoveredCard?.id) {
     onProgress('Pairing this card…');
-    const paired = await pairDiscoveredCard(link);
+    const paired = await pairDiscoveredCard(link, { signal });
     return paired.ok
-      ? { ok: true, how: 'paired' }
+      ? { ok: true, connected: true, how: 'paired' }
       : { ok: false, reason: paired.reason, message: paired.message };
   }
+  const persistedCard = readPersistedCardIdentity();
+  const expectedCard = persistedCard || link.expectedCard || link.card || null;
+  const expectedCardId = expectedCard?.id || '';
+  const host = preferredHost ? normalizeCardHost(preferredHost) : bestKnownHost(link);
+  if (!isLocalCardHost(host)) return { ok: false, reason: 'invalid-host', message: 'Enter a valid local Lightweaver hostname.' };
+  const live = getCardLinkState();
+  if (!bridgeFirst && expectedCardId && isCardLinkConnected(live) && live.card?.id === expectedCardId
+    && (!exactHost || normalizeCardHost(live.host) === host)) {
+    return { ok: true, connected: true, how: live.transport, card: live.card, host: live.host };
+  }
 
-  if (directOnly) {
-    onProgress('Looking for your card…');
-    const found = await locateReachableCard({
-      preferredHost: bestKnownHost(link),
-      timeoutMs: 2000,
+  const search = new AbortController();
+  activeSearch = search;
+  const abort = () => search.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const stopped = search.signal;
+  const start = Date.now();
+  const selectionStillCurrent = () => !getActiveUsbInspection()
+    && !cardIdentityForgotAfter(start)
+    && (readPersistedCardIdentity()?.id || '') === (persistedCard?.id || '')
+    && (!expectedCardId || !getCardLinkState().expectedCard?.id
+      || expectedCardId === getCardLinkState().expectedCard.id);
+  const current = () => !stopped.aborted && selectionStillCurrent();
+  const win = typeof window === 'undefined' ? null : window;
+  let timer;
+  const scheduleEnd = ms => {
+    clearTimeout(timer);
+    timer = setTimeout(abort, Math.max(0, start + ms - Date.now()));
+  };
+  const networkChanged = () => {
+    if (timeoutMs == null) scheduleEnd(CARD_FIND_HANDOFF_TIMEOUT_MS);
+  };
+  scheduleEnd(timeoutMs ?? (needsHandoffWindow(link, host, expectedCard) || win?.navigator?.onLine === false
+    ? CARD_FIND_HANDOFF_TIMEOUT_MS
+    : CARD_FIND_TIMEOUT_MS));
+  win?.addEventListener?.('offline', networkChanged);
+
+  let stationHostFromExactCard = '';
+  const eligibleHosts = () => {
+    if (exactHost) return [host];
+    // Follow a fresh station address for the same persisted card after an
+    // independent verified handoff, while retaining known returning routes.
+    const latest = readPersistedCardIdentity();
+    return [...new Set([stationHostFromExactCard, host, ...candidateCardHosts(host, latest || expectedCard)].filter(Boolean))];
+  };
+  let observedFailure;
+  let winner;
+  let bridgeSearch;
+  const saveFailure = result => {
+    if (!current() || !['wrong-card', 'firmware-incompatible'].includes(result?.reason)) return;
+    if (!observedFailure || result.reason === 'wrong-card') observedFailure = result;
+  };
+  const finish = (result, keepPage = false) => {
+    if (winner) return winner;
+    winner = result;
+    bridgeSearch?.finish(keepPage);
+    abort();
+    return result;
+  };
+  const finishVerifiedBridge = active => {
+    const bridge = getCardBridgeState();
+    const status = active.readiness;
+    const bootId = active.validatedBootId;
+    if (!expectedCardId || active.state !== 'connected-bridge' || active.card?.id !== expectedCardId
+      || active.host !== bridge.host || (exactHost && active.host !== host)
+      || !bootId || status?.bootId !== bootId || status?.cardId !== expectedCardId
+      || !bridge.connected || !bridge.verified || !bridge.identityVerified
+      || bridge.card?.id !== expectedCardId || active.bridgeLifecycle !== bridge.lifecycle
+      || (active.handoffCorrelation ? !active.handoffStationVerified : !bridgeSearch?.current())) return;
+    return finish({ ok: true, connected: true, how: 'card-page', host: active.host, card: active.card }, true);
+  };
+  const settleDirect = probe => {
+    if (!current() || winner) return;
+    // An explicit card-page choice (in particular the setup AP) gives that
+    // page time to open and verify before a direct answer can close it.
+    if (bridgeFirst && bridgeSearch?.current() && Date.now() - start < CARD_PAGE_HOST_MS) return;
+    const station = probe.readiness?.wifi;
+    const stationHost = station?.stationIp || station?.ip;
+    if (expectedCardId && station?.transport === 'station' && station.transition === 'station'
+      && station.transitionPending === false && stationHost && isLocalCardHost(stationHost)) {
+      stationHostFromExactCard = normalizeCardHost(stationHost);
+    }
+    // An armed Wi-Fi commissioning handoff owns this transition and the card
+    // page's ack. An ordinary direct answer cannot bypass it.
+    const active = getCardLinkState();
+    if (active.handoffCorrelation && !active.handoffStationVerified) return;
+    if (finishVerifiedBridge(active)) return winner;
+    if (!expectedCardId) {
+      reportDirectCardStatus({ connected: true, host: probe.host, status: probe.readiness, card: probe.card });
+      return finish(freshCardFound(probe.card, probe.host, 'direct', probe.readiness));
+    }
+    const authority = activateCardTransport(probe, { expectedCardId, expectedPersistedCardId: persistedCard?.id || '', signal: stopped });
+    if (!authority.connected) return;
+    const verified = getCardLinkState();
+    if (verified.state !== 'connected-direct' || verified.card?.id !== expectedCardId
+      || verified.host !== probe.host || verified.validatedBootId !== probe.readiness.bootId) return;
+    return finish({ ok: true, connected: true, how: 'found-direct', host: probe.host, card: probe.card, authority });
+  };
+  const testDirect = async candidates => {
+    // Each candidate checks exact identity before it can win. A wrong card on
+    // one address cannot prevent a matching card on another from answering.
+    const probes = candidates.map(async candidate => {
+      const result = await probeCardTransport({ host: candidate, expectedCardId, signal: stopped, timeoutMs: DIRECT_PROBE_MS });
+      if (result.connected) return settleDirect(result);
+      saveFailure(result);
     });
-    if (found?.connected) return pairReachedCard(found);
-
-    return {
-      ok: false,
-      reason: 'not-found',
-      message: 'No Lightweaver answered on this network. Check the card has power, and that this device is on the same Wi-Fi as the card.',
-    };
+    await Promise.all(probes);
+  };
+  const direct = async () => {
+    while (current()) {
+      await testDirect(eligibleHosts());
+      if (!current()) return;
+      await pauseForCard(retryDelayMs ?? (Date.now() - start < 20_000 ? 2_500 : 6_000), stopped);
+    }
+  };
+  const runBridge = async () => {
+    if (!bridgeSearch) return;
+    if (exactHost && bridgeSearch.host && bridgeSearch.host !== host) return;
+    if (!bridgeFirst) await pauseForCard(1_800, stopped);
+    let index = 0;
+    while (current() && bridgeSearch.current()) {
+      const hosts = bridgeSearch.host ? [bridgeSearch.host] : eligibleHosts().filter(candidate => candidate !== '192.168.4.1' || candidate === host);
+      const candidate = hosts[index % hosts.length];
+      index += 1;
+      if (!bridgeSearch.navigate(candidate)) return;
+      const slice = Date.now() + CARD_PAGE_HOST_MS;
+      do {
+        const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
+          host: candidate, timeoutMs: 3_500, retryOnTimeout: false,
+        }).catch(() => null);
+        if (!current() || !bridgeSearch.current()) return;
+        const bridge = getCardBridgeState();
+        if (bridge.host !== candidate) break;
+        const card = normalizeCardIdentity(status || {}, candidate);
+        if (card.id && expectedCardId && card.id !== expectedCardId) {
+          saveFailure({ reason: 'wrong-card', expectedCardId, observedCardId: card.id, host: candidate });
+          break;
+        }
+        const readiness = classifyCardReadiness(status || {}, { expectedCard: expectedCardId ? { id: expectedCardId } : null });
+        if (bridge.verified && card.id && readiness.identityValid && readiness.bootId && readiness.state !== 'checking') {
+          if (!expectedCardId && bridge.discoveredCard?.id === card.id) {
+            return finish(freshCardFound(card, candidate, 'bridge', status), true);
+          }
+          if (card.id === expectedCardId && bridge.identityVerified && bridge.card?.id === card.id) {
+            const verified = reportCardStatusEnvelope({ host: candidate, status, transport: 'bridge' });
+            if (finishVerifiedBridge(verified)) return winner;
+          }
+        }
+        if (current()) await pauseForCard(1_250, stopped);
+      } while (current() && bridgeSearch.current() && (bridgeSearch.host || Date.now() < slice));
+    }
+  };
+  const disposeBridge = () => bridgeSearch?.finish(winner?.how === 'card-page' || winner?.transport === 'bridge');
+  stopped.addEventListener('abort', disposeBridge, { once: true });
+  const unsubscribe = getSharedCardLink().subscribe(() => {
+    if (stopped.aborted || winner) return;
+    if (!selectionStillCurrent()) return abort();
+    // The card page's own handshake can supply verified status before our
+    // next search poll. Keep the exact verified page now, before the open
+    // Connection Center sees the same result and dismisses itself.
+    finishVerifiedBridge(getCardLinkState());
+  });
+  // The direct permission prompt and popup reservation both start in the
+  // initiating click. A blocked popup leaves the direct search untouched.
+  allowLanProbes();
+  onProgress('Looking for your card. Allow local network access if asked.');
+  const directWork = direct();
+  if (!link.handoffCorrelation && !getCardBridgeState().handoffCorrelation) bridgeSearch = startCardBridgeSearch();
+  const bridgeWork = runBridge();
+  const sweepWork = (canPushDirectlyToCard() && persistedCard?.id && !exactHost
+    ? (async () => {
+      await pauseForCard(DIRECT_PROBE_MS, stopped);
+      if (!current()) return;
+      const swept = await sweepKnownSubnetsForCard({
+        expectedCard, knownHosts: [readStoredCardHost(), ...readStoredCardHostHistory()],
+        signal: stopped, persist: false,
+      }).catch(() => null);
+      if (swept && current()) await testDirect([swept.host]);
+    })() : Promise.resolve());
+  const finished = new Promise(resolve => {
+    if (stopped.aborted) resolve();
+    else stopped.addEventListener('abort', resolve, { once: true });
+  });
+  try {
+    await Promise.race([finished, Promise.all([directWork, bridgeWork, sweepWork])]);
+    if (winner) return winner;
+    if (signal?.aborted || activeSearch !== search || !selectionStillCurrent()) {
+      return { ok: false, reason: 'cancelled' };
+    }
+    if (observedFailure?.reason === 'wrong-card') {
+      getSharedCardLink().dispatch({ type: 'direct-status', connected: false, host: observedFailure.host, reason: 'wrong-card' });
+    }
+    return connectionFailure(observedFailure, !bridgeSearch);
+  } finally {
+    clearTimeout(timer);
+    unsubscribe();
+    win?.removeEventListener?.('offline', networkChanged);
+    signal?.removeEventListener('abort', abort);
+    abort();
+    if (activeSearch === search) activeSearch = null;
   }
-
-  // https: opening the card's own page is the only route that can succeed, so
-  // take it rather than describing it as a fallback at the bottom of a panel.
-  const host = bestKnownHost(link);
-  onProgress(`Opening the card’s own page at ${host}…`);
-  const opened = connectCardLink(host);
-  if (!opened) {
-    return {
-      ok: false,
-      reason: 'popup-blocked',
-      message: 'Your browser blocked the card’s own page. Allow pop-ups for this site, then press Find my card again.',
-    };
-  }
-  return { ok: true, how: 'card-page', host };
 }

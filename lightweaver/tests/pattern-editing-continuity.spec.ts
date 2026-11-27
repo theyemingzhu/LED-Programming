@@ -1,5 +1,6 @@
 import { test, expect } from './studioTest';
 import { createDefaultProject } from '../src/lib/projectModel.js';
+import { derivePlaylistLookIds } from '../src/lib/cardPlaylist.js';
 import { normalizeSavedLooks } from '../src/lib/sectionLookModel.js';
 
 async function openProject(page, { full = false, repeated = false } = {}) {
@@ -19,7 +20,7 @@ async function openProject(page, { full = false, repeated = false } = {}) {
       { id: 'between-cues', type: 'pattern', patternId: 'fire', label: 'Fire', dwellSeconds: 30, enabled: true, createdAt: 2 },
       { ...controller.playlist[0], id: 'return-cue', dwellSeconds: 75, enabled: false, createdAt: 3 },
     );
-    controller.controls.encoder.patternCycleIds = ['fire'];
+    controller.controls.encoder.patternCycleIds = derivePlaylistLookIds(controller.playlist);
     controller.controls.playlist = { enabled: true, fadeMs: 2200 };
   }
   await page.addInitScript(value => {
@@ -45,7 +46,6 @@ test('renaming and updating a look keep its identity instead of making duplicate
   await openProject(page);
   await openStackEditor(page);
   await page.getByTestId('look-name').fill('Violet evening');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-rename').click();
   await expect.poll(async () => (await savedLooks(page)).find(look => look.id === 'owned-look-0')?.label).toBe('Violet evening');
   expect(await savedLooks(page)).toHaveLength(1);
@@ -59,7 +59,6 @@ test('renaming and updating a look keep its identity instead of making duplicate
 test('delete and Undo restore the look and its playlist cue', async ({ page }) => {
   await openProject(page);
   await openStackEditor(page);
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await expect.poll(async () => (await savedLooks(page)).length).toBe(0);
   await page.getByTestId('look-delete-undo').click();
@@ -76,8 +75,7 @@ test('undo restores repeated cue identities, order and timing beside a standalon
     return { looks: controller.looks, playlist: controller.playlist, controls: controller.controls };
   });
   const before = await readState();
-  await page.getByTestId('stack-more-actions').click();
-  await expect(page.getByTestId('look-delete')).toContainText('2 playlist entries');
+  await expect(page.getByTestId('look-delete')).toHaveAccessibleName(/delete.*2 entries from playlist/i);
   await page.getByTestId('look-delete').click();
   await expect.poll(async () => (await readState()).playlist.map(entry => entry.id)).toEqual(['between-cues']);
   await page.getByTestId('look-delete-undo').click();
@@ -101,12 +99,10 @@ test('undo restores repeated cue identities, order and timing beside a standalon
 test('undo does not overwrite a newer edit to another look', async ({ page }) => {
   await openProject(page, { full: true, repeated: true });
   await openStackEditor(page);
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await expect.poll(async () => (await savedLooks(page)).length).toBe(11);
   await openStackEditor(page);
   await page.getByTestId('look-name').fill('Newer look name');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-rename').click();
   await expect.poll(async () => (await savedLooks(page))[0]?.label).toBe('Newer look name');
   await page.getByTestId('look-delete-undo').click();
@@ -121,7 +117,6 @@ test('saving a new look at capacity leaves all twelve existing looks intact', as
   await openStackEditor(page);
   await expect.poll(async () => (await savedLooks(page)).length).toBe(12);
   const before = await savedLooks(page);
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-save-as-new').click();
   await expect(page.getByTestId('look-save-status')).toContainText(/12|full|maximum|capacity/i);
   expect(await savedLooks(page)).toEqual(before);

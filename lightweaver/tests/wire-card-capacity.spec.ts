@@ -1,11 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// A development card is allowed to be smaller than the piece being designed.
-//
-// The whole point of these tests: a 400-light mandala being designed against a
-// 41-light bench strip must stay a 400-light mandala, and the Wire panel must
-// say plainly which lights are not wired up yet — instead of leaving a mostly
-// dark strip looking like a fault.
+// Wire compares the saved count with the design independently of what the
+// card may report now. A bench count never reshapes a finished drawing.
 const PATH = 'M 10 10 L 200 10';
 
 function project({ designPixels, outputPin, countedPin, countedPixels }: {
@@ -20,7 +16,7 @@ function project({ designPixels, outputPin, countedPin, countedPixels }: {
     version: 3,
     id: 'capacity-fixture',
     name: 'Capacity fixture',
-    // What was counted on the card that happens to be plugged in.
+    // The last saved strip count.
     portRoles: [
       { pin: 16, role: 'unused', pixelCount: 0, controlKind: '' },
       { pin: 17, role: 'unused', pixelCount: 0, controlKind: '' },
@@ -62,10 +58,9 @@ test('a small card against a large design is stated as a fact, and the design is
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
 
   await expect(page.getByTestId('wire-capacity'))
-    .toHaveText('Plugged in right now: 41 lights. This design uses 400 — the other 359 are not wired up yet.');
-  // Same GPIO, different length: normal while developing, so no fix is offered.
-  await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
-  await expect(page.getByTestId('wire-adopt-18')).toHaveCount(0);
+    .toHaveText('Design: 400 LEDs · Last counted: 41 LEDs');
+  // Compare counts only because the saved observation names this exact GPIO.
+  await expect(page.getByTestId('pin-mismatch-out1')).toContainText('Design: 400 LEDs · Last counted: 41 LEDs');
   // The design still says 400. Counting a bench strip must never shrink it.
   await expect(page.getByTestId('sheet-total')).toContainText('400 LEDs');
   const total = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
@@ -78,19 +73,17 @@ test('a card matching the design stays quiet on the Wire plan', async ({ page })
   await expect(page.getByTestId('wire-capacity')).toHaveCount(0);
 });
 
-test('a wrong GPIO is still a fault, because nothing lights at all', async ({ page }) => {
+test('mismatched GPIO evidence offers a re-test and leaves the pin editor unchanged', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 16, countedPin: 18, countedPixels: 41 }));
-  await expect(page.getByTestId('wire-mismatch-18'))
-    .toContainText('This output uses GPIO 16 in the design. Your strip is plugged into GPIO 18.');
-  await page.getByTestId('wire-adopt-18').click();
-  await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
+  await expect(page.getByTestId('pin-mismatch-out1')).toContainText('Output 1 · GPIO 16');
+  await expect(page.getByTestId('last-counted-pins')).toHaveText('GPIO 18');
+  await expect(page.getByRole('combobox', { name: 'Pin for LED output' })).toHaveValue('16');
+  await expect(page.getByRole('link', { name: 'Scan pins' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Replace GPIO 18' })).toHaveCount(0);
 });
 
-test('counting what is plugged in lives with the Wire tools', async ({ page }) => {
+test('retesting the count lives with the Wire tools', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
-  // Recount remains available inside the optional hardware controls.
-  const tools = page.getByTestId('advanced-installation-tools');
-  await expect(tools).toBeVisible();
-  await tools.locator(':scope > summary').click();
-  await expect(tools.getByTestId('wire-recount')).toBeVisible();
+  await expect(page.getByTestId('wire-recount')).toHaveAccessibleName('Scan pins');
+  await expect(page.getByTestId('wire-recount')).toBeVisible();
 });

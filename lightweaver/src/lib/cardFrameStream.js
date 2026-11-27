@@ -851,7 +851,7 @@ export function createCardFrameStream({
     return true;
   }
 
-  function stop() {
+  function stop({ cancel } = {}) {
     if (stoppingPromise) return stoppingPromise;
     if (!active) {
       ownership?.release?.();
@@ -859,15 +859,14 @@ export function createCardFrameStream({
       closeTransport();
       return Promise.resolve();
     }
-    const ownsCard = ownership?.isOwner?.() ?? true;
+    const claim = ownership;
+    const ownsCard = () => !yielded && (claim?.isOwner?.() ?? true);
     const pendingSend = inflightPromise;
     active = false;
     sendGeneration += 1;
     if (timer !== null) { clearIntervalImpl(timer); timer = null; }
     latest = null;
     latestDirty = false;
-    ownership?.release?.();
-    ownership = null;
     // Release the card's frame-source claim so its own pattern resumes —
     // the existing control path, never a bespoke stop message.
     stoppingPromise = (async () => {
@@ -876,10 +875,15 @@ export function createCardFrameStream({
         // generation/authority fence prevents later chunks from following it,
         // and this ordering guarantees cancel is the last command to land.
         if (pendingSend) await pendingSend;
-        if (ownsCard) await wire.sendCancel();
+        if (ownsCard()) {
+          await (cancel ? cancel(ownsCard, wire.kind === 'http' ? () => wire.sendCancel() : null) : wire.sendCancel());
+        }
       } catch (error) {
         lastError = error;
+        if (cancel) throw error;
       } finally {
+        claim?.release?.();
+        ownership = null;
         closeTransport();
       }
     })();

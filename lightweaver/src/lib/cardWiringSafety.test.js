@@ -462,6 +462,41 @@ test('ambiguous activation transport failure still polls the card-owned transact
   assert.equal(status.remainingMs, 84000);
 });
 
+test('a lost bridge activation reply switches to readback without permitting replay', async () => {
+  const activationId = 'bridge-light-test';
+  const operations = [];
+  let retryOnTimeout;
+  const status = await activateAndWaitForCardWiring(activationId, {
+    host: 'lightweaver.local',
+    transport: 'bridge',
+    bridgeRequestImpl: async (operation, _, options) => {
+      operations.push(operation);
+      if (operation === 'wiring-activate') {
+        retryOnTimeout = options.retryOnTimeout;
+        throw new CardWiringSafetyError('bridge-timeout', 'activation may have reached the card');
+      }
+      return { state: 'testing', activationId };
+    },
+  });
+  assert.equal(status.state, 'testing');
+  assert.deepEqual(operations, ['wiring-activate', 'wiring-status']);
+  assert.equal(retryOnTimeout, false);
+});
+
+test('an explicit refusal still requires status before exposing a staged activation again', async () => {
+  const activationId = 'not-activated';
+  const staged = { activationId, state: 'staged', cardId: 'expected-card', buildId: 'expected-build' };
+  let reads = 0;
+  await assert.rejects(
+    activateAndWaitForCardWiring(activationId, {
+      activateImpl: async () => { throw new CardWiringSafetyError('http', 'busy', { status: 503 }); },
+      statusImpl: async () => { reads += 1; return staged; },
+    }),
+    error => error?.reason === 'activation-staged' && error.response === staged,
+  );
+  assert.equal(reads, 1);
+});
+
 test('activation reports the transport error only after reconnect polling also fails', async () => {
   const activationError = new CardWiringSafetyError('network', 'connection closed during reboot');
   await assert.rejects(
@@ -494,6 +529,26 @@ test('a slow reply from a card that is testing this wiring is heard, not timed o
   });
   assert.equal(status.state, 'testing');
   assert.ok(timeouts[0] >= 5000, `each poll waits long enough for a 5 s card (got ${timeouts[0]} ms)`);
+});
+
+test('the exact test wiring is heard during slow post-restart settling', async () => {
+  const activationId = 'wiring-slow-and-settling';
+  let now = 0;
+  const status = await waitForCardWiringReconnect({
+    activationId,
+    timeoutMs: 45_000,
+    nowImpl: () => now,
+    waitImpl: async ms => { now += ms; },
+    statusImpl: async ({ timeoutMs }) => {
+      const duringRestart = now < 14_200;
+      const delay = duringRestart ? 14_200 - now + 14_700 : 14_700;
+      now += Math.min(timeoutMs, delay);
+      if (timeoutMs < delay) throw new Error('the slow card has not answered yet');
+      return { activationId, state: 'testing', remainingMs: 68_000 };
+    },
+  });
+  assert.deepEqual(status, { activationId, state: 'testing', remainingMs: 68_000 });
+  assert.ok(now < 45_000, 'the card is heard before Studio runs out of reconnect time');
 });
 
 test('when the deadline passes, the card is asked once more before Studio reports a timeout', async () => {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 import { seedKnownCard } from './harness/falseFailureWatch';
@@ -62,6 +62,10 @@ const PETALS: StripDef[] = Array.from({ length: 6 }, (_, k) => {
   return { name: `Petal ${k + 1}`, d: `M ${at(45, th - 8)} Q ${at(105, th - 22)} ${at(150, th)}` };
 });
 const LOTUS: StripDef[] = [...PETALS, { name: 'Centre ring', d: 'M 288 200 A 12 12 0 1 1 312 200 A 12 12 0 1 1 288 200' }];
+const PARALLEL: StripDef[] = [
+  { name: 'Upper strip', d: 'M 80 120 L 520 120' },
+  { name: 'Lower strip', d: 'M 80 280 L 520 280' },
+];
 
 const frame = (page: any) => page.getByTestId('placed-look-frame');
 const frameAt = async (page: any) => {
@@ -86,16 +90,114 @@ async function turnOn(page: any) {
   await page.getByTestId('placed-look-on').click();
   await expect(frame(page)).toBeVisible();
 }
-// Press on the frame's body, away from the strips and their labels.
-async function dragBody(page: any, dx: number, dy: number) {
-  const box = await page.getByTestId('placed-look-body').boundingBox();
-  const from = { x: box!.x + box!.width * 0.5, y: box!.y + box!.height * 0.035 };
+async function grabPoint(handle: Locator) {
+  const box = await handle.boundingBox();
+  if (!box) throw new Error('Frame handle is unavailable');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+async function mouseDrag(page: Page, from: { x: number; y: number }, dx: number, dy: number) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move(from.x + dx / 2, from.y + dy / 2, { steps: 5 });
   await page.mouse.move(from.x + dx, from.y + dy, { steps: 5 });
   await page.mouse.up();
 }
+
+function stripPoint(page: Page, id: string) {
+  return page.locator(`[data-strip-path="${id}"]`).evaluate(node => {
+    const path = node as SVGPathElement;
+    const point = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM()!);
+    return { x: point.x, y: point.y };
+  });
+}
+
+async function expectStripHit(page: Page, point: { x: number; y: number }, stripId: string) {
+  const hit = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    return target?.getAttribute('data-strip-path') ?? target?.closest('[data-testid]')?.getAttribute('data-testid') ?? target?.tagName;
+  }, point);
+  expect(hit, 'browser hit at the midpoint of the strip beneath the frame').toBe(stripId);
+}
+
+test('a mouse click and drag reach the strip through the placed look', async ({ page }, testInfo) => {
+  const ids = await seedPiece(page, PARALLEL);
+  await turnOn(page);
+  const id = ids['Lower strip'];
+  const strip = page.getByTestId(`strip-callout-${id}`);
+  await expect(strip).not.toHaveAttribute('data-selected', 'true');
+
+  const before = await frameAt(page);
+  const point = await stripPoint(page, id);
+  await page.mouse.click(point.x, point.y);
+  await expectStripHit(page, point, id);
+  await expect(strip).toHaveAttribute('data-selected', 'true');
+  expect(await frameAt(page)).toEqual(before);
+  await page.screenshot({ path: testInfo.outputPath('mouse-strip-selected.png') });
+
+  await mouseDrag(page, point, 30, 20);
+  await expect.poll(async () => (await saved(page)).layout.strips.find((entry: { id: string }) => entry.id === id).x).toBeGreaterThan(0);
+  expect(await frameAt(page)).toEqual(before);
+
+  const svg = page.locator('.lw-viewport > svg');
+  const viewBox = await svg.getAttribute('viewBox');
+  const stripGroup = page.locator(`[data-strip-path="${id}"]`).locator('..');
+  const stripTransform = await stripGroup.getAttribute('transform');
+  const movedPoint = await stripPoint(page, id);
+  await expectStripHit(page, movedPoint, id);
+  await page.getByTestId('placed-look-on').blur();
+  await page.keyboard.down('Space');
+  await mouseDrag(page, movedPoint, 25, 15);
+  await page.keyboard.up('Space');
+  await expect(svg).not.toHaveAttribute('viewBox', viewBox!);
+  await expect(stripGroup).toHaveAttribute('transform', stripTransform!);
+  expect(await frameAt(page)).toEqual(before);
+});
+
+test.describe('placed-look touch input', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('a touch tap selects the overlapping strip and touch drags move and resize the frame', async ({ page }, testInfo) => {
+    const ids = await seedPiece(page, PARALLEL);
+    await openSheet(page);
+    await turnOn(page);
+    await page.getByRole('button', { name: 'Collapse inspector' }).tap();
+
+    const id = ids['Lower strip'];
+    const strip = page.getByTestId(`strip-callout-${id}`);
+    await expect(strip).not.toHaveAttribute('data-selected', 'true');
+    const before = await frameAt(page);
+    const point = await stripPoint(page, id);
+    await page.touchscreen.tap(point.x, point.y);
+    await expectStripHit(page, point, id);
+    await expect(strip).toHaveAttribute('data-selected', 'true');
+    expect(await frameAt(page)).toEqual(before);
+    await page.screenshot({ path: testInfo.outputPath('touch-strip-selected.png') });
+
+    const cdp = await page.context().newCDPSession(page);
+    const touchDrag = async (handle: Locator, dx: number, dy: number) => {
+      const from = await grabPoint(handle);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + dx, y: from.y + dy }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+
+    await touchDrag(page.getByTestId('placed-look-move'), 20, 18);
+    const moved = await frameAt(page);
+    expect(moved.x).toBeGreaterThan(before.x);
+    expect(moved.y).toBeGreaterThan(before.y);
+    expect(moved.halfWidth).toBe(before.halfWidth);
+    expect(moved.halfHeight).toBe(before.halfHeight);
+
+    await touchDrag(page.getByTestId('placed-look-corner-2'), -20, -18);
+    const sized = await frameAt(page);
+    expect(sized.halfWidth).toBeLessThan(moved.halfWidth);
+    expect(sized.halfHeight).toBeLessThan(moved.halfHeight);
+    expect(sized.x).toBe(moved.x);
+    expect(sized.y).toBe(moved.y);
+    await expect(strip).toHaveAttribute('data-selected', 'true');
+    expect((await saved(page)).layout.strips.every((entry: { x: number; y: number }) => entry.x === 0 && entry.y === 0)).toBe(true);
+  });
+});
 
 test('turning it on puts a frame with four corners on the artwork and lights the LEDs under it', async ({ page }) => {
   const ids = await seedPiece(page, LOTUS);
@@ -134,7 +236,8 @@ test('dragging the frame moves it and the LEDs change colour; a corner sizes it;
   const before = await frameAt(page);
   const coloursBefore = await allColours(page, ids);
 
-  await dragBody(page, 70, 40);
+  const moveHandle = page.getByTestId('placed-look-move');
+  await mouseDrag(page, await grabPoint(moveHandle), 70, 40);
   const moved = await frameAt(page);
   expect(moved.x).toBeGreaterThan(before.x + 10);
   expect(moved.y).toBeGreaterThan(before.y + 5);
@@ -165,10 +268,20 @@ test('dragging the frame moves it and the LEDs change colour; a corner sizes it;
   // The strips themselves did not move.
   expect((await saved(page)).layout.strips.every((strip: any) => strip.x === 0 && strip.y === 0)).toBe(true);
 
-  await page.getByTestId('placed-look-centre').click();
+  const centre = page.getByTestId('placed-look-centre');
+  await centre.click();
   const centred = await frameAt(page);
   expect(centred.x).toBeCloseTo(300, 0);
   expect(centred.y).toBeCloseTo(before.y, 0);
+
+  const svg = page.locator('.lw-viewport > svg');
+  const viewBox = await svg.getAttribute('viewBox');
+  await centre.blur();
+  await page.keyboard.down('Space');
+  await mouseDrag(page, await grabPoint(moveHandle), 25, 15);
+  await page.keyboard.up('Space');
+  await expect(svg).not.toHaveAttribute('viewBox', viewBox!);
+  expect(await frameAt(page)).toEqual(centred);
 });
 
 test('a sweep and rings are different pictures, and the dials change them', async ({ page }) => {
@@ -308,7 +421,7 @@ test('Show it on the lights streams the look to the card, follows the frame, and
   // Two sections, like the real card: restoring them one at a time would
   // leave the card with no current look.
   card.state.zoneIds = ['outer', 'inner'];
-  (card.state as { syncZones?: boolean }).syncZones = false;
+  card.state.syncZones = false;
   const lookBefore = card.state.currentId;
   expect(lookBefore).toBeTruthy();
   await card.install(page);

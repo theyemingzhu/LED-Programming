@@ -12,7 +12,7 @@ import { SetupScreen } from './lw-setup.jsx';
 import { useCardActions } from './CardActionsProvider.jsx';
 import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
 import { ladderOwnsPrimary as deriveLadderOwnsPrimary, showFreshWorkerStart } from '../lib/setupJourneyInputs.js';
-import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
+import { cardRouteFromHash, consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
@@ -59,69 +59,35 @@ function cardRestartingOrRereading(link, lifecycleState = '') {
   return link.state === 'revalidating' || link.state === 'connecting' || link.state === 'reconnecting';
 }
 
-// Card is one page. Home always shows the setup journey, the install action,
-// evidence panels, then Hardware and Advanced as folds. `settings` and
-// `support` stay in the URL vocabulary and open the matching fold.
-// `install` and `workshop` remain full-body takeovers. Preferences is not a
-// Card page — the top bar owns it; if that hash arrives we still render the
-// existing preferences takeover rather than growing a tab.
-const HOME_SECTIONS = Object.freeze(['setup', 'overview', 'settings', 'support']);
 const SECTION_HEADINGS = Object.freeze({
-  setup: 'Set up your Lightweaver',
-  overview: 'Set up your Lightweaver',
-  settings: 'Set up your Lightweaver',
-  support: 'Set up your Lightweaver',
+  settings: 'Hardware settings',
+  support: 'Support',
   install: 'Install or update',
   preferences: 'Preferences',
   workshop: 'Batch production',
   boards: 'Board Manager',
 });
 
-function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
-  const foldRef = useRef(null);
-  // Opening a section should put you ON it. These folds sit below the whole
-  // setup journey — about 800px down — so arriving at #section=settings used
-  // to land on the ladder with the thing you asked for entirely below the
-  // fold of the window. Bring it to the top of the scroll surface instead.
-  // Scroll position only: nothing about what is rendered or open changes.
-  useEffect(() => {
-    if (!open) return;
-    const node = foldRef.current;
-    if (!node || typeof node.scrollIntoView !== 'function') return;
-    const frame = requestAnimationFrame(() => {
-      node.scrollIntoView({ block: 'start', behavior: 'auto' });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
-  return (
-    <details ref={foldRef} className="card-page-fold" data-testid={testId} open={open}>
-      <summary
-        onClick={event => {
-          event.preventDefault();
-          if (open) onClose();
-          else onOpen();
-        }}
-      >
-        {summary}
-      </summary>
-      <div className="card-page-fold-body">{children}</div>
-    </details>
-  );
-}
+const SUPPORT_TOOLS = [
+  ['technician', 'Technician firmware & logs', 'Manual firmware, offsets, erase controls, and serial output.'],
+  ['guide', 'GPIO & install guide', 'Wiring pins, installation steps, and bench signoff.'],
+  ['json', 'Designer JSON', 'Inspect the exact configuration Studio would write.'],
+  ['recovery', 'Recovery', 'Reconnect and inspect the card.'],
+  ['deployment', 'Deployment check', 'Verify this site’s signed release from the browser.'],
+  ['connection-log', 'Connection log', 'Read and copy recorded connection changes.'],
+  ['workshop', 'Batch production', 'Signed jobs, card identity, and pass records.'],
+];
 
 function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
   return (
     <div className="lw-worker-start" data-testid="public-worker-start" role="group" aria-label="Start">
-      <button type="button" className="lw-worker-start-path btn primary is-primary" data-testid="setup-connect-card" onClick={onSetUpCard}>
-        <span>Card</span>
+      <button type="button" className="lw-worker-start-path btn primary" data-testid="setup-connect-card" onClick={onSetUpCard}>
         <strong>Set up this card</strong>
       </button>
       <button type="button" className="lw-worker-start-path" onClick={onStartLayout}>
-        <span>Design</span>
         <strong>Start a layout</strong>
       </button>
       <button type="button" className="lw-worker-start-path" onClick={onOpenProjects}>
-        <span>Continue</span>
         <strong>Open saved work</strong>
       </button>
     </div>
@@ -822,8 +788,9 @@ function CardHomePanels({
         firmwareStatus={firmwareStatus}
         arrival={arrival}
         pendingInstallationVerification={pendingInstallationVerification}
-        onReviewInstalledLooks={cardLifecycle?.installedControlsReady ? cardActions?.openCard : null}
+        onReviewInstalledLooks={cardLifecycle?.installedControlsReady ? cardActions?.openInstalledCardControl : null}
         countEditor={countEditor}
+        onCheckColors={() => onOpenSection('settings', { tool: 'color-order', keepBack: true })}
         go={hash => { window.location.hash = hash; }}
         health={(ready || verifiedTransport) ? {
           busy: hardwareActionState.status === 'loading',
@@ -907,9 +874,8 @@ function ConnectionLogPanel() {
 
 function RecoverySupport({ onConnectCard, onOpenConnectionCenter }) {
   return (
-    <section className="card-support-panel">
-      <h2>Safe recovery</h2>
-      <p>Reconnect and inspect the card before choosing an install or write action. Opening recovery here does not erase firmware, WiFi, or the saved project.</p>
+    <section className="card-support-panel" aria-label="Reconnect and inspect">
+      <p>Reconnect to verify the card’s identity and inspect its current status.</p>
       <button
         type="button"
         className="btn primary"
@@ -921,57 +887,51 @@ function RecoverySupport({ onConnectCard, onOpenConnectionCenter }) {
   );
 }
 
-function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSection }) {
-  const [tool, setTool] = useState(initialTool);
-  useEffect(() => setTool(initialTool), [initialTool]);
-
-  const installerGo = target => {
-    if (target === 'flash') onOpenSection('install');
-    else if (target === 'settings') onOpenSection('settings');
-  };
-
-  return (
-    <div className="card-support">
-      <div className="card-support-grid" aria-label="Advanced and support tools">
-        <button type="button" aria-label="Technician firmware & logs" className={tool === 'technician' ? 'selected' : ''} aria-pressed={tool === 'technician'} onClick={() => setTool('technician')}>
-          <strong>Technician firmware &amp; logs</strong><span>Manual firmware, offsets, erase controls, and serial output.</span>
-        </button>
-        <button type="button" aria-label="GPIO & install guide" className={tool === 'guide' ? 'selected' : ''} aria-pressed={tool === 'guide'} onClick={() => setTool('guide')}>
-          <strong>GPIO &amp; install guide</strong><span>Worker sequence, wiring pins, hard stops, and bench signoff.</span>
-        </button>
-        <button type="button" aria-label="Designer JSON" className={tool === 'json' ? 'selected' : ''} aria-pressed={tool === 'json'} onClick={() => setTool('json')}>
-          <strong>Designer JSON</strong><span>Inspect the exact configuration Studio would write.</span>
-        </button>
-        <button type="button" aria-label="Recovery" className={tool === 'recovery' ? 'selected' : ''} aria-pressed={tool === 'recovery'} onClick={() => setTool('recovery')}>
-          <strong>Recovery</strong><span>Reconnect safely and choose the next evidence-based action.</span>
-        </button>
-        <button type="button" aria-label="Deployment check" className={tool === 'deployment' ? 'selected' : ''} aria-pressed={tool === 'deployment'} onClick={() => setTool('deployment')}>
-          <strong>Deployment check</strong><span>Verify this site's signed release from the browser — no install needed.</span>
-        </button>
-        <button type="button" aria-label="Connection log" className={tool === 'connection-log' ? 'selected' : ''} aria-pressed={tool === 'connection-log'} onClick={() => setTool('connection-log')}>
-          <strong>Connection log</strong><span>Every connection change, with its reason — for reporting a drop after it happened.</span>
-        </button>
-        <button type="button" aria-label="Batch production" onClick={() => onOpenSection('workshop')}>
-          <strong>Batch production</strong><span>Signed-job manufacturing flow with identity binding and pass records.</span>
-        </button>
-      </div>
-
-      {tool && (
-        <div className="card-support-tool">
-          {tool === 'technician' && <TechnicianFlashScreen embedded />}
-          {tool === 'guide' && <InstallerScreen embedded go={installerGo} cardLink={cardProps.cardLink} />}
-          {tool === 'json' && <SettingsScreen embedded mode="advanced" {...cardProps} />}
-          {tool === 'recovery' && <RecoverySupport onConnectCard={cardProps.onConnectCard} onOpenConnectionCenter={onOpenConnectionCenter} />}
-          {tool === 'deployment' && <DeploymentCheckPanel />}
-          {tool === 'connection-log' && <ConnectionLogPanel />}
-        </div>
-      )}
-    </div>
-  );
+function CardSupport({ tool, cardProps, onOpenConnectionCenter, onOpenSection }) {
+  switch (tool) {
+    case 'technician':
+      return <TechnicianFlashScreen embedded />;
+    case 'guide':
+      return <InstallerScreen
+        embedded
+        go={target => {
+          if (target === 'flash') onOpenSection('install');
+          else if (target === 'settings') onOpenSection('settings', { keepBack: true });
+        }}
+        cardLink={cardProps.cardLink}
+      />;
+    case 'json':
+      return <SettingsScreen embedded mode="advanced" {...cardProps} />;
+    case 'recovery':
+      return <RecoverySupport onConnectCard={cardProps.onConnectCard} onOpenConnectionCenter={onOpenConnectionCenter} />;
+    case 'deployment':
+      return <DeploymentCheckPanel />;
+    case 'connection-log':
+      return <ConnectionLogPanel />;
+    default:
+      return (
+        <nav className="card-support-grid" aria-label="Support tools">
+          {SUPPORT_TOOLS.map(([id, label, description]) => (
+            <button
+              type="button"
+              key={id}
+              className="btn"
+              aria-label={label}
+              onClick={() => id === 'workshop'
+                ? onOpenSection('workshop', { keepBack: true })
+                : onOpenSection('support', { tool: id, keepBack: true })}
+            >
+              <strong>{label}</strong><span>{description}</span>
+            </button>
+          ))}
+        </nav>
+      );
+  }
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenInstallerConnection = onOpenConnectionCenter, boardSetupEntry, onReturnToBoardSetup, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenInstallerConnection = onOpenConnectionCenter, boardSetupEntry, onReturnToBoardSetup, onOpenProjects, onOpenSection, onReturnFromTool, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
+  const bodyRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
   // Load for this card's project — the Matching-card-project panel below
@@ -1064,15 +1024,15 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       mountedRef.current = true;
       if (!navigated) return undefined;
     }
-    const frame = requestAnimationFrame(() => headingRef.current?.focus());
+    const frame = requestAnimationFrame(() => {
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
+      headingRef.current?.focus({ preventScroll: true });
+    });
     return () => cancelAnimationFrame(frame);
-  }, [route.section]);
+  }, [route.section, route.supportTool]);
 
   const cardProps = { connected, cardHost, cardLink, cardLifecycle, onConnectCard };
-  // Home is the landing default too: any section this dispatch does not name
-  // renders it. settings/support stay Home with the matching fold open.
-  const home = HOME_SECTIONS.includes(route.section)
-    || !['install', 'workshop', 'preferences', 'boards'].includes(route.section);
+  const home = route.section === 'setup' || route.section === 'overview';
   const freshWorkspace = currentProject?.layout?.starterPending === true;
   const observedCard = Boolean(connected || cardLink?.card?.id || cardLink?.readiness?.cardId);
   const showPublicWorkerStart = showFreshWorkerStart({
@@ -1098,8 +1058,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       onEditInWire={editInstallWiring}
     />
   ) : null;
-  // Card Home: the guided journey, the one install action, evidence panels,
-  // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
       {cardBlackedOut && (
@@ -1126,11 +1084,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           )}
         </div>
       )}
-      <BoardManagerEntry
-        cardId={['connected-direct', 'connected-bridge'].includes(cardLink?.state) ? cardLink.card?.id : ''}
-        onOpen={() => onOpenSection('boards')}
-        onConnect={showPublicWorkerStart || installIntentOpen ? undefined : onOpenInstallerConnection}
-      />
       <SetupScreen
         {...cardProps}
         startOwnsPrimary={showPublicWorkerStart}
@@ -1142,6 +1095,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           />
         ) : null}
         onOpenConnectionCenter={onOpenConnectionCenter}
+        onOpenInstallerConnection={onOpenInstallerConnection}
         onRenameProject={onRenameProject}
         installDoor={!installIntentOpen && (!ladderOwnsPrimary || installTaskOpen) && !showPublicWorkerStart ? (
           // The one project writer, as the status row's third door. Hidden
@@ -1162,12 +1116,26 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         currentProject={currentProject}
         activeCloudProjects={activeCloudProjects}
         browserProjects={browserProjects}
+        readBrowserProjects={readBrowserProjects}
         replaceProject={replaceProject}
+        saveBeforeCardProjectSwitch={saveBeforeCardProjectSwitch}
+        isProjectSwitchSnapshotCurrent={isProjectSwitchSnapshotCurrent}
+        onMatchedProjectLoaded={onMatchedProjectLoaded}
         onSaveProject={onSaveProject}
         firmwareReleaseManifest={firmwareReleaseManifest}
         onLoadOfferChange={setSetupLoadOffer}
         onCountEditor={setCountEditor}
         installAction={installAction}
+      />
+      <nav className="card-tools-nav" aria-label="Card tools">
+        <button type="button" className="btn" onClick={() => onOpenSection('support', { tool: 'recovery', keepBack: true })}>Recovery</button>
+        <button type="button" className="btn" onClick={() => onOpenSection('settings', { keepBack: true })}>Hardware</button>
+        <button type="button" className="btn" onClick={() => onOpenSection('support', { keepBack: true })}>Support</button>
+      </nav>
+      <BoardManagerEntry
+        cardId={['connected-direct', 'connected-bridge'].includes(cardLink?.state) ? cardLink.card?.id : ''}
+        onOpen={() => onOpenSection('boards')}
+        onConnect={showPublicWorkerStart || installIntentOpen ? undefined : onOpenInstallerConnection}
       />
       <CardHomePanels
         {...cardProps}
@@ -1196,28 +1164,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onMatchedProjectVerified={onMatchedProjectVerified}
         onStartNewProject={onStartNewProject}
       />
-      {/* Two folds on one row; an open fold takes the whole row. */}
-      <div className="card-folds">
-        <CardPageFold
-          testId="card-hardware-fold"
-          summary="Hardware"
-          open={route.section === 'settings'}
-          onOpen={() => onOpenSection('settings')}
-          onClose={() => onOpenSection('setup')}
-        >
-          <SettingsScreen embedded mode="card" {...cardProps} />
-        </CardPageFold>
-        <CardPageFold
-          testId="card-advanced-fold"
-          summary="Advanced"
-          open={route.section === 'support'}
-          onOpen={() => onOpenSection('support')}
-          onClose={() => onOpenSection('setup')}
-        >
-          <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
-        </CardPageFold>
-      </div>
     </>
+  );
+  else if (route.section === 'settings') content = <SettingsScreen embedded mode="card" {...cardProps} />;
+  else if (route.section === 'support') content = (
+    <CardSupport tool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
   );
   else if (route.section === 'install') content = (
     <AutomaticInstallScreen
@@ -1246,31 +1197,33 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
   const workshop = route.section === 'workshop';
-  // The heading follows the shared journey: once setup is done, "Set up
-  // your Lightweaver" is a stale instruction for a card that already works.
-  // Only Home's four sections carry that instruction at all — install,
-  // workshop and preferences keep their own static heading regardless.
-  // Home's heading is the card's name: the one line that answers "what is
-  // this card" before the status module beneath it says how it is. "Set up
-  // your Lightweaver" / "Your Lightweaver" were two instructions above a
-  // fact; the setup verdict now lives in the status module's header.
   const cardName = cardLink?.card?.name || cardLink?.card?.id || cardLink?.readiness?.cardId || cardLink?.host || cardHost || '';
   const heading = home
     ? (showPublicWorkerStart ? 'Start Lightweaver' : (cardName || 'Lightweaver card'))
-    : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
+    : SUPPORT_TOOLS.find(([id]) => id === route.supportTool)?.[1] || SECTION_HEADINGS[route.section];
+  const fromHash = window.history.state?.cardToolFrom;
+  const fromRoute = fromHash ? cardRouteFromHash(fromHash) : null;
+  const backToSupport = fromRoute?.section === 'support'
+    || (!fromRoute && route.supportTool && route.supportTool !== 'recovery');
+  const showToolBack = route.section === 'settings' || route.section === 'support' || workshop;
+  const toolsHeader = showToolBack && !workshop;
+  const toolBackLabel = route.section === 'settings' && fromRoute?.supportTool === 'guide'
+    ? 'Back to install guide'
+    : backToSupport ? 'Back to Support' : workshop ? 'Back to Hardware' : 'Back to Card';
+  const toolBackSection = backToSupport ? 'support' : workshop ? 'overview' : 'setup';
   return (
     <div className="screen card-workspace-screen">
       <div className="card-workspace">
-        <main className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
-          <header className={`card-workspace-header${route.section === 'boards' ? ' lw-board-page-header' : ''}`}>
+        <main ref={bodyRef} className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
+          <header className={`card-workspace-header${toolsHeader ? ' card-workspace-tools-header' : ''}${route.section === 'boards' ? ' lw-board-page-header' : ''}`}>
             {/* Home has no kicker: the status module beneath the heading is
                 the card's own name-plate now, and "Lightweaver hardware" above
                 a 34px "Your Lightweaver" was two lines of orientation before
                 a single fact. Workshop keeps its mode label. */}
             {workshop && <span className="card-workspace-kicker">Manufacturing mode</span>}
             <h1 ref={headingRef} tabIndex={-1} data-testid="card-workspace-heading" data-home={home ? 'true' : undefined}>{heading}</h1>
-            {workshop && (
-              <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Hardware</button>
+            {showToolBack && (
+              <button type="button" className="btn" onClick={() => onReturnFromTool(toolBackSection)}>{toolBackLabel}</button>
             )}
             {route.section === 'boards' && (
               <button type="button" className="btn" onClick={boardSetupEntry ? onReturnToBoardSetup : () => onOpenSection('overview')}>

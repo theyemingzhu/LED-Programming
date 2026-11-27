@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState } from './harness/cardStates';
 
@@ -21,11 +21,16 @@ async function openChecksPanel(page) {
   return panel;
 }
 
-async function linkState(page) {
-  return page.evaluate(async () => {
-    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
-    return String(getSharedCardLink().getState()?.state || '');
+async function linkSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const entries = JSON.parse(localStorage.getItem('lw_card_link_journal_v1') || '[]') as
+      { from?: string; state?: string; transport?: string }[];
+    return entries.findLast(entry => typeof entry.from === 'string');
   });
+}
+
+async function linkState(page: Page) {
+  return (await linkSnapshot(page))?.state || '';
 }
 
 const CONNECTED = /^connected-(direct|bridge)$/;
@@ -98,11 +103,10 @@ for (const stateId of ['installed-match', 'installed-different']) {
 // the only card-reaching call sites that did not forward the established
 // `cardLink.transport`, so they routed by the page protocol alone. Serving the
 // real app at the production origin makes that branch honest instead of
-// stubbed; the fake card tab answers from the same simulator as the direct
+// stubbed; the practice popup answers from the same simulator as the direct
 // lane, so `card.requests` records what the bridge relayed.
 // ---------------------------------------------------------------------------
-import { installHttpsStudio, installFakeCardBridge, STUDIO_ORIGIN } from './harness/bridgeTransport';
-import { testBaseURL } from './testPort.mjs';
+import { installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_BUILD_ID, MATRIX_HOST } from './harness/cardStates';
 
 // The owner's browser remembers the card (card-state-matrix.spec.ts's
@@ -117,47 +121,33 @@ async function seedRememberedCard(page) {
 }
 
 async function linkTransport(page) {
-  return page.evaluate(async () => {
-    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
-    const state = getSharedCardLink().getState() || {};
-    return `${state.state || ''}/${state.transport || ''}`;
-  });
+  const latest = await linkSnapshot(page);
+  return `${latest?.state || ''}/${latest?.transport || ''}`;
 }
 
-async function connectOverBridge(page, stateId: string) {
+async function connectOverBridge(page, stateId: string, baseURL: string) {
   const card = createCardSimulator(cardState(stateId));
-  await installHttpsStudio(page, testBaseURL);
-  await installFakeCardBridge(page, card);
+  await installHttpsStudio(page, baseURL);
+  await installPracticeCardPopup(page, card);
   await seedRememberedCard(page);
-  // Deliberately NOT installing the direct HTTP routes (card.install): on https
-  // a direct fetch is mixed-content blocked, so a handler that tries one fails
-  // loudly here rather than passing in a test and breaking on the live site.
-  await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
+  // This fixture exercises the bridge fallback while the direct route is unavailable.
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=setup`, { waitUntil: 'domcontentloaded' });
 
-  if (!(await settlesConnected(page, CONNECT_BUDGET_MS))) {
-    const setupConnect = page.getByTestId('setup-connect-card');
-    const footerChip = page.getByTestId('card-link-status');
-    const target = (await setupConnect.count()) ? setupConnect : footerChip;
-    if (!(await target.count())) throw new Error('not connected over the bridge, and nothing to click to connect');
-    await target.first().click();
-    // Public Find my card now opens connection choices before any legacy
-    // card-page popup. This https fixture deliberately exercises that bridge
-    // fallback, so choose it explicitly from the opened center.
-    const center = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
-    await expect(center).toBeVisible();
-    await center.locator('summary').click();
-    await center.getByRole('button', { name: 'Connect through the card’s own page (fallback)' }).click();
-    await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
-  }
+  await page.getByTestId('card-link-status').click();
+  const center = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
+  await expect(center).toBeVisible();
+  await center.locator('summary').click();
+  await center.getByRole('button', { name: 'Connect through the card’s own page (fallback)' }).click();
+  await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
   expect(await linkTransport(page), 'the https lane must hold a bridge link').toBe('connected-bridge/bridge');
   return card;
 }
 
 for (const stateId of ['installed-match', 'installed-different']) {
-  test(`[W16-https] Verify hardware reads the card over the bridge and reports back (${stateId})`, async ({ page }) => {
+  test(`[W16-https] Verify hardware reads the card over the bridge and reports back (${stateId})`, async ({ page, baseURL }) => {
     const crashes: string[] = [];
     page.on('pageerror', error => crashes.push(String(error.message)));
-    const card = await connectOverBridge(page, stateId);
+    const card = await connectOverBridge(page, stateId, baseURL!);
     await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=overview`, { waitUntil: 'domcontentloaded' });
     await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
     const panel = await openChecksPanel(page);
@@ -172,8 +162,8 @@ for (const stateId of ['installed-match', 'installed-different']) {
     expect(crashes).toEqual([]);
   });
 
-  test(`[W16-https] Recover lights sends the recovery over the bridge and verifies the readback (${stateId})`, async ({ page }) => {
-    const card = await connectOverBridge(page, stateId);
+  test(`[W16-https] Recover lights sends the recovery over the bridge and verifies the readback (${stateId})`, async ({ page, baseURL }) => {
+    const card = await connectOverBridge(page, stateId, baseURL!);
     await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=overview`, { waitUntil: 'domcontentloaded' });
     await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
     const panel = await openChecksPanel(page);

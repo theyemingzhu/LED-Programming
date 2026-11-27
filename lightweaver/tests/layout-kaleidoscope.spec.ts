@@ -77,7 +77,10 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
   await expect(fineTune).toHaveAttribute('aria-expanded', 'true');
   const reflectionPoints = page.getByRole('list', { name: 'Reflection points' }).getByRole('listitem');
   await expect(reflectionPoints).toHaveCount(6);
-  for (const point of await reflectionPoints.all()) await expect(point.getByRole('button')).toHaveCount(3);
+  for (const point of await reflectionPoints.all()) {
+    const selected = await point.getByRole('button', { name: /Fine-tune reflection point/ }).evaluate(button => button.classList.contains('active'));
+    await expect(point.getByRole('button')).toHaveCount(selected ? 4 : 3);
+  }
   const pointValues = reflectionPoints.getByRole('button', { name: /Fine-tune reflection point/ });
   await expect.poll(() => pointValues.evaluateAll(values => (
     values.every(value => value.scrollWidth <= value.clientWidth)

@@ -83,10 +83,12 @@ export function initialCardLinkState(host = '') {
     acknowledgedAt: '',
     activity: 'idle',
     directDiscoveryRevision: 0,
+    directDiscoveryBootId: '',
     readiness: null,
     cardBlank: null,
     expectedCard: null,
     validatedBootId: '',
+    retiredBootId: '',
     candidateBootId: '',
     rivalBootId: '',
     requiresStableRevalidation: false,
@@ -114,6 +116,7 @@ function clearedLiveEvidence(prev, additions = {}, {
     readiness: null,
     cardBlank: null,
     validatedBootId: clearValidatedBoot ? '' : prev.validatedBootId,
+    retiredBootId: clearValidatedBoot ? '' : prev.retiredBootId,
     candidateBootId: '',
     rivalBootId: '',
     requiresStableRevalidation: requireStable,
@@ -233,6 +236,10 @@ function applyStatusEnvelope(prev, event, transport, host) {
   }
 
   const incomingBootId = classified.bootId || '';
+  const sameCard = classified.identityValid && classified.cardId === (prev.card?.id || prev.expectedCard?.id);
+  // A discovery poll can finish after a replacement has already verified a
+  // newer boot, including when both of the card’s addresses answer.
+  if (sameCard && incomingBootId && incomingBootId === prev.retiredBootId) return prev;
   const completeEnvelope = classified.state !== 'checking' && Boolean(incomingBootId);
   if (!completeEnvelope) {
     return clearedLiveEvidence(prev, {
@@ -332,7 +339,8 @@ function applyStatusEnvelope(prev, event, transport, host) {
     directCardMayReturn: false,
     readiness,
     cardBlank: blank,
-    validatedBootId: completeEnvelope ? incomingBootId : prev.validatedBootId,
+    validatedBootId: incomingBootId,
+    retiredBootId: sameCard ? (bootChanged ? prev.validatedBootId : prev.retiredBootId) : '',
     candidateBootId: '',
     rivalBootId: '',
     requiresStableRevalidation: false,
@@ -832,6 +840,7 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
             expectedCard: event.expectedCard,
             card: null,
             directDiscoveryRevision: (prev.directDiscoveryRevision || 0) + 1,
+            directDiscoveryBootId: event.readiness?.bootId || '',
           });
         } else if (!event.allowAdopt) {
           // A card answered but this origin has no persisted pairing. NOT green —
@@ -843,6 +852,7 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
             discoveredCard: event.card,
             card: null,
             directDiscoveryRevision: (prev.directDiscoveryRevision || 0) + 1,
+            directDiscoveryBootId: event.readiness?.bootId || '',
           };
         }
         return applyStatusEnvelope(prev, {
@@ -1919,7 +1929,11 @@ function persistedIdentityAuthorityToken(identity) {
 
 export const PAIR_IDENTITY_TIMEOUT_MS = 6000;
 
-export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCardLink() } = {}) {
+export async function adoptDiscoveredDirectCard({
+  fetchImpl = (url, init) => globalThis.fetch(url, { ...init, cache: 'no-store', credentials: 'omit', targetAddressSpace: 'local' }),
+  link = getSharedCardLink(), observedCardId = '', observedBootId = '', observedBuildId = '', host = '', signal,
+} = {}) {
+  signal?.throwIfAborted();
   const state = link.getState();
   const discoveredCard = state.discoveredCard;
   if (state.transport !== 'direct' || !discoveredCard?.id) {
@@ -1927,9 +1941,23 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
     error.reason = 'identity-missing';
     throw error;
   }
+  const sameDiscoveredBoot = (candidate, cardId, bootId, buildId) => (
+    candidate.reason === 'found-unpaired' && candidate.discoveredCard?.id === cardId
+    && Boolean(bootId && buildId) && candidate.directDiscoveryBootId === bootId
+    && candidate.discoveredCard.buildId === buildId
+  );
+  const requestedOtherHost = host && normalizeCardHost(host) !== state.host;
+  if ((observedCardId && discoveredCard.id !== observedCardId)
+    || (observedBootId && state.directDiscoveryBootId !== observedBootId)
+    || (requestedOtherHost && !sameDiscoveredBoot(state, observedCardId, observedBootId, observedBuildId))) {
+    const error = new Error('The card found has changed. Check the card now shown before pairing.');
+    error.reason = 'wrong-card';
+    throw error;
+  }
   const snapshot = {
     host: state.host,
     cardId: discoveredCard.id,
+    bootId: state.directDiscoveryBootId,
     revision: state.directDiscoveryRevision || 0,
     persistedAuthority: persistedIdentityAuthorityToken(readPersistedCardIdentity()),
   };
@@ -1937,22 +1965,31 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
   // takes to answer (~3.4 s measured), so a slow, healthy card could never be
   // paired. Pairing gets the same 6 s every other card read before a save gets
   // (CARD_READ_RETRY). Interruption test D5, todo/plans/practice-card-interruptions.md.
-  const verifyOptions = { expected: discoveredCard, timeoutMs: PAIR_IDENTITY_TIMEOUT_MS };
+  const verifyOptions = { expected: discoveredCard, timeoutMs: PAIR_IDENTITY_TIMEOUT_MS, endpoints: ['status'] };
   if (fetchImpl) verifyOptions.fetchImpl = fetchImpl;
   const verified = await verifyExpectedCardAtHost(state.host, verifyOptions);
   // Read blank state here (before the authority/discovery gates re-check, which
   // stay the last thing before dispatch) so the paired card renders with the
   // correct cardBlank immediately instead of flashing green for one poll.
-  const readiness = await probeDirectCardReadiness(state.host, fetchImpl);
+  const readiness = await probeDirectCardReadiness(state.host, (url, init) => fetchImpl(url, {
+    ...init, signal: AbortSignal.timeout(PAIR_IDENTITY_TIMEOUT_MS),
+  }));
+  signal?.throwIfAborted();
   // `verified` is the card's OWN live read-back, so its firmware always agrees
   // with this probe unless the card rebooted onto a different build between the
   // two reads — an update landing mid-pair, not a different card. Only a
   // different card id may stop a pairing here; the firmware note is re-learned
   // (F13) and the card is paired on the build it is actually running.
   const classified = classifyPairedCardReadiness(readiness || {}, { expectedCard: verified });
-  if (classified.state === 'checking' || isDifferentCardMismatch(classified)) {
+  if (!classified.contractSupported || !classified.identityValid || !classified.bootId || isDifferentCardMismatch(classified)) {
     const error = new Error('Studio could not reverify the full card status before pairing.');
     error.reason = readinessReason(classified) || 'identity-missing';
+    throw error;
+  }
+  if (snapshot.bootId && (classified.bootId !== snapshot.bootId
+    || (requestedOtherHost && classified.buildId !== observedBuildId))) {
+    const error = new Error('The card restarted or changed while pairing. Check the card now shown before pairing.');
+    error.reason = 'wrong-card';
     throw error;
   }
   const blank = classified.blank;
@@ -1970,10 +2007,17 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
   const sameCardNewerPoll = (current.directDiscoveryRevision || 0) !== snapshot.revision
     && current.discoveredCard?.id === snapshot.cardId
     && (!current.discoveredCard?.buildId || current.discoveredCard.buildId === verified.buildId);
+  // Both reads verified the starting address. A poll can prefer another
+  // address meanwhile. Keep the freshly read route only when that poll saw
+  // exactly the same card and boot running the same firmware.
+  const sameCardOtherAddress = current.host !== snapshot.host
+    && discoveredCard.buildId === verified.buildId && classified.buildId === verified.buildId
+    && sameDiscoveredBoot(current, snapshot.cardId, snapshot.bootId, verified.buildId);
   if (
     current.transport !== 'direct'
-    || current.host !== snapshot.host
+    || (current.host !== snapshot.host && !sameCardOtherAddress)
     || current.discoveredCard?.id !== snapshot.cardId
+    || (snapshot.bootId && current.directDiscoveryBootId !== snapshot.bootId)
     || ((current.directDiscoveryRevision || 0) !== snapshot.revision && !sameCardNewerPoll)
   ) {
     const error = new Error('A newer card discovery replaced this pairing attempt. Try again with the card now shown.');

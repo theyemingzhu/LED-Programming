@@ -50,7 +50,8 @@ import { groupOutputPins, moveStripRunsInOutputOrder, stripMoveTarget } from '..
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { activeBoardGpios, assignWiringRunToPin } from '../../../lib/gpioAssignments.js';
-import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
+import { createDefaultKaleidoscope } from '../../../lib/kaleidoscope.js';
+import { reflectionEditorPoints } from '../../../lib/reflectionEdit.js';
 import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
 import { connectedPartDisplayName, displayStripName } from '../../../lib/stripLabels.js';
 import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
@@ -225,6 +226,7 @@ export function DrawModePanel({
   onPickKaleidoscopeStart,
   onSelectKaleidoscopePoint,
   onNudgeKaleidoscopePoint,
+  onRemoveKaleidoscopePoint,
   kaleidoscopeCalibration,
   onConnectCard,
   onOpenConnectionCenter,
@@ -671,7 +673,7 @@ export function DrawModePanel({
   };
   // Why a strip cannot join a side, in the owner's words. Empty means it can.
   const sideBlockReason = strip => {
-    if (strip?.kaleidoscope?.enabled === true) return 'Turn off reflection points first';
+    if (reflectionEditorPoints(strip).length) return 'Remove reflection points first';
     if (splitStripIds.has(strip?.id)) return 'Join its wiring into one run first';
     return '';
   };
@@ -693,7 +695,7 @@ export function DrawModePanel({
   // alone when no artwork is loaded.
   const symmetryGuess = useMemo(() => {
     if (strips.length < 2) return 0;
-    const eligible = strips.filter(strip => strip?.kaleidoscope?.enabled !== true && !splitStripIds.has(strip?.id));
+    const eligible = strips.filter(strip => !reflectionEditorPoints(strip).length && !splitStripIds.has(strip?.id));
     return suggestBestFold(eligible, artworkCentre ? { centre: artworkCentre } : null);
   }, [strips, splitStripIds, artworkCentre]);
   // Every other side (2, and 4 on four sides) either mirrors side 1 or runs
@@ -2022,7 +2024,25 @@ export function DrawModePanel({
                               }}/>
                           </div>
                         </div>
-                        <div className="la-strip-wiring-tools" role="group" aria-label={`Wiring for ${partName}`}>
+                        <div className={`la-strip-wiring-tools${connectedFamily ? ' la-part-wiring-tools' : ''}`}
+                             role="group" aria-label={`Wiring for ${partName}`}>
+                          {connectedFamily && connectedStatus.ok && <div className="lw-connected-child selected" data-testid="connected-child" data-section-id={s.id}>
+                            <label><span>Part length · m</span>
+                              <input type="number" min="0.001" step="0.001" inputMode="decimal"
+                                     key={`${s.id}:${s.pixelCount}:${selectedDensity}`}
+                                     defaultValue={formatMetersValue(s.pixelCount / selectedDensity)}
+                                     aria-label={`${partName} length in metres`}
+                                     disabled={wiring.locked}
+                                     onBlur={event => {
+                                       const metres = Number(event.target.value);
+                                       if (Number.isFinite(metres) && metres > 0) {
+                                         const result = correctConnectedSectionCount(s.id, Math.max(1, Math.round(metres * selectedDensity)));
+                                         setConnectedError(result.ok ? '' : result.error);
+                                       }
+                                     }}
+                                     onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
+                            </label>
+                          </div>}
                           <label className="la-strip-pin-field">
                             <span>{isSplit ? 'First run pin' : 'Change pin'}</span>
                             <span className="la-gpio-wrap">
@@ -2119,32 +2139,14 @@ export function DrawModePanel({
                             </button>
                           </div>;
                         })}
-                        {connectedFamily && (() => {
-                          return <section className="lw-connected-editor-frame">
+                        {connectedFamily && (!connectedStatus.ok || connectedError) &&
+                          <section className="lw-connected-editor-frame">
                             {!connectedStatus.ok && <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
                               <span>{connectedStatus.error}</span>
                               <button type="button" className="btn" onClick={() => detachSectionFamily(connectedFamily.id)}>Detach sections</button>
                             </div>}
-                            {connectedStatus.ok && <div className="lw-connected-child selected" data-testid="connected-child" data-section-id={s.id}>
-                              <label><span>Part length · m</span>
-                                <input type="number" min="0.001" step="0.001" inputMode="decimal"
-                                       key={`${s.id}:${s.pixelCount}:${selectedDensity}`}
-                                       defaultValue={formatMetersValue(s.pixelCount / selectedDensity)}
-                                       aria-label={`${partName} length in metres`}
-                                       disabled={wiring.locked}
-                                       onBlur={event => {
-                                         const metres = Number(event.target.value);
-                                         if (Number.isFinite(metres) && metres > 0) {
-                                           const result = correctConnectedSectionCount(s.id, Math.max(1, Math.round(metres * selectedDensity)));
-                                           setConnectedError(result.ok ? '' : result.error);
-                                         }
-                                       }}
-                                       onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
-                              </label>
-                            </div>}
                             {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
-                          </section>;
-                        })()}
+                          </section>}
                         {/* Count, scale and wiring stay directly editable. */}
                         {!connectedFamily && <>
                         <div className="lw-sel-grid">
@@ -2382,38 +2384,40 @@ export function DrawModePanel({
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}
-                        {kaleidoscopeEditor?.stripId === s.id && s.kaleidoscope && (() => {
-                          const points = deriveReflectionPointIndices(s.kaleidoscope, s.pixelCount);
+                        {kaleidoscopeEditor?.stripId === s.id && reflectionEditorPoints(s).length > 0 && (() => {
+                          const points = reflectionEditorPoints(s);
+                          const mapping = s.kaleidoscope || { pointCount: 1, startLed: points[0] };
                           return (
                             <section className="la-kaleidoscope-panel" aria-label="Kaleidoscope reflection points">
                               <div className="la-kaleidoscope-head">
                                 <strong>Kaleidoscope</strong>
                                 <span data-testid="kaleidoscope-summary">
-                                  {s.kaleidoscope.pointCount} points · start LED {s.kaleidoscope.startLed + 1}
+                                  {mapping.pointCount} point{mapping.pointCount === 1 ? '' : 's'} · start LED {mapping.startLed + 1}
                                 </span>
                               </div>
                               <div className="la-kaleidoscope-stepper la-kaleidoscope-count"
                                    role="group" aria-label="Reflection point count">
                                 <button type="button" className="btn"
                                         aria-label="Decrease reflection point count"
-                                        disabled={s.kaleidoscope.pointCount <= 2}
-                                        onClick={() => onChangeKaleidoscopeCount(s.id, s.kaleidoscope.pointCount - 1)}>←</button>
+                                        disabled={mapping.pointCount <= 2}
+                                        onClick={() => onChangeKaleidoscopeCount(s.id, mapping.pointCount - 1)}>←</button>
                                 <span className="btn la-stepper-value" aria-live="polite"
                                       data-testid="kaleidoscope-count-value">
-                                  {s.kaleidoscope.pointCount} points
+                                  {mapping.pointCount} point{mapping.pointCount === 1 ? '' : 's'}
                                 </span>
                                 <button type="button" className="btn"
                                         aria-label="Increase reflection point count"
-                                        disabled={s.kaleidoscope.pointCount >= s.pixelCount}
-                                        onClick={() => onChangeKaleidoscopeCount(s.id, s.kaleidoscope.pointCount + 1)}>→</button>
+                                        disabled={mapping.pointCount >= s.pixelCount}
+                                        onClick={() => onChangeKaleidoscopeCount(s.id, mapping.pointCount + 1)}>→</button>
                               </div>
+                              {points.length === 1 && <p className="hint">Two points are needed for reflection. Add a point or remove the remaining point to use symmetry.</p>}
                               <div className="la-kaleidoscope-start" role="group" aria-label="Starting reflection point">
                                 <button className="btn" aria-label="Move all reflection points backward one LED"
                                         onClick={() => onNudgeKaleidoscopeSet(s.id, -1)}>←</button>
                                 <button className={`btn${kaleidoscopeEditor.mode === 'pick' ? ' active' : ''}`}
                                         aria-label="Pick starting reflection point on canvas"
                                         onClick={() => onPickKaleidoscopeStart(s.id)}>
-                                  {kaleidoscopeEditor.mode === 'pick' ? 'Pick a light…' : `Start LED ${s.kaleidoscope.startLed + 1}`}
+                                  {kaleidoscopeEditor.mode === 'pick' ? 'Pick a light…' : `Start LED ${mapping.startLed + 1}`}
                                 </button>
                                 <button className="btn" aria-label="Move all reflection points forward one LED"
                                         onClick={() => onNudgeKaleidoscopeSet(s.id, 1)}>→</button>
@@ -2424,9 +2428,15 @@ export function DrawModePanel({
                                       onClick={() => setFineTuneOpenByStrip(current => ({ ...current, [s.id]: !current[s.id] }))}>
                                 Fine-tune LEDs {fineTuneOpenByStrip[s.id] ? '▴' : '▾'}
                               </button>
+                              {!fineTuneOpenByStrip[s.id] && kaleidoscopeEditor.mode === 'fine' && (
+                                <div className="la-kaleidoscope-head" role="group" aria-label="Selected reflection point">
+                                  <span>Point {kaleidoscopeEditor.selectedPointIndex + 1} · LED {points[kaleidoscopeEditor.selectedPointIndex] + 1}</span>
+                                  <button type="button" className="btn" onClick={() => onRemoveKaleidoscopePoint(s.id, kaleidoscopeEditor.selectedPointIndex)}>Remove point</button>
+                                </div>
+                              )}
                               {fineTuneOpenByStrip[s.id] && <div className="la-kaleidoscope-points" role="list" aria-label="Reflection points">
                                 {points.map((ledIndex, pointIndex) => (
-                                  <span key={pointIndex} role="listitem" className="la-kaleidoscope-stepper">
+                                  <span key={pointIndex} role="listitem" className={`la-kaleidoscope-stepper${kaleidoscopeEditor.selectedPointIndex === pointIndex ? ' has-remove' : ''}`}>
                                     <button type="button" className="btn"
                                             aria-label={`Move reflection point ${pointIndex + 1} backward one LED`}
                                             onClick={() => {
@@ -2444,6 +2454,8 @@ export function DrawModePanel({
                                               onSelectKaleidoscopePoint(s.id, pointIndex);
                                               onNudgeKaleidoscopePoint(s.id, pointIndex, 1);
                                             }}>→</button>
+                                    {kaleidoscopeEditor.selectedPointIndex === pointIndex && <button type="button" className="btn la-reflection-remove"
+                                      onClick={() => onRemoveKaleidoscopePoint(s.id, pointIndex)}>Remove point</button>}
                                   </span>
                                 ))}
                               </div>}

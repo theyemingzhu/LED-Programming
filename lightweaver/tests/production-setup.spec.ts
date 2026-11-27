@@ -1964,16 +1964,14 @@ test('production setup is keyboard operable, restores heading focus, and announc
   await installDriver(page);
   await page.goto('/#screen=layout');
   // One rail destination owns the card now, and it opens on Card Home.
-  // The batch link lives on Home itself, so reaching it by keyboard is one hop.
   const entry = page.getByRole('button', { name: 'Card', exact: true });
   await entry.focus();
   await entry.press('Enter');
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  // Batch production is not a section tab; it is reached from the Advanced
-  // fold's tool grid.
-  await page.getByTestId('card-advanced-fold').locator('summary').focus();
+  // Open Support to reach Batch production with the keyboard.
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).focus();
   await page.keyboard.press('Enter');
-  const batch = page.getByTestId('card-advanced-fold').getByRole('button', { name: 'Batch production', exact: true });
+  const batch = page.getByRole('navigation', { name: 'Support tools' }).getByRole('button', { name: 'Batch production', exact: true });
   await batch.focus();
   await batch.press('Enter');
   await expect(page).toHaveURL(/#screen=card&section=workshop/);

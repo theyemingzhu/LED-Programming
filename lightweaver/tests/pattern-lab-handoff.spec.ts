@@ -133,7 +133,7 @@ test('a saved layered recording reopens its complete recipe in Lab', async ({ pa
 
 for (const family of ['Lab', 'Flow'] as const) {
   test(`saved ${family} recording reports its baked choice after mode changes and reload`, async ({ page }, testInfo) => {
-    const saved = await page.evaluate(async ({ key, family }) => {
+    const saved = await page.evaluate(async family => {
       const { createDefaultProject } = await import('/src/lib/projectModel.js');
       const { createPatternLabRecipe } = await import('/src/lib/patternLabRecipe.js');
       const { bakePatternLabRecipe } = await import('/src/lib/lwseqBake.js');
@@ -164,10 +164,19 @@ for (const family of ['Lab', 'Flow'] as const) {
         project.devices.standaloneController = await applyRecordedSequenceAsset({}, result);
       }
       Object.assign(project.layout, { strips, wiring, symmetry, starterPending: false, sectionFamilies: [], layerGroups: [], patchBoard: null });
-      project.pattern.sidesMirrored = true; localStorage.setItem(key, JSON.stringify(project));
-      return { asset: JSON.stringify(project.devices.standaloneController.sequenceAssets[0]), label: result.asset.label };
-    }, { key: AUTOSAVE_KEY, family });
+      project.pattern.sidesMirrored = true;
+      return { project, asset: JSON.stringify(project.devices.standaloneController.sequenceAssets[0]), label: result.asset.label };
+    }, family);
+    // Seed once before Studio boots. The default project's debounced autosave
+    // can overwrite a fixture written into an already-running Studio.
+    await page.addInitScript(({ key, project }) => {
+      const marker = 'lw_test_recording_fixture_loaded';
+      if (sessionStorage.getItem(marker)) return;
+      localStorage.setItem(key, JSON.stringify(project));
+      sessionStorage.setItem(marker, 'true');
+    }, { key: AUTOSAVE_KEY, project: saved.project });
     await page.reload();
+    await page.getByRole('button', { name: saved.project.name, exact: true }).waitFor();
     await page.goto('/#screen=playlist');
     const library = page.getByTestId('playlist-recordings');
     await expectRecordedChoice(library);
@@ -226,8 +235,7 @@ for (const family of ['Lab', 'Flow'] as const) {
     await updateLibrary.getByRole('button', { name: 'Record again', exact: true }).click();
     await expect(updateLibrary).toContainText('Recording updated.');
     await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key)!).devices.standaloneController.sequenceAssets[0].bakedSideMode, AUTOSAVE_KEY)).toBe('own');
-    const updated = await page.evaluate(async key => {
-      const { readRecordedMedia } = await import('/src/lib/recordedSequenceMedia.js');
+    const updated = await page.evaluate(key => {
       const project = JSON.parse(localStorage.getItem(key)!);
       return project.devices.standaloneController.sequenceAssets[0];
     }, AUTOSAVE_KEY);
@@ -239,6 +247,17 @@ for (const family of ['Lab', 'Flow'] as const) {
       return (await readRecordedMedia(hash)).byteLength;
     }, JSON.parse(saved.asset).manifest.lwseqSha256)).toBe(JSON.parse(saved.asset).byteLength);
     await page.screenshot({ path: testInfo.outputPath(`saved-${family}-rebake-phone.png`), fullPage: true });
+    await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Saved in browser');
+    await page.reload();
+    await page.goto('/#screen=playlist');
+    const reopenedChoice = library.getByTestId('recorded-sequence-choice');
+    await expect(reopenedChoice).toHaveAttribute('data-choice-state', 'matches');
+    await expect(reopenedChoice).toContainText('Baked: Own');
+    expect(await page.evaluate(async hash => {
+      const { readRecordedMedia } = await import('/src/lib/recordedSequenceMedia.js');
+      return (await readRecordedMedia(hash)).byteLength;
+    }, updated.manifest.lwseqSha256)).toBe(updated.byteLength);
     expect(cardMutationRequests).toEqual([]);
 
   });

@@ -7,6 +7,34 @@
   width: min(720px, 100%);
 }
 
+.card-workspace-screen .lw-mod-status .lw-worker-start-path.btn.primary {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.card-workspace-screen .lw-mod-status .lw-worker-start-path.btn.primary:hover {
+  background: var(--bg-sel);
+}
+
+@media (max-width: 760px) {
+  .card-workspace-screen .lw-setup-journey .lw-mod-status .lw-worker-start {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .card-workspace-screen .lw-mod-status .lw-worker-start-path.primary { grid-column: 1 / -1; }
+
+  .card-workspace-screen .lw-mod-status .lw-worker-start-path:not(.primary) {
+    padding-inline: 10px;
+    border-bottom: 0;
+  }
+
+  .card-workspace-screen .lw-mod-status .lw-worker-start-path:not(.primary) strong { font-size: 14px; }
+
+  .card-workspace-screen .lw-mod-status .lw-worker-start-path:nth-child(2) {
+    border-right: 1px solid var(--border-soft);
+  }
+}
+
 .lw-setup-lede,
 .lw-setup-phases,
 .lw-setup-body .card-status-area {
@@ -72,6 +100,11 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lw-setup-lights-action-label {
+  color: var(--text-mid);
+  font: 600 11.5px/1.4 var(--font-ui);
 }
 
 .lw-setup-banner {

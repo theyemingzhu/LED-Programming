@@ -20,6 +20,7 @@
 export const DEFAULT_CARD_SECTION = 'overview';
 export const FIRST_RUN_CARD_SECTION = 'setup';
 const CARD_SECTION_KEYS = new Set(['setup', 'overview', 'install', 'settings', 'workshop', 'support', 'preferences', 'boards']);
+const SUPPORT_TOOL_KEYS = new Set(['technician', 'guide', 'json', 'recovery', 'deployment', 'connection-log']);
 const SETUP_TASK_KEYS = new Set([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',
@@ -104,6 +105,10 @@ export function cardRouteFromHash(hash = '') {
   if (screen === 'setup') return { section: 'setup', supportTool: '' };
   const section = params.get('section');
   const safeSection = CARD_SECTION_KEYS.has(section) ? section : DEFAULT_CARD_SECTION;
+  if (safeSection === 'support') {
+    const tool = params.get('tool');
+    return { section: safeSection, supportTool: SUPPORT_TOOL_KEYS.has(tool) ? tool : '' };
+  }
   if (safeSection === 'setup') {
     const task = String(params.get('task') || '');
     return { section: safeSection, supportTool: '', task: SETUP_TASK_KEYS.has(task) ? task : '' };
@@ -194,14 +199,12 @@ export function createStudioRouteStore(win = globalThis) {
     win.dispatchEvent(new Event(STUDIO_ROUTE_EVENT));
     return true;
   };
-  // A move to a different screen adds a history entry, so the phone's Back
-  // returns to the screen before instead of leaving Studio. Section and
-  // parameter changes on one screen still replace (simpler-journeys G2).
-  const push = hash => {
+  // Screen changes and dedicated Card tool pages can be visited with Back.
+  const push = (hash, state = null) => {
     const next = String(hash || '').startsWith('#') ? String(hash) : `#${hash || ''}`;
     if (read() === next) return false;
     try {
-      win.history.pushState(null, '', `${win.location.pathname}${win.location.search}${next}`);
+      win.history.pushState(state, '', `${win.location.pathname}${win.location.search}${next}`);
     } catch {
       win.location.hash = next;
       return true;

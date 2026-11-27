@@ -36,6 +36,7 @@ import { getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { saveProjectToCardFromGesture } from '../lib/cardProjectSave.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
+import { StackSectionLink } from '../components/patterns/StackSectionLink.jsx';
 
 const SettingsFieldContext = createContext(null);
 
@@ -179,7 +180,6 @@ const SettingsFieldContext = createContext(null);
     const [cardHost, setCardHost] = useState(readStoredCardHost);
     const [status, setStatus] = useState('');
     const [statusKind, setStatusKind] = useState('');
-    const [advancedOpen, setAdvancedOpen] = useState(false);
     const [projectCopySource, setProjectCopySource] = useState(projectRepositorySource?.label || 'This browser');
     const [cardProjectSave, setCardProjectSave] = useState({ status: 'idle', progress: '' });
     const cardProjectSaveAbortRef = useRef(null);
@@ -187,20 +187,8 @@ const SettingsFieldContext = createContext(null);
     // ── Derived card / hardware data (mirrors the old ChipScreen) ──────
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const zones = useMemo(() => patchBoardToZones(board, strips), [board, strips]);
-    // prepareCardDeployment THROWS on an inconsistent project (a wiring run
-    // that references a strip the project no longer has, for instance). It ran
-    // bare in this memo, so the throw happened during render.
-    //
-    // That was survivable while Settings was its own Card tab — the owner lost
-    // one tab. It is not survivable now: this screen is mounted inside Card
-    // Home's Hardware fold, and a <details> renders its children whether or
-    // not it is open, so one drifted project took down the whole of Card Home
-    // to the workspace-recovery boundary. The owner's main screen, gone,
-    // because of a stale run id.
-    //
-    // A project Studio cannot package is a fact to report, not a crash: the
-    // deployment-shaped parts of this screen stand down and say why, and
-    // everything else on Card Home keeps working.
+    // A drifted project can still use the connection and inspection tools.
+    // Show why packaging failed instead of losing the entire settings page.
     const preparedDeploymentAttempt = useMemo(
       () => {
         try {
@@ -214,15 +202,19 @@ const SettingsFieldContext = createContext(null);
               compiledWiring,
               standaloneController,
             }),
-            error: '',
+            error: null,
           };
         } catch (error) {
-          return { deployment: null, error: error?.message || 'This project cannot be packaged for the card yet.' };
+          return { deployment: null, error };
         }
       },
       [projectId, projectName, projectLifecycle.editedRevision, strips, board, compiledWiring, standaloneController],
     );
     const deploymentError = preparedDeploymentAttempt.error;
+    const savedLooks = normalizeSavedLooks(standaloneController?.looks);
+    const staleLooks = deploymentError?.code === 'stack-sections-changed'
+      ? deploymentError.lookIds.map(id => savedLooks.find(look => look.id === id)).filter(Boolean)
+      : [];
     const preparedDeployment = preparedDeploymentAttempt.deployment || EMPTY_CARD_DEPLOYMENT;
     const runtimePackage = preparedDeployment.runtimePackage;
     const config = runtimePackage.config;
@@ -232,7 +224,6 @@ const SettingsFieldContext = createContext(null);
     const storageRoomLine = useMemo(() => cardStorageRoomLine(cardStorageRoom(runtimePackage)), [runtimePackage]);
     const safeProjectName = (projectName || 'lightweaver-piece').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
-    const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const activeSavedLook = savedLooks.find(look => look.id === standaloneController?.activeLookId) || savedLooks[0] || null;
 
     const hardwareSectionCount = zones.length || strips.length || DEFAULT_CIRCLE_SECTION_COUNT;
@@ -253,7 +244,7 @@ const SettingsFieldContext = createContext(null);
       ...output,
     }));
     // Outputs that actually carry pixels — what the read-only summary lists.
-    const routedOutputs = controllerOutputs.filter(output => (output.pixels || 0) > 0);
+    const routedOutputs = staleLooks.length ? [] : controllerOutputs.filter(output => (output.pixels || 0) > 0);
 
     const encoder = standaloneController?.controls?.encoder || {};
     const encoderDir = encoder.rotateDirection === 'clockwise-dimmer' ? 'clockwise-dimmer' : 'clockwise-brighter';
@@ -387,10 +378,13 @@ const SettingsFieldContext = createContext(null);
                   {/* Studio could not package this project for the card. Said
                       here, plainly, instead of thrown during render — see the
                       comment on preparedDeploymentAttempt above. */}
-                  {deploymentError && (
+                  {staleLooks.length > 0 ? <div className="set-stack-install-fixes" data-testid="card-deployment-error">
+                    <strong>Update saved looks to build the card configuration</strong>
+                    {staleLooks.map(look => <StackSectionLink key={look.id} look={look} showName />)}
+                  </div> : deploymentError && (
                     <p role="alert" data-testid="card-deployment-error">
                       This project cannot be packaged for the card yet, so the values below are
-                      unavailable. {deploymentError} Open Layout and fix the wiring, then come back.
+                      unavailable. {deploymentError.message || 'This project cannot be packaged for the card yet.'} Open Layout and fix the wiring, then come back.
                     </p>
                   )}
                   {/* Setup gets the card onto the WiFi. This is where Studio
@@ -491,8 +485,8 @@ const SettingsFieldContext = createContext(null);
                   <div className="sec-h"><span className="t">Card &amp; hardware</span><span className="m">esp32-s3</span></div>
                   <Row label="Runtime mode" hint="What the card plays from on boot"><Seg opts={RUNTIME_LABELS} val={runtimeLabel} set={(o) => updateController({ runtimeMode: RUNTIME_VALUE[o] })} /></Row>
                   {/* The colour order itself is set on Card Home's Color
-                      order row (three keys, pushed live and read back). This
-                      fold keeps only the proof: light the strip and ask. */}
+                      order row (three keys, pushed live and read back). The
+                      check confirms the physical colors. */}
                   <StripColorOrderCheck
                     cardHost={cardHost}
                     cardLink={cardLink}
@@ -502,7 +496,7 @@ const SettingsFieldContext = createContext(null);
                   />
                   {/* Brightness limit and Power limit are edited on Card Home's
                       facts rows now (a fader and the supply amps, in place);
-                      this fold keeps the colour check, runtime mode, the
+                      Hardware settings keeps the colour check, runtime mode, the
                       dial and the card address. */}
                   <Row label="Layout & outputs" hint="Read-only — Layout owns structure and routing" stack>
                     <div className="set-outputs">
@@ -520,7 +514,9 @@ const SettingsFieldContext = createContext(null);
                             label is unchanged, and screen-smoke still asserts
                             all four. */}
                         <div data-testid="output-routing-summary">
-                          {deploymentError ? (
+                          {staleLooks.length ? (
+                            <strong>Card configuration totals are unavailable until the saved looks are updated</strong>
+                          ) : deploymentError ? (
                             <strong>LED totals unavailable until the wiring is fixed</strong>
                           ) : (
                             <>
@@ -546,7 +542,7 @@ const SettingsFieldContext = createContext(null);
                     </div>
                   </Row>
                   <RingSummary sections={hardwareSections} targets={sectionTargets} activeLookLabel={activeSavedLook?.label || 'Current look'} />
-                  {storageRoomLine && <p className="set-room" data-testid="card-storage-room">{storageRoomLine}</p>}
+                  {!staleLooks.length && storageRoomLine && <p className="set-room" data-testid="card-storage-room">{storageRoomLine}</p>}
                 </section>}
 
               </div>
@@ -570,15 +566,9 @@ const SettingsFieldContext = createContext(null);
               </div>
 
               <div className="set-col">
-                {/* Advanced — designer config JSON disclosure */}
                 {showAdvanced && <section className="card set-card">
-                  <div className="sec-h"><span className="t">Advanced</span><span className="m">{(configJson.length / 1024).toFixed(1)} KB</span></div>
-                  <Row label="Designer config" hint="The exact JSON written to the card">
-                    <button className="btn ghost-sm" onClick={() => setAdvancedOpen(o => !o)}>{advancedOpen ? 'Hide' : 'Show'} JSON</button>
-                  </Row>
-                  {advancedOpen && (
-                    <div className="set-advanced"><FieldTextarea aria-label="Designer config JSON" readOnly value={configJson} className="set-json" /></div>
-                  )}
+                  <div className="sec-h"><span className="t">Designer config</span><span className="m">{(configJson.length / 1024).toFixed(1)} KB</span></div>
+                  <div className="set-advanced"><FieldTextarea aria-label="Designer config JSON" readOnly value={configJson} className="set-json" /></div>
                 </section>}
               </div>
             </div>

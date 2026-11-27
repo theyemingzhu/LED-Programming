@@ -1,10 +1,13 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 import { MIN_TAP } from './harness/tapSize';
+import { installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { cardState } from './harness/cardStates';
+import { createPracticeCard } from './harness/practiceTiming';
 
 // Every primary Studio destination must retain the shared shell controls.
 // 'Card' is the single card destination — the old 'Setup' and 'Hardware' rail
@@ -62,19 +65,17 @@ async function installMatchingProject(page) {
   };
 }
 
-async function installCardPopupMock(page, cardId = 'lw-test-card', host = 'lightweaver.local', dropPingResponses = false) {
+async function installCardPopupMock(page, cardId) {
   const readyProject = await installMatchingProject(page);
-  await page.addInitScript(({ id, cardHost, dropPings, projectEvidence }) => {
-    (window as any).__cardPopupCalls = [];
+  await page.addInitScript(({ id, projectEvidence }) => {
+    const cardHost = 'lightweaver.local';
     const originalOpen = window.open.bind(window);
-    window.open = ((url?: string | URL, name?: string) => {
+    window.open = ((_url?: string | URL, name?: string) => {
       const popup = originalOpen('about:blank', name);
-      (window as any).__cardPopupCalls.push({ url: String(url || ''), name });
       if (!popup) return popup;
       Object.defineProperty(popup, 'postMessage', {
         configurable: true,
         value(message: any, targetOrigin: string) {
-          if (dropPings && message.type === 'ping') return;
           queueMicrotask(() => {
             window.dispatchEvent(new MessageEvent('message', {
               origin: targetOrigin,
@@ -124,8 +125,7 @@ async function installCardPopupMock(page, cardId = 'lw-test-card', host = 'light
       });
       return popup;
     }) as typeof window.open;
-  }, { id: cardId, cardHost: host, dropPings: dropPingResponses, projectEvidence: readyProject });
-  return readyProject;
+  }, { id: cardId, projectEvidence: readyProject });
 }
 
 async function dispatchCardLinkEvents(page, events: Record<string, unknown>[]) {
@@ -355,7 +355,7 @@ test('stale pairing offers to take over the card connection', async ({ page }) =
     bridgeLifecycle: 4,
   }]);
 
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Connect this card', exact: true }).click();
 
   await expect(dialog).toContainText('Take over that connection to use the card in this Studio.');
   await expect(dialog.getByRole('button', { name: 'Take over connection' })).toBeVisible();
@@ -406,69 +406,85 @@ test('opening while the card is recovering renders the busy recovery action dire
   await expect(page.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
 });
 
-test('working setup card gives one concise AP path before continuing through the setup host', async ({ page }) => {
-  await installCardPopupMock(page, 'lw-setup-card', '192.168.4.1');
-  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
-  });
-  await page.reload({ waitUntil: 'domcontentloaded' });
-
+async function openStoredSetupNetwork(page: Page, baseURL: string, screen: 'layout' | 'patterns') {
+  const host = '192.168.4.1';
+  const cardId = 'lw-aabbccddeeff';
+  const card = createPracticeCard(cardState('playing'), { timing: 'fast', cardId }).card;
+  await installHttpsStudio(page, baseURL);
+  await page.context().route(`http://${host}/api/**`, route => route.abort('connectionrefused'));
+  const popup = await installPracticeCardPopup(page, card, { hosts: [host] });
+  await page.addInitScript(host => localStorage.setItem('lw_chip_card_host', host), host);
+  await page.goto(`${STUDIO_ORIGIN}/#screen=${screen}`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  return { host, cardId, card, popup, dialog: page.getByRole('dialog', { name: 'Connect Lightweaver' }) };
+}
+
+test('working setup card gives one concise AP path before continuing through the setup host', async ({ page, baseURL }) => {
+  const { host, cardId, card, popup, dialog } = await openStoredSetupNetwork(page, baseURL!, 'layout');
   await expect(dialog).not.toContainText('Lightweaver-XXXX');
   await expect(dialog).toContainText('name starts with');
   await expect(dialog).toContainText(/Power the card, join .*finish Wi-Fi setup on the card page, then return to Studio\./i);
   await expect(dialog.locator('.card-connection-setup-steps')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'The card is already on my Wi-Fi' })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
-  await dialog.getByRole('button', { name: 'Continue after setup' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');
+  expect(page.context().pages()).toEqual([page]);
+  expect(popup.navigations).toEqual([]);
+
+  const [cardPage] = await Promise.all([
+    page.waitForEvent('popup'),
+    dialog.getByRole('button', { name: 'Continue after setup', exact: true }).click(),
+  ]);
+  await expect(cardPage).toHaveURL(/^http:\/\/192\.168\.4\.1\//);
+  await expect.poll(() => popup.navigations[0]?.host).toBe(host);
+  await expect.poll(() => popup.relays.some(relay => relay.type === 'status')).toBe(true);
+  await expect(dialog.getByText(cardId, { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Connect this card', exact: true })).toBeVisible();
+  expect(page.context().pages()).toEqual([page, cardPage]);
+  expect(popup.navigations.every(navigation => navigation.host === host)).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
+  expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
 });
 
-test('working-card choice opens the card popup path', async ({ page }) => {
-  const readyProject = await installCardPopupMock(page);
+test('working-card search uses the direct route and waits for explicit pairing', async ({ page }) => {
+  const readyProject = await installMatchingProject(page);
+  const card = createPracticeCard(cardState('playing'), { timing: 'fast' }).card;
+  const popup = await installPracticeCardPopup(page, card, { shouldServe: () => false });
   let allowDirect = false;
   const directRequests: string[] = [];
-  await page.route('http://lightweaver.local/api/status', async route => {
-    directRequests.push(route.request().url());
-    if (!allowDirect) return route.abort();
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ...readyStatus('lw-direct-card', { bootId: 'boot-direct-card', ...readyProject }),
-        cardName: 'Direct card', led: { pixels: 44 }, source: 'internal-flash',
-        wiringRevision: 4, wiringDigest: 'deadbeef',
-      }),
+  const directCard = {
+    ...readyStatus('lw-direct-card', { bootId: 'boot-direct-card', ...readyProject }),
+    cardName: 'Direct card', led: { pixels: 44 }, source: 'internal-flash',
+    wiringRevision: 4, wiringDigest: 'deadbeef',
+  };
+  for (const endpoint of ['status', 'firmware-info']) {
+    await page.route(`http://lightweaver.local/api/${endpoint}`, route => {
+      if (!allowDirect) return route.abort();
+      directRequests.push(route.request().method());
+      return route.fulfill({ json: directCard });
     });
-  });
-  await page.route('http://lightweaver.local/api/firmware-info', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      cardId: 'lw-direct-card', cardName: 'Direct card',
-      firmwareVersion: '1.4.0', buildId: 'a'.repeat(40),
-      projectId: readyProject.projectId,
-      projectRevision: readyProject.projectRevision,
-      projectFingerprint: readyProject.projectFingerprint,
-    }),
-  }));
+  }
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  allowDirect = true;
-  await page.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
-  await expect.poll(() => directRequests.length).toBeGreaterThan(0);
-  await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('Card verified');
+  const find = dialog.getByRole('button', { name: 'Find card already on Wi-Fi' });
+  await expect(find).toBeVisible();
+  allowDirect = true;
+  await find.click();
+  await expect(dialog.getByText(directCard.cardId, { exact: true })).toBeVisible();
+  const pair = dialog.getByRole('button', { name: 'Connect this card', exact: true });
+  await expect(pair).toBeVisible();
+  expect(directRequests).toContain('GET');
+  expect(popup.navigations).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
+  await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);
+
+  await pair.click();
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: /Direct card.*Connected/i })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe(directCard.cardId);
+  expect(directRequests.every(method => method === 'GET')).toBe(true);
+  expect(popup.navigations).toEqual([]);
 });
 
 test('background direct discovery stays unpaired until an explicit one-tap pair', async ({ page }) => {
@@ -509,52 +525,54 @@ test('background direct discovery stays unpaired until an explicit one-tap pair'
 
 test('direct wrong-card adoption is explicit and reverifies before Connected', async ({ page }) => {
   const readyProject = await installMatchingProject(page);
-  let firmwareChecks = 0;
-  await page.route('http://lightweaver.local/api/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      ...readyStatus('lw-direct-found', { bootId: 'boot-direct-found', ...readyProject }),
-      cardName: 'Found direct card', source: 'internal-flash',
-      wiringRevision: 4, wiringDigest: 'deadbeef',
-    }),
-  }));
-  await page.route('http://lightweaver.local/api/firmware-info', route => {
-    firmwareChecks += 1;
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        cardId: 'lw-direct-found', cardName: 'Found direct card',
-        firmwareVersion: '1.4.0', buildId: 'a'.repeat(40),
-        projectId: readyProject.projectId,
-        projectRevision: readyProject.projectRevision,
-        projectFingerprint: readyProject.projectFingerprint,
-      }),
-    });
+  const expectedId = 'lw-direct-expected';
+  const discovered = {
+    ...readyStatus('lw-direct-found', { bootId: 'boot-direct-found', ...readyProject }),
+    cardName: 'Found direct card', source: 'internal-flash',
+    wiringRevision: 4, wiringDigest: 'deadbeef',
+  };
+  await page.addInitScript(cardId => localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+    version: 1, id: cardId, name: 'Expected direct card', hostname: 'lightweaver',
+  })), expectedId);
+  let releaseRead!: () => void;
+  const heldVerification = new Promise<void>(resolve => { releaseRead = resolve; });
+  let holdVerification = false;
+  let verificationReads = 0;
+  const writes: string[] = [];
+  await page.route('http://lightweaver.local/api/**', async route => {
+    const request = route.request();
+    if (request.method() !== 'GET' && request.method() !== 'OPTIONS') writes.push(request.method());
+    const isStatus = new URL(request.url()).pathname === '/api/status';
+    if (holdVerification && isStatus) {
+      verificationReads += 1;
+      await heldVerification;
+    }
+    return route.fulfill({ json: discovered });
   });
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
-      version: 1,
-      id: 'lw-direct-expected',
-      name: 'Expected direct card',
-      hostname: 'lightweaver',
-    }));
-  });
-  await page.reload({ waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Wrong card/);
-  await page.getByTestId('card-link-status').click();
+  const storedCardId = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id);
+  const status = page.getByTestId('card-link-status');
+  await expect(status).toHaveAccessibleName(/Wrong card/);
+  await status.click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toContainText('Found direct card');
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-direct-expected');
+  expect(await storedCardId()).toBe(expectedId);
 
-  await dialog.getByRole('button', { name: 'Use this card instead' }).click();
-  await expect.poll(() => firmwareChecks).toBeGreaterThan(0);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-direct-found');
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
+  holdVerification = true;
+  try {
+    await dialog.getByRole('button', { name: 'Use this card instead' }).click();
+    await expect.poll(() => verificationReads).toBeGreaterThan(0);
+    expect(await storedCardId()).toBe(expectedId);
+    await expect(status).not.toHaveAccessibleName(/Connected/);
+    expect(writes).toEqual([]);
+  } finally {
+    releaseRead();
+  }
+  await expect.poll(storedCardId).toBe(discovered.cardId);
+  await expect.poll(() => verificationReads).toBeGreaterThanOrEqual(2);
+  await expect(status).toHaveAccessibleName(/Connected/);
+  expect(writes).toEqual([]);
 });
 
 test('a paired card reporting a factory status surfaces "Needs project", not green', async ({ page }) => {
@@ -613,7 +631,8 @@ test('card status control distinguishes verifying, blank, and command-ready stat
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   const status = page.getByTestId('card-link-status');
-  await expect(status).toHaveAccessibleName(/Card restarted . verifying/);
+  await expect(status).toHaveAttribute('data-lifecycle-state', 'verifying');
+  await expect(status).toHaveAccessibleName(/Checking card/);
   await expect(status).not.toHaveClass(/is-connected/);
 
   await dispatchCardLinkEvents(page, [{
@@ -656,7 +675,6 @@ test('blank-card choice reaches Flash install when Web Serial is supported', asy
 });
 
 test('connection details reject public hosts and resync before reopening', async ({ page }) => {
-  await installCardPopupMock(page);
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -668,7 +686,7 @@ test('connection details reject public hosts and resync before reopening', async
   await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('local Lightweaver hostname');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).not.toBe('example.com');
-  await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
+  expect(page.context().pages()).toEqual([page]);
 
   await page.getByRole('button', { name: 'Close connection center' }).click();
   await page.evaluate(() => {
@@ -894,14 +912,11 @@ test('settings screen prioritizes card setup and keeps raw config advanced', asy
   await expect(page).toHaveURL(/screen=layout&mode=draw/);
   await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
 
-  // "Designer config" JSON is hidden by default and revealed with its own
-  // Show/Hide JSON button — the old always-visible "Advanced" click target
-  // and .lw-chip-settings-json class are gone.
-  await page.getByTestId('card-advanced-fold').locator('summary').click();
+  await expect(page.getByRole('textbox', { name: 'Designer config JSON' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to Card' }).click();
+  await page.getByRole('navigation', { name: 'Card tools' }).getByRole('button', { name: 'Support' }).click();
   await page.getByRole('button', { name: 'Designer JSON' }).click();
-  await expect(page.locator('.set-json')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show JSON' }).click();
-  await expect(page.locator('.set-json')).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Designer config JSON' })).toBeVisible();
 });
 
 test('Hardware color-order test reports success only after exact state readback', async ({ page }) => {
@@ -1086,23 +1101,16 @@ test('installer screen gives a worker the full chip setup checklist', async ({ p
   await expect(page).toHaveURL(/#screen=card&section=install$/);
 });
 
-test('connection center opens the stored setup host and offers explicit pairing without silently adopting its popup card', async ({ page }) => {
-  await installCardPopupMock(page, 'lw-ap-card', '192.168.4.1');
-  await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
-  });
-  await page.reload({ waitUntil: 'domcontentloaded' });
+test('connection center opens the stored setup host and offers explicit pairing without silently adopting its popup card', async ({ page, baseURL }) => {
+  const { host, cardId, popup, dialog } = await openStoredSetupNetwork(page, baseURL!, 'patterns');
+  await dialog.getByRole('button', { name: 'Continue after setup' }).click();
 
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Continue after setup' }).click();
-
-  await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe('192.168.4.1');
-  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect.poll(() => popup.navigations[0]?.host).toBe(host);
+  await expect.poll(() => popup.relays.some(relay => relay.type === 'status')).toBe(true);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe(host);
   await expect(dialog).toContainText('Pair this Lightweaver card');
-  await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
+  await expect(dialog.getByText(cardId, { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Connect this card', exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Update card' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
   await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);

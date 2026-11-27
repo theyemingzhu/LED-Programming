@@ -173,6 +173,8 @@ function nextBridgeLaunchAttemptToken() {
 // blank and waiting for asynchronous discovery to choose its card origin.
 // Messages from the outgoing document carry no authority during this gap.
 let bridgeReservedWindow = null;
+let bridgeSearchWindow = null;
+const cancelledCardSearchWindows = new WeakSet();
 // Exact AP evidence retained across the origin switch. It remains present when
 // the first station navigation fails, allowing the caller to retry the same
 // WindowProxy without accepting a new/stale generation. While this is set,
@@ -395,6 +397,7 @@ function clearBridgeTarget({
 } = {}) {
   invalidateBridgeHandoffNavigationContext();
   bridgeReservedWindow = null;
+  bridgeSearchWindow = null;
   bridgeWindow = null;
   bridgeOwnerWindow = null;
   bridgeOrigin = origin || '';
@@ -443,6 +446,7 @@ function revokeBridgeForNavigation({
   preserveReservation = false,
 } = {}) {
   rejectPendingBridgeRequests(reason, message);
+  bridgeSearchWindow = null;
   if (!preserveReservation) bridgeReservedWindow = null;
   bridgeLifecycle += 1;
   clearBlankDiscoveryAuthority();
@@ -495,7 +499,10 @@ export function existingCardBridgeWindow(rawHost = '') {
 }
 
 function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true } = {}) {
-  if (source) rememberBridgeWindow(source);
+  if (source) {
+    cancelledCardSearchWindows.delete(source);
+    rememberBridgeWindow(source);
+  }
   if (origin) bridgeOrigin = origin;
   if (host) {
     bridgeHost = normalizeCardHost(host);
@@ -1091,6 +1098,7 @@ function applyOpenStudioBridgeMessage(event, data) {
 function handleBridgeMessage(event) {
   const data = event?.data || {};
   if (data.app !== CARD_BRIDGE_APP) return;
+  if (event.source && cancelledCardSearchWindows.has(event.source)) return;
   if (bridgeReservedWindow) return;
 
   if (data.type === 'ready') {
@@ -2012,8 +2020,11 @@ function requireDiscoveredBridgeCard(rawHost = bridgeHost) {
   return bridgeDiscoveredCard;
 }
 
-async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost, { expectedCard = null } = {}) {
+async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost, { expectedCard = null, observedCardId = '' } = {}) {
   const identity = requireDiscoveredBridgeCard(rawHost);
+  if (observedCardId && identity.id !== observedCardId) {
+    throw bridgeError('The card found has changed. Check the card now shown before pairing.', 'wrong-card');
+  }
   const host = normalizeCardHost(rawHost || bridgeHost);
   const lifecycle = bridgeLifecycle;
   const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
@@ -2047,8 +2058,11 @@ async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost, { expectedCard
   return identity;
 }
 
-export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { expectedCard = null } = {}) {
-  const identity = await reverifyDiscoveredBridgeCard(rawHost, { expectedCard });
+export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { expectedCard = null, observedCardId = '', signal } = {}) {
+  signal?.throwIfAborted();
+  const pairedAtStart = readPersistedCardIdentity()?.id || '';
+  const identity = await reverifyDiscoveredBridgeCard(rawHost, { expectedCard, observedCardId });
+  signal?.throwIfAborted();
   if (expectedCard && (
     identity.id !== expectedCard.id
     || identity.firmwareVersion !== expectedCard.firmwareVersion
@@ -2059,6 +2073,9 @@ export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { 
     throw bridgeError('The card changed since USB verification. Reopen the selected card before pairing.', 'wrong-card');
   }
   const expected = readPersistedCardIdentity();
+  if ((expected?.id || '') !== pairedAtStart) {
+    throw bridgeError('The paired card changed in another tab. Check the card now shown before pairing.', 'connection-superseded');
+  }
   if (expected?.id) {
     const comparison = compareCardIdentity(expected, identity);
     if (!comparison.ok) {
@@ -2075,8 +2092,14 @@ export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { 
   return identity;
 }
 
-export async function rePairDiscoveredCardBridgeIdentity(rawHost = bridgeHost) {
-  const identity = await reverifyDiscoveredBridgeCard(rawHost);
+export async function rePairDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { observedCardId = '', signal } = {}) {
+  signal?.throwIfAborted();
+  const pairedAtStart = readPersistedCardIdentity()?.id || '';
+  const identity = await reverifyDiscoveredBridgeCard(rawHost, { observedCardId });
+  signal?.throwIfAborted();
+  if ((readPersistedCardIdentity()?.id || '') !== pairedAtStart) {
+    throw bridgeError('The paired card changed in another tab. Check the card now shown before pairing.', 'connection-superseded');
+  }
   if (!adoptExpectedCardIdentity(identity)) {
     throw bridgeError('Could not replace the paired Lightweaver identity.', 'identity-storage');
   }
@@ -2203,6 +2226,61 @@ export function cancelReservedCardBridgeWindow(target) {
   }
   clearBridgeTarget();
   return true;
+}
+
+// A Find click can reserve one page while direct LAN permission is still
+// attached to the gesture. Only an empty page acquired here may be navigated
+// or closed. An already-open card page keeps its own lifecycle and authority.
+export function startCardBridgeSearch() {
+  const win = browserWindow();
+  if (!win?.open) return null;
+  attachCardBridgeListener();
+  if (bridgeWindow && bridgeOwnerWindow === win && !bridgeTargetClosed()) {
+    const current = bridgeWindow;
+    const host = getCardBridgeState().host;
+    return {
+      host,
+      navigate: nextHost => current === bridgeWindow && !bridgeTargetClosed(current) && nextHost === host,
+      current: () => current === bridgeWindow && !bridgeTargetClosed(current),
+      finish: () => {},
+    };
+  }
+  releaseInheritedBridgeWindowName(win);
+  let target;
+  try {
+    target = win.open('', CARD_BRIDGE_WINDOW_NAME, cardPageWindowFeatures(win));
+    if (!target || isCurrentBrowsingContext(target, win) || target.location?.href !== 'about:blank') return null;
+    if (target.document?.body) {
+      target.document.title = 'Finding your Lightweaver card';
+      target.document.body.textContent = 'Lightweaver Studio is looking for your card. Return to the Studio tab to see progress.';
+    }
+  } catch {
+    return null;
+  }
+  bridgeReservedWindow = target;
+  bridgeSearchWindow = target;
+  cancelledCardSearchWindows.delete(target);
+  return {
+    current: () => bridgeSearchWindow === target && !bridgeTargetClosed(target),
+    navigate(host) {
+      if (bridgeSearchWindow !== target || bridgeTargetClosed(target) || bridgeHandoffCorrelation) return false;
+      const next = bridgeReservedWindow === target
+        ? navigateReservedCardBridgeWindow(target, host)
+        : renavigateTrackedBridgeWindow(target, host);
+      if (!next) return false;
+      bridgeSearchWindow = target;
+      return true;
+    },
+    finish(keepPage) {
+      if (bridgeSearchWindow !== target) return;
+      bridgeSearchWindow = null;
+      if (keepPage) return;
+      cancelledCardSearchWindows.add(target);
+      rejectPendingBridgeRequests('bridge-closed', 'The card search ended.');
+      if (bridgeReservedWindow === target || bridgeWindow === target) clearBridgeTarget();
+      try { target.close?.(); } catch { /* Script-opened window may already be closed. */ }
+    },
+  };
 }
 
 // Re-navigate an already-tracked bridge WindowProxy to a fresh launch URL.

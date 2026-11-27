@@ -139,14 +139,20 @@ export function buildCardRuntimePackageFromProject({
     }
     return stackTargetsByMode.get(mirrored);
   };
-  for (const item of playlist.filter(item => item.type === 'combo' && item.enabled !== false)) {
+  const enabledComboItems = playlist.filter(item => item.type === 'combo' && item.enabled !== false);
+  const needsSectionUpdate = look => getProjectStackReview(look, stackTargetsFor(look?.sidesMirrored !== false)).needsReview;
+  for (const item of enabledComboItems) {
     const look = savedLooks.find(look => look.id === item.lookId);
     const compatibility = getProjectStackCompatibility(look);
     if (!compatibility.ok) throw new Error(compatibility.reason);
-    if (getProjectStackReview(look, stackTargetsFor(look?.sidesMirrored !== false)).needsReview) {
+    if (needsSectionUpdate(look)) {
       const error = new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
       error.code = 'stack-sections-changed';
       error.lookId = look.id;
+      error.lookIds = [...new Set(enabledComboItems.map(entry => entry.lookId))].filter(id => {
+        const candidate = savedLooks.find(saved => saved.id === id);
+        return candidate && getProjectStackCompatibility(candidate).ok && needsSectionUpdate(candidate);
+      });
       throw error;
     }
   }

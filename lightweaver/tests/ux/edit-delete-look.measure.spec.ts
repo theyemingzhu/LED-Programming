@@ -35,7 +35,6 @@ for (const vp of WIDTHS) {
         await j.press(page.getByTestId('look-save-preset'), 'Save changes');
         await page.waitForTimeout(600);
         j.note(`save status: ${(await page.getByTestId('look-save-status').textContent().catch(() => '?'))?.trim()}`);
-        await j.press(page.getByTestId('stack-more-actions'), 'More actions');
         await j.press(page.getByTestId('look-delete'), 'Delete stack');
         await expect(page.getByTestId('look-delete-undo')).toBeVisible({ timeout: 8000 });
         await page.waitForTimeout(600);

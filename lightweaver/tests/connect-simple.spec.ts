@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { createDefaultProject } from '../src/lib/projectModel.js';
+import { cardState } from './harness/cardStates';
+import { seedKnownCard, waitForCardProject } from './harness/falseFailureWatch';
+import { createPracticeCard } from './harness/practiceTiming';
 
 // Connect is one action: you either reach the card or you don't. The LED
 // triage ("look at the lights and choose what you see") was a second connect
@@ -18,19 +22,6 @@ function readyStatus(cardId: string, overrides = {}) {
     commandReady: true, outputReady: true, playbackReady: true,
     ...overrides,
   };
-}
-
-async function dispatchCardLink(page, events: Record<string, unknown>[]) {
-  await page.evaluate(async (nextEvents) => {
-    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
-    const link = getSharedCardLink();
-    for (const event of nextEvents) {
-      const priorBootId = link.getState().validatedBootId;
-      link.dispatch(event);
-      if (event.type === 'card-verified' && event.readiness?.bootId
-        && (!priorBootId || priorBootId === event.readiness.bootId)) link.dispatch(event);
-    }
-  }, events);
 }
 
 test('first-run card setup leads with USB inspection and keeps Wi-Fi paths secondary', async ({ page }) => {
@@ -87,125 +78,52 @@ test('a stored setup-AP host opens join steps without asking about the lights', 
   await expect(dialog.getByRole('button', { name: 'Continue' })).toBeVisible();
 });
 
-test('a connected card with a different project offers pull and overwrite, not another Find my card', async ({ page }) => {
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async () => {
-    const { createDefaultProject } = await import('/src/lib/projectModel.js');
-    const project = createDefaultProject();
-    project.id = 'studio-open-work';
-    project.name = 'Studio open work';
-    project.layout.starterPending = false;
-    project.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
-      version: 1, id: 'lw-mismatch', firmwareVersion: '1.4.0', buildId: 'a'.repeat(40),
-    }));
-  });
-  await page.reload({ waitUntil: 'domcontentloaded' });
+test('a connected card with a different project offers recovery and a separate draft review', async ({ page }) => {
+  const draft = createDefaultProject();
+  draft.id = 'studio-open-work';
+  draft.name = 'Studio open work';
+  draft.layout.starterPending = false;
+  draft.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
+  await page.addInitScript(project => localStorage.setItem('lw_autosave_v3', JSON.stringify(project)), draft);
+  const { card } = createPracticeCard(cardState('installed-different'));
+  await card.install(page);
+  await seedKnownCard(page);
+  await page.goto('/#screen=card&section=setup');
 
-  const status = readyStatus('lw-mismatch', {
-    projectId: 'card-held-piece',
-    projectRevision: 2,
-    projectFingerprint: 'b'.repeat(64),
-  });
-  await page.route('http://lightweaver.local/api/status', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify(status),
-  }));
-  await page.route('http://lightweaver.local/api/firmware-info', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify(status),
-  }));
-
-  await dispatchCardLink(page, [{
-    type: 'card-verified',
-    via: 'direct',
-    host: 'lightweaver.local',
-    card: { id: 'lw-mismatch', firmwareVersion: '1.4.0', buildId: 'a'.repeat(40) },
-    expectedCard: { id: 'lw-mismatch', firmwareVersion: '1.4.0', buildId: 'a'.repeat(40) },
-    readiness: status,
-  }]);
-
-  await expect(page.getByTestId('setup-card-project-note'))
-    .toContainText(/different project|has not matched/, { timeout: 10000 });
-  await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
+  const installed = page.getByRole('region', { name: 'Installed project' });
+  await expect(installed.getByTestId('card-draft-difference')).toContainText('Your draft differs from the installed project.');
+  await expect(installed.getByTestId('card-draft-difference')).toContainText(draft.name);
+  await expect(installed.getByRole('button', { name: 'Review and save draft', exact: true })).toBeEnabled();
+  await expect(installed.getByRole('button', { name: 'Control installed project', exact: true })).toBeEnabled();
   await expect(page.getByTestId('setup-connect-card')).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
-  await expect(page.getByTestId('setup-project-alternatives')).toHaveCount(0);
+  await waitForCardProject(page, draft.id);
+
+  await installed.getByRole('button', { name: 'Open installed project', exact: true }).click();
+  await waitForCardProject(page, card.state.projectId);
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  await page.getByRole('button', { name: `Open ${draft.name}`, exact: true }).click();
+  await waitForCardProject(page, draft.id);
+  expect(card.requests.filter(request => !['GET', 'HEAD', 'OPTIONS'].includes(request.method))).toEqual([]);
 });
 
-test('an already-set-up card hides the four-phase ladder and keeps Patterns as the way forward', async ({ page }) => {
-  const CARD_ID = 'lw-ready-home';
-  const PROJECT_ID = 'ready-piece';
-  const fingerprint = 'c'.repeat(64);
-  const status = readyStatus(CARD_ID, {
-    projectId: PROJECT_ID,
-    projectRevision: 1,
-    projectFingerprint: fingerprint,
-    outputs: [{
-      id: 'out1', pin: 18, pixels: 41, gpio: 18, count: 41,
-      segments: [{ id: 'run-strip-1', count: 41, direction: 'forward' }],
-    }],
-  });
-  await page.addInitScript(({ cardId, firmwareVersion, buildId, projectId, fingerprint }) => {
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId, firmwareVersion, buildId }));
-    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
-    localStorage.setItem('lw_autosave_v3', JSON.stringify({
-      id: projectId,
-      name: 'Ready piece',
-      layout: {
-        starterPending: false,
-        strips: [{ id: 'strip-1', pixels: 41, pin: 18 }],
-        wiring: {
-          verified: true,
-          runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
-        },
-      },
-      portRoles: [{ port: 'out1', role: 'strip', pin: 18, pixelCount: 41 }],
-      devices: {
-        standaloneController: {
-          led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
-        },
-      },
-    }));
-    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
-      generation: 1,
-      editedRevision: 1,
-      installedRevision: 1,
-      dirty: false,
-      installation: {
-        cardId,
-        projectRevision: 1,
-        projectFingerprint: fingerprint,
-        studioFingerprint: fingerprint,
-        verified: true,
-      },
-    }));
-  }, { cardId: CARD_ID, firmwareVersion: status.firmwareVersion, buildId: status.buildId, projectId: PROJECT_ID, fingerprint });
-  await page.unroute('http://lightweaver.local/**');
-  await page.route('http://lightweaver.local/**', route => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/api/status' || url.pathname === '/api/firmware-info') {
-      return route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ...status, bridgeVersion: 6 }),
-      });
-    }
-    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
-  });
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await dispatchCardLink(page, [{
-    type: 'card-verified',
-    via: 'direct',
-    host: 'lightweaver.local',
-    card: { id: CARD_ID, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
-    expectedCard: { id: CARD_ID, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
-    readiness: status,
-  }]);
+test('an already-set-up card offers installed control and opens Patterns from Studio navigation', async ({ page }) => {
+  const { card } = createPracticeCard(cardState('installed-match'));
+  await card.install(page);
+  await seedKnownCard(page);
+  await page.goto('/#screen=card&section=setup');
 
-  await expect(page.getByTestId('setup-open-patterns')).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
+  const installed = page.getByRole('region', { name: 'Installed project' });
+  await expect(installed.getByRole('button', { name: 'Control installed project', exact: true })).toBeEnabled();
+  await waitForCardProject(page, card.state.projectId);
+  await expect(installed.getByTestId('card-draft-difference')).toContainText('Your draft matches the installed project.');
+  await expect(installed.getByRole('button', { name: 'Open installed project', exact: true })).toHaveCount(0);
   await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(0);
-  await page.getByTestId('setup-open-patterns').click();
+
+  await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await expect(page).toHaveURL(/#screen=pattern/);
+  await expect(page.getByRole('heading', { name: 'Patterns & Looks', exact: true })).toBeVisible();
+  await waitForCardProject(page, card.state.projectId);
+  expect(card.requests.filter(request => !['GET', 'HEAD', 'OPTIONS'].includes(request.method))).toEqual([]);
 });
 
 test('Studio Patterns loads with no card and does not nag a four-phase setup', async ({ page }) => {
@@ -228,8 +146,12 @@ test('same-Wi-Fi failure keeps retry, setup-network recovery, and known-IP entry
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await page.clock.install();
   await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('No reply from the card', { timeout: 15000 });
+  await expect(dialog).toContainText(/Looking for your card|Connecting…/);
+  await expect(dialog.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await page.clock.fastForward(46_000);
+  await expect(dialog.getByRole('alert')).toContainText('No reply from the card');
   await expect(dialog.getByRole('button', { name: 'Try again' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Enter a known card IP' })).toBeVisible();
@@ -268,7 +190,17 @@ test('setup-network route opens 192.168.4.1 only after the worker confirms joini
     (window as any).__openedUrls = [];
     window.open = ((url?: string | URL) => {
       (window as any).__openedUrls.push(String(url || ''));
-      return { closed: false, focus() {}, close() {}, postMessage() {} } as any;
+      let href = String(url || 'about:blank');
+      return {
+        closed: false,
+        focus() {},
+        close() {},
+        postMessage() {},
+        location: {
+          get href() { return href; },
+          set href(next: string) { href = next; (window as any).__openedUrls.push(next); },
+        },
+      } as unknown as Window;
     }) as any;
   });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
@@ -278,7 +210,7 @@ test('setup-network route opens 192.168.4.1 only after the worker confirms joini
   await expect(dialog).toContainText('Join the card’s own Wi-Fi network (its name starts with “Lightweaver-”)');
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls)).toEqual([]);
   await dialog.getByRole('button', { name: 'Continue after joining' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__openedUrls[0] || '')).toContain('http://192.168.4.1');
+  await expect.poll(() => page.evaluate(() => (window as any).__openedUrls.find(Boolean) || '')).toContain('http://192.168.4.1');
 });
 
 test('USB inspection does not ask the worker to know the board firmware history', async ({ page }) => {

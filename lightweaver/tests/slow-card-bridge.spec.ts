@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_BUILD_ID, MATRIX_HOST } from './harness/cardStates';
-import { installHttpsStudio, installFakeCardBridge, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { installHttpsStudio, installPracticeCardPopup, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
 import { startFalseFailureWatch, falseFailures, seedKnownCard, waitForCardProject } from './harness/falseFailureWatch';
 
@@ -37,25 +37,19 @@ async function bootOverBridge(page: Page, hash: string) {
     firmwareUpdateOverride: { phase: 'rolled-back', rollbackReason: 'health-check-failed' },
   });
   await installHttpsStudio(page, testBaseURL);
-  await installFakeCardBridge(page, card);
+  await installPracticeCardPopup(page, card);
   await page.addInitScript(({ id, firmwareVersion, buildId, host }) => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
     localStorage.setItem('lw_card_host', host);
     localStorage.setItem('lw_chip_card_host', host);
   }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, host: MATRIX_HOST });
   await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
-  const settled = await expect.poll(() => linkState(page), { timeout: 15000, intervals: [250] })
-    .toMatch(/^connected-bridge\/bridge$/).then(() => true, () => false);
-  if (!settled) {
-    const setupConnect = page.getByTestId('setup-connect-card');
-    const target = (await setupConnect.count()) ? setupConnect : page.getByTestId('card-link-status');
-    await target.first().click();
-    const center = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
-    await expect(center).toBeVisible();
-    await center.locator('summary').click();
-    await center.getByRole('button', { name: 'Connect through the card’s own page (fallback)' }).click();
-    await expect.poll(() => linkState(page), { timeout: 15000, intervals: [250] }).toMatch(/^connected-bridge\/bridge$/);
-  }
+  await page.getByTestId('card-link-status').click();
+  const center = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
+  await expect(center).toBeVisible();
+  await center.locator('summary').click();
+  await center.getByRole('button', { name: 'Connect through the card’s own page (fallback)' }).click();
+  await expect.poll(() => linkState(page), { timeout: 15000, intervals: [250] }).toMatch(/^connected-bridge\/bridge$/);
   await expect.poll(() => page.evaluate(() => {
     try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || ''; } catch { return ''; }
   }), { timeout: 25000 }).toBe('lwproj-matrix-piece');

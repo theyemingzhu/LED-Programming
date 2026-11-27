@@ -170,7 +170,7 @@ export function findSymmetryStructureErrors(sym, strips = []) {
       } else {
         owner.set(stripId, sideId);
       }
-      if (strip.kaleidoscope?.enabled === true) {
+      if (strip.kaleidoscope?.enabled === true || Number.isInteger(strip.reflectionPointDraft)) {
         errors.push({ code: 'symmetry-strip-kaleidoscope', sideId, stripId, message: `Turn off Kaleidoscope on ${name} first.` });
       }
     }

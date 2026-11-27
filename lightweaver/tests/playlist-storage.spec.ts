@@ -358,8 +358,8 @@ test('Playlist resolves a duplicate encoder press without pausing card setup', a
   await page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true }).click();
   await expect(page.locator('.pl-row')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Install playlist on card' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /Copy chip config/ })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Download', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Copy card config', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Download card config', exact: true })).toBeEnabled();
 });
 
 test('Playlist copy and download equal the canonical compact 19-look payload', async ({ page }) => {
@@ -376,11 +376,13 @@ test('Playlist copy and download equal the canonical compact 19-look payload', a
   });
   await gotoPlaylist(page, project);
 
-  await page.getByRole('button', { name: /Copy chip config/ }).click();
+  await page.getByRole('button', { name: 'Copy card config', exact: true }).click();
   const copied = await page.evaluate(() => (window as any).__copiedPlaylistConfig || '');
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  await page.getByRole('button', { name: 'Download card config', exact: true }).click();
   const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('nineteen-look-playlist-export-playlist-config.json');
+  await expect(page.getByRole('button', { name: 'Export project', exact: true })).toBeVisible();
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
@@ -418,7 +420,7 @@ test('Playlist overflow blocks clipboard, blob, and download side effects with e
   });
   await gotoPlaylist(page, project);
 
-  await page.getByRole('button', { name: /Copy chip config/ }).click();
+  await page.getByRole('button', { name: 'Copy card config', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toBeVisible();
   expect(await page.getByTestId('playlist-card-status').evaluate(node => node.querySelector('.lw-notice-copy')?.textContent)).toBe(capacityError.message);
   expect(await page.evaluate(() => (window as any).__playlistExportEffects)).toEqual({
@@ -427,7 +429,7 @@ test('Playlist overflow blocks clipboard, blob, and download side effects with e
     anchorClick: 0,
   });
 
-  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  await page.getByRole('button', { name: 'Download card config', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toBeVisible();
   expect(await page.getByTestId('playlist-card-status').evaluate(node => node.querySelector('.lw-notice-copy')?.textContent)).toBe(capacityError.message);
   expect(await page.evaluate(() => (window as any).__playlistExportEffects)).toEqual({
@@ -583,6 +585,60 @@ test('Playlist ignores a stale reset failure after the playlist is edited', asyn
   await waitForUiCommit(page);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
   await expect(page.locator('.pl-row')).toHaveCount(3);
+});
+
+test('adding an installed pattern auditions it once on the matching card', async ({ page }) => {
+  const project = makePlaylistProject({ count: 2 });
+  project.devices.standaloneController.defaultLook.patternId = 'ocean';
+  const card = await mockConnectedPlaylistCard(page, project);
+  await gotoPlaylist(page, project);
+  await waitReconnected(page);
+
+  await page.getByRole('button', { name: 'Add Ocean', exact: true }).click();
+  await expect(page.getByTestId('playlist-row-ocean')).toBeVisible();
+  await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  expect(physicalCommandsFrom(card)).toEqual(['control:ocean']);
+});
+
+test('adding a saved look auditions it on the matching card', async ({ page }) => {
+  const project = makePlaylistProject({ count: 2 });
+  project.devices.standaloneController.looks = [{
+    id: 'saved-fire',
+    label: 'Saved Fire',
+    defaultLook: { patternId: 'fire' },
+    sectionLooks: {},
+  }];
+  project.devices.standaloneController.defaultLook.patternId = 'fire';
+  const card = await mockConnectedPlaylistCard(page, project);
+  await gotoPlaylist(page, project);
+  await waitReconnected(page);
+
+  await page.getByTestId('playlist-stack-saved-fire').getByRole('button', { name: 'Add look' }).click();
+  await expect(page.getByTestId('playlist-row-combo-saved-fire')).toBeVisible();
+  await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  const writes = card.requests.filter(entry => entry.path === '/api/control');
+  expect(writes.map(entry => entry.body)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ zone: 'default-outer-circle', patternId: 'fire' }),
+    expect.objectContaining({ zone: 'default-inner-circle', patternId: 'fire' }),
+  ]));
+  expect(writes).toHaveLength(2);
+});
+
+test('adding an installed pattern skips audition when the card project fingerprint differs', async ({ page }) => {
+  const project = makePlaylistProject({ count: 2 });
+  project.devices.standaloneController.defaultLook.patternId = 'ocean';
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-other-project', simulator => {
+    simulator.state.projectFingerprint = 'b'.repeat(64);
+  });
+  await gotoPlaylist(page, project);
+  await waitReconnected(page);
+
+  await page.getByRole('button', { name: 'Add Ocean', exact: true }).click();
+  await expect(page.getByTestId('playlist-project-save-status')).toHaveText('Playlist saved in this browser.');
+  await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
+  await page.getByTestId('playlist-row-ocean').getByRole('button', { name: 'Live', exact: true }).click();
+  await expect(page.getByTestId('playlist-card-status')).toContainText('Install this exact Studio project on the card before sending live control.');
+  expect(physicalCommandsFrom(card)).toEqual([]);
 });
 
 test('Playlist marks a row runtime-applied only after the paired card acknowledges the latest intent', async ({ page }) => {

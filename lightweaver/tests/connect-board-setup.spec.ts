@@ -23,18 +23,14 @@ async function connectCard(page: Page, readiness = status, firmwareInfo = readin
     return route.fulfill({ json: paired ? firmwareInfo : readiness });
   });
   await page.goto('/#screen=card&section=overview');
-  await page.getByRole('button', { name: /^Connect Lightweaver/ }).first().click();
-  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toBeVisible();
+  await page.getByRole('button', { name: 'Set up this card', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  const findCard = dialog.getByRole('button', { name: 'Find card already on Wi-Fi' });
+  await expect(findCard).toBeVisible();
   connected = true;
-  await page.evaluate(async readiness => {
-    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
-    const { normalizeCardIdentity } = await import('/src/lib/cardIdentity.js');
-    const link = getSharedCardLink();
-    const host = 'lightweaver.local';
-    link.dispatch({ type: 'direct-status', connected: true, host, readiness,
-      card: normalizeCardIdentity(readiness, host) });
-  }, readiness);
-  await page.getByRole('dialog', { name: 'Connect Lightweaver' }).getByRole('button', { name: 'Connect', exact: true }).click();
+  await findCard.click();
+  await expect(dialog.getByText(readiness.cardId, { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Connect this card', exact: true }).click();
   return page.getByTestId('connect-board-setup');
 }
 

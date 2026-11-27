@@ -208,7 +208,7 @@ test('drafts stay attached to their stack when switching and reloading', async (
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
 });
 
-test('stack editor keeps tuning visible and reveals secondary actions on demand', async ({ page }) => {
+test('stack editor keeps tuning and secondary actions directly visible', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openStackProject(page, 'stack-editor-focus', [namedLook('stack-one', 'One')]);
   await editStack(page, 'One');
@@ -217,17 +217,15 @@ test('stack editor keeps tuning visible and reveals secondary actions on demand'
   await expect(page.getByTestId('stack-save-add')).toBeVisible();
   await expect(page.getByTestId('look-brightness-slider')).toBeInViewport();
   await expect(page.getByTestId('stack-save-bar')).toContainText('Outer circle');
-  await expect(page.getByTestId('look-save-as-new')).not.toBeVisible();
-  await page.getByTestId('stack-more-actions').click();
   await expect(page.getByTestId('look-save-as-new')).toBeVisible();
   await expect(page.getByTestId('stack-revert')).toBeVisible();
   await expect(page.getByTestId('look-delete')).toBeVisible();
+  await expect(page.getByTestId('stack-more-actions')).toHaveCount(0);
 });
 
 test('duplicate, revert and delete undo keep separate identities', async ({ page }) => {
   await openStackProject(page, 'stack-lifecycle', [namedLook('stack-one', 'One')]);
   await editStack(page, 'One');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByRole('button', { name: 'Duplicate look' }).click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(2);
   await expect(page.getByTestId('look-name')).toHaveValue('One 2');
@@ -235,10 +233,8 @@ test('duplicate, revert and delete undo keep separate identities', async ({ page
   await backToPatterns(page);
   await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
   await returnToStackEditor(page);
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('stack-revert').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).not.toContainText('Fire');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(1);
   await page.getByTestId('look-delete-undo').click();
@@ -255,10 +251,8 @@ test('renaming and deleting another stack preserve this stack draft through Undo
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   await page.getByTestId('project-stack-card').getByRole('button', { name: 'Edit B' }).click();
   await page.getByTestId('look-name').fill('B renamed');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-rename').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Aurora');
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await page.getByTestId('look-delete-undo').click();
   await page.reload();
@@ -281,19 +275,25 @@ test('copy to selected sections is a draft and can be undone', async ({ page }) 
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).not.toContainText('Fire');
 });
 
-test('a changed section map asks for review before updating a stack', async ({ page }) => {
-  const broken = { ...namedLook('stack-needs-review', 'Review me'), sectionLooks: { 'section-that-no-longer-exists': { patternId: 'fire' } } };
+test('a changed section map blocks saving and can be corrected directly in the stack editor', async ({ page }) => {
+  const broken = { ...namedLook('stack-needs-review', 'Ember trail'), sectionLooks: { 'section-that-no-longer-exists': { patternId: 'fire' } } };
   await openStackProject(page, 'stack-review', [broken]);
-  await editStack(page, 'Review me');
-  await expect(page.getByTestId('stack-review')).toBeVisible();
-  await page.getByTestId('look-save-preset').click();
-  await expect(page.getByTestId('look-save-status')).toContainText('Review sections');
-  await page.getByRole('button', { name: 'Dismiss notice' }).click();
-  await page.getByTestId('stack-review').getByRole('button').click();
-  await expect(page.getByTestId('stack-review')).toHaveCount(0);
+  await editStack(page, broken.label);
+  const correction = page.getByTestId('stack-review');
+  await expect(correction).toBeVisible();
+  await expect(page.getByTestId('look-save-preset')).toBeDisabled();
+  await expect(page.getByTestId('stack-save-add')).toBeDisabled();
+  await page.getByRole('button', { name: 'Close look editor' }).click();
+  await expect(correction).toHaveCount(0);
+  const saved = page.getByTestId('project-stack-card').filter({ hasText: broken.label });
+  await expect(saved.getByRole('button', { name: `Update sections for ${broken.label}` })).toBeVisible();
+  await saved.getByRole('button', { name: `Edit ${broken.label}`, exact: true }).click();
+  await correction.getByRole('button', { name: `Update sections for ${broken.label}` }).click();
+  await expect(correction).toHaveCount(0);
+  await expect(page.getByTestId('look-save-preset')).toBeEnabled();
 });
 
-test('an outdated playlist stack opens its section review from the install warning', async ({ page }) => {
+test('a saved library card can update stale sections without opening its editor', async ({ page }) => {
   const project = createDefaultProject();
   project.id = 'playlist-stack-needs-section-review';
   const look = {
@@ -308,16 +308,13 @@ test('an outdated playlist stack opens its section review from the install warni
   await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
   await page.goto('/#screen=pattern');
 
-  const notice = page.getByTestId('hardware-configuration-warning');
-  await expect(notice).toContainText(look.label);
-  await expect(notice.getByRole('button', { name: 'Fix automatically' })).toHaveCount(0);
-  await notice.getByRole('button', { name: 'Review sections' }).click();
-  const review = page.getByTestId('stack-review');
-  await expect(review).toBeVisible();
-  await expect(page.getByTestId('look-name')).toHaveValue(look.label);
-  await review.getByRole('button', { name: /Use saved settings/ }).click();
-  await expect(review).toHaveCount(0);
-  await expect(notice).toHaveCount(0);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const libraryCard = page.getByTestId('project-stack-card').filter({ hasText: look.label });
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  await libraryCard.getByRole('button', { name: `Update sections for ${look.label}` }).click();
+  await expect(page.getByTestId('pattern-install-blockers')).toHaveCount(0);
+  await expect(libraryCard.getByRole('button', { name: `Edit ${look.label}`, exact: true })).toBeVisible();
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
 });
 
 test('failed browser persistence keeps the stack draft and offers retry', async ({ page }) => {
@@ -361,7 +358,6 @@ test('ten project stacks fit desktop and phone without horizontal overflow', asy
   await expect(page.getByTestId('project-stack-card').first().getByRole('button', { name: /^Edit / })).toBeVisible();
   await page.getByTestId('project-stack-card').first().getByRole('button', { name: /^Edit / }).click();
   const saveBox = await page.getByTestId('stack-save-bar').boundingBox();
-  await page.getByTestId('stack-more-actions').click();
   const deleteBox = await page.getByTestId('look-delete').boundingBox();
   expect(saveBox && deleteBox && deleteBox.x >= saveBox.x - 1 && deleteBox.x + deleteBox.width <= saveBox.x + saveBox.width + 1).toBe(true);
   await page.screenshot({ path: '/tmp/lightweaver-stacks-patterns-phone.png' });
@@ -504,8 +500,11 @@ test('returning a setting to its saved value clears dirty state with a canonical
   await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Tune · Outer circle');
   await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Fire');
   await hue.press('ArrowRight');
+  await expect(hue).toHaveValue('73');
   await expect(page.getByTestId('look-save-status')).toContainText('Unsaved');
   await hue.press('ArrowLeft');
   await expect(hue).toHaveValue('72');
-  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  const status = page.getByTestId('look-save-status');
+  await expect(status).toBeVisible();
+  await expect(status).toHaveText('Saved');
 });

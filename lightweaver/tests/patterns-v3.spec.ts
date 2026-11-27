@@ -764,7 +764,10 @@ test('verified Install persists the auditioned section assignment in Studio', as
 
 test('project breadcrumb does not claim installation on a connected card holding another project', async ({ page }, testInfo) => {
   const project = createPiecePreviewProject('breadcrumb-project-identity');
-  await mockVerifiedInstallCard(page, project, 'lw-breadcrumb-project');
+  const configRequests: unknown[] = [];
+  await mockVerifiedInstallCard(page, project, 'lw-breadcrumb-project', {
+    onConfigRequest: config => configRequests.push(config),
+  });
   await gotoSavedProjectPatterns(page, project);
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
@@ -772,12 +775,18 @@ test('project breadcrumb does not claim installation on a connected card holding
   const badge = page.getByTestId('project-lifecycle-label');
   await expect(badge).toHaveText('Installed on card');
 
+  await expect.poll(() => page.evaluate(async () => (await import('/src/lib/cardLink.js')).getCardLinkState().state)).toBe('connected-direct');
   await page.route('**/api/status', route => route.abort());
   const matching = await page.evaluate(async () => {
-    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const { CARD_LINK_PING_MISS_LIMIT, getSharedCardLink } = await import('/src/lib/cardLink.js');
     const link = getSharedCardLink();
     const current = link.getState();
-    link.dispatch({ type: 'direct-ping-missed', host: current.host });
+    // Simulate a sustained outage after the post-save hold without waiting
+    // for real keepalive timers. One lost ping intentionally keeps the link.
+    const at = Math.max(Date.now(), (current.checkHoldUntil || 0) + 1);
+    for (let missed = 0; missed < CARD_LINK_PING_MISS_LIMIT; missed += 1) {
+      link.dispatch({ type: 'direct-ping-missed', host: current.host, at });
+    }
     return { host: current.host, card: current.card, expectedCard: current.expectedCard, readiness: current.readiness };
   });
   await expect.poll(() => page.evaluate(async () => (await import('/src/lib/cardLink.js')).getCardLinkState().state)).toBe('reconnecting');
@@ -817,6 +826,11 @@ test('project breadcrumb does not claim installation on a connected card holding
     getSharedCardLink().dispatch(event);
     getSharedCardLink().dispatch(event);
   }), { snapshot: matching, readiness: different });
+  await expect.poll(() => page.evaluate(async () => {
+    const { getCardLinkState } = await import('/src/lib/cardLink.js');
+    const link = getCardLinkState();
+    return { state: link.state, projectId: link.readiness?.projectId };
+  })).toEqual({ state: 'connected-direct', projectId: different.projectId });
   await expect(badge).toHaveText('Not verified on this card');
   await expect(page.getByTestId('project-name-edit')).toHaveText(project.name);
   await page.evaluate(({ snapshot, readiness }) => import('/src/lib/cardLink.js').then(({ getSharedCardLink }) => {
@@ -831,6 +845,7 @@ test('project breadcrumb does not claim installation on a connected card holding
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page.getByRole('heading', { name: /Update Lightweaver|Install Lightweaver/ })).toBeVisible();
   await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Not verified on this card');
+  expect(configRequests).toHaveLength(1);
   await page.screenshot({ path: testInfo.outputPath('different-card-project-software.png'), fullPage: true });
 });
 
@@ -1196,19 +1211,42 @@ test('updating an imported mix with orphaned section IDs exports its new all-sec
   ];
   await gotoSavedProjectPatterns(page, project);
 
-  const hardwareNotice = page.getByTestId('hardware-configuration-warning');
-  if (await hardwareNotice.isVisible()) await hardwareNotice.getByRole('button', { name: 'Dismiss notice' }).click();
+  const blockers = page.getByTestId('pattern-install-blockers');
+  const oldFix = blockers.getByRole('button', { name: `Update sections for ${oldMix.label}`, exact: true });
+  const otherFix = blockers.getByRole('button', { name: `Update sections for ${otherMix.label}`, exact: true });
+  await expect(oldFix).toBeVisible();
+  await expect(otherFix).toBeVisible();
   await page.getByRole('tab', { name: /Project stacks/ }).click();
-  await page.getByTestId('project-stack-card').filter({ hasText: otherMix.label }).getByRole('button', { name: /^Edit / }).click();
-  for (const notice of await page.getByTestId('notice-layer').getByRole('button', { name: 'Dismiss notice' }).all()) await notice.click();
-  await page.getByTestId('stack-review').getByRole('button').click();
+  await page.getByTestId('project-stack-card').filter({ hasText: oldMix.label }).getByRole('button', { name: /^Edit / }).click();
+  await setRangeValue(page.getByTestId('look-brightness-slider'), '0.57');
+  await expect(page.getByTestId('look-brightness-readout')).toContainText('57');
+  await otherFix.click();
+  await expect(otherFix).toHaveCount(0);
+  await expect(oldFix).toBeVisible();
+  const install = page.getByTestId('pattern-install-on-card');
+  await expect(install).toBeDisabled();
+  await expect(install).toHaveAttribute('aria-describedby', 'pattern-install-blockers');
+  await expect(page.getByTestId('look-name')).toHaveValue(oldMix.label);
+  await expect(page.getByTestId('look-brightness-readout')).toContainText('57');
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
-    return saved.devices?.standaloneController?.looks?.find(look => look.id === 'three-colors')?.defaultLook?.brightness;
-  })).toBe(0.7);
-  await page.getByTestId('project-stack-card').filter({ hasText: oldMix.label }).getByRole('button', { name: /^Edit / }).click();
-  for (const notice of await page.getByTestId('notice-layer').getByRole('button', { name: 'Dismiss notice' }).all()) await notice.click();
-  await page.getByTestId('stack-review').getByRole('button').click();
+    const looks = saved.devices?.standaloneController?.looks || [];
+    const repaired = looks.find(look => look.id === 'three-colors');
+    const stillStale = looks.find(look => look.id === 'combo-aurora');
+    return {
+      repairedBrightness: repaired?.defaultLook?.brightness,
+      repairedVersion: repaired?.sectionSnapshotVersion,
+      repairedHasRemovedSection: Object.hasOwn(repaired?.sectionLooks || {}, 'old-section-two'),
+      otherHasRemovedSection: Object.hasOwn(stillStale?.sectionLooks || {}, 'old-section-one'),
+    };
+  })).toEqual({
+    repairedBrightness: 0.7,
+    repairedVersion: 1,
+    repairedHasRemovedSection: false,
+    otherHasRemovedSection: true,
+  });
+  await page.getByTestId('stack-review').getByRole('button', { name: `Update sections for ${oldMix.label}` }).click();
+  await expect(install).not.toHaveAttribute('aria-describedby', 'pattern-install-blockers');
   await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
   await expect(page.getByTestId('look-brightness-readout')).toContainText('30');

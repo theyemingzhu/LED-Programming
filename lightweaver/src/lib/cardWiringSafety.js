@@ -33,7 +33,7 @@ const STATE_ALIASES = Object.freeze({
 const ENDPOINTS = Object.freeze({
   'wiring-status': { method: 'GET', path: '/api/wiring/status', retryOnTimeout: true },
   'wiring-candidate': { method: 'POST', path: '/api/wiring/candidate', retryOnTimeout: false },
-  'wiring-activate': { method: 'POST', path: '/api/wiring/activate', retryOnTimeout: true },
+  'wiring-activate': { method: 'POST', path: '/api/wiring/activate', retryOnTimeout: false },
   'wiring-confirm': { method: 'POST', path: '/api/wiring/confirm', retryOnTimeout: true },
   'wiring-rollback': { method: 'POST', path: '/api/wiring/rollback', retryOnTimeout: true },
   'wiring-discover': { method: 'POST', path: '/api/wiring/discover', retryOnTimeout: false },
@@ -333,11 +333,10 @@ function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-// A card back from its restart can take ~5 s to answer (practice card
-// Real-timing, D9 in todo/plans/practice-card-interruptions.md). Each poll
-// used to give up after 1.2 s, so such a card never counted as back and the
-// light test reported a failure on a card that was testing the wiring.
-export const WIRING_STATUS_POLL_TIMEOUT_MS = 6000;
+// A busy card can take 5 s to answer, with a further 9.7 s measured while
+// settling after restart (Practice card Real-timing). Give each transaction
+// status read time to hear it, without resending the activation.
+export const WIRING_STATUS_POLL_TIMEOUT_MS = 15_000;
 
 export async function waitForCardWiringReconnect(options = {}) {
   const activationId = requireActivationId(options.activationId);
@@ -363,6 +362,9 @@ export async function waitForCardWiringReconnect(options = {}) {
       });
       if (status?.activationId === activationId) {
         if (status.state === 'testing') return status;
+        if (status.state === 'staged' && options.activationRefused) {
+          throw wiringError('activation-staged', 'The card kept the wiring staged. Start the light test when ready.', { response: status });
+        }
         if (status.state === 'rolled-back') {
           throw wiringError('activation-rolled-back', 'The card rolled back the test wiring before activation completed.', { response: status.raw });
         }
@@ -382,7 +384,7 @@ export async function waitForCardWiringReconnect(options = {}) {
       }
     } catch (error) {
       if (error instanceof CardWiringSafetyError &&
-          ['activation-rolled-back', 'activation-not-testing', 'activation-wrong-state'].includes(error.reason)) throw error;
+          ['activation-staged', 'activation-rolled-back', 'activation-not-testing', 'activation-wrong-state'].includes(error.reason)) throw error;
       lastError = error;
     }
     if (finalRead) break;
@@ -410,7 +412,8 @@ export async function activateAndWaitForCardWiring(activationId, options = {}) {
     activationError = error;
   }
   try {
-    return await waitForReconnectImpl({ ...options, activationId: id });
+    const activationRefused = ['http', 'card-rejected'].includes(activationError?.reason);
+    return await waitForReconnectImpl({ ...options, activationId: id, activationRefused });
   } catch (error) {
     if (activationError instanceof Error && error instanceof Error && !error.cause) {
       error.cause = activationError;

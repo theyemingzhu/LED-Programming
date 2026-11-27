@@ -91,7 +91,7 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // A plugged-in card answering on lightweaver.local is found without a
   // remembered identity — bootstrap probes the well-known hosts on local HTTP.
   // Discovery does not grant ownership: the owner explicitly pairs this card.
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await waitConnectedUnaided(page, 'J01 explicit pairing of a detected blank card');
 
   // ── Setup ladder: connect phase is done, lights phase is current ──────────

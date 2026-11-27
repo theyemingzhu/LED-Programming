@@ -18,7 +18,7 @@ test('a blank card discovers two GPIO strips, installs their saved pattern, play
   // bench LAN address. All card reads and writes stay in this browser fixture.
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect this card', exact: true }).click();
   await waitConnected(page);
   await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'discover-lights');
   await page.getByTestId('setup-lights-action').click();

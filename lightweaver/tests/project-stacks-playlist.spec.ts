@@ -154,9 +154,15 @@ test('an older partial saved look keeps its historical default-section inheritan
   project.devices.standaloneController.looks[0].sectionLooks = {};
   await openPlaylist(page, project);
   const source = page.getByTestId('playlist-stack-stack-1');
-  await expect(source).not.toContainText('Review sections');
+  await expect(source.getByRole('link', { name: /update sections/i })).toHaveCount(0);
   await source.getByRole('button', { name: 'Add look' }).click();
-  await expect(page.getByTestId('playlist-row-combo-stack-1')).toBeVisible();
+  const row = page.getByTestId('playlist-row-combo-stack-1');
+  await expect(row).toBeVisible();
+  await expect(page.getByTestId('playlist-project-save-status')).toHaveText('Playlist saved in this browser.');
+  await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
+  await expect(source.getByRole('button', { name: 'Preview', exact: true })).toBeDisabled();
+  await row.getByRole('button', { name: 'Live', exact: true }).click();
+  await expect(page.getByTestId('playlist-card-status')).toContainText('Connect this Lightweaver card before sending live control.');
 });
 
 test('ten four-section stacks add in display order and survive playlist removal', async ({ page }) => {
@@ -211,12 +217,38 @@ test('phone jumps between playlist order and the stack picker', async ({ page })
   await openPlaylist(page, project);
   const order = page.getByTestId('playlist-order-section');
   const picker = page.getByTestId('playlist-source-picker');
-  await order.getByRole('button', { name: 'Add saved looks' }).click();
+  await order.getByRole('button', { name: 'Browse looks & patterns', exact: true }).click();
   await expect(picker).toBeInViewport({ ratio: 0.01 });
-  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-source-picker');
+  await expect(picker).toBeFocused();
+  await expect(picker.getByRole('tab', { name: 'Project stacks (10)', selected: true })).toBeVisible();
   await picker.getByRole('button', { name: 'Back to order' }).click();
   await expect(order).toBeInViewport({ ratio: 0.01 });
-  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-order-section');
+  await expect(order).toBeFocused();
+});
+
+test('phone can browse and add a pattern quietly offline with no project stacks', async ({ page }) => {
+  const { project } = projectWithStacks(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPlaylist(page, project);
+  const order = page.getByTestId('playlist-order-section');
+  const picker = page.getByTestId('playlist-source-picker');
+  await order.getByRole('button', { name: 'Browse looks & patterns', exact: true }).click();
+  await expect(picker).toBeInViewport({ ratio: 0.01 });
+  await expect(picker).toBeFocused();
+  await expect(picker.getByRole('tab', { name: 'Patterns', selected: true })).toBeVisible();
+  await picker.getByRole('tab', { name: 'Project stacks (0)' }).click();
+  await expect(picker.getByRole('tabpanel', { name: 'Project stacks' })).toContainText('No saved looks yet.');
+  await picker.getByRole('tab', { name: 'Patterns' }).click();
+  await picker.getByRole('button', { name: 'Add Ocean', exact: true }).click();
+  await expect(page.getByTestId('playlist-project-save-status')).toHaveText('Playlist saved in this browser.');
+  await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
+  await picker.getByRole('button', { name: 'Back to order' }).click();
+  await expect(order).toBeInViewport({ ratio: 0.01 });
+  await expect(order).toBeFocused();
+  await expect(order.getByTestId('playlist-row-ocean')).toContainText('Ocean');
+  await picker.getByRole('button', { name: 'Ocean, already in playlist; preview', exact: true }).click();
+  await expect(page.getByTestId('playlist-card-status')).toContainText('Connect this Lightweaver card before sending live control.');
+  await expect(order.getByTestId('playlist-row-ocean')).toHaveCount(1);
 });
 
 test('mixed mirror modes use each saved look’s own section assignments', async ({ page }) => {

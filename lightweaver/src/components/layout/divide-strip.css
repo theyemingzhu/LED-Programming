@@ -3,7 +3,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  padding: 0 0 6px;
+  padding: 0 0 2px;
   border: 0;
   background: transparent;
 }
@@ -11,7 +11,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 6px 8px 8px;
+  padding: 4px 8px;
 }
 .la .side .la-mode-content.is-draw { overflow-y: visible; }
 .la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field {
@@ -69,7 +69,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 4px;
-  padding: 6px 0;
+  padding: 2px 0;
   border-top: 1px solid var(--border-soft);
 }
 .la .la-strip-connection .btn {
@@ -81,7 +81,7 @@
 }
 .la-divide-disclosure {
   border-top: 1px solid var(--border-soft);
-  padding: 6px 0 0;
+  padding: 3px 0 0;
 }
 .la-divide-head {
   display: flex;

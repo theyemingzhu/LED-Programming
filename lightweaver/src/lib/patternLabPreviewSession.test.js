@@ -165,21 +165,131 @@ test('stop while snapshot is pending prevents a stale session starting or restor
   assert.equal(session.status().active, false);
 });
 
-test('a card that was playing one of its looks gets that look back, not section-by-section patterns', async () => {
-  const restores = [];
-  const session = createPatternLabPreviewSession({
-    readSnapshot: async () => ({ syncZones: false, currentLookId: 'fire', zones: [{ id: 'outer', patternId: 'fire' }, { id: 'inner', patternId: 'fire' }] }),
-    createStream: () => ({ start: () => true, push: () => true, async stop() {} }),
-    restoreLook: async (look, options) => { restores.push([look, options]); },
-    resetOutput: async () => { throw new Error('should not reset'); },
+for (const loseFirstReadback of [false, true]) {
+  test(`Stop waits for an accepted native preview with ${loseFirstReadback ? 'failed' : 'pending'} readback`, async () => {
+    const initialZones = [{ id: 'all', patternId: 'fire', brightness: 0.91 }];
+    let pattern = 'fire';
+    let zones = structuredClone(initialZones);
+    let finishReadback;
+    let readbackStarted;
+    const reading = new Promise(resolve => { readbackStarted = resolve; });
+    let blockFirstReadback = false;
+    const commands = [];
+    const session = createPatternLabPreviewSession({
+      nativeLook: { patternId: 'aurora', brightness: 1 },
+      readStatus: async () => {
+        if (blockFirstReadback) {
+          blockFirstReadback = false;
+          await new Promise((resolve, reject) => {
+            finishReadback = () => loseFirstReadback ? reject(new Error('lost native readback')) : resolve();
+            readbackStarted();
+          });
+        }
+        return { cardId: 'card', currentLookId: pattern, currentLookIndex: 0, streaming: false };
+      },
+      readZones: async () => ({ syncZones: true, zones: structuredClone(zones) }),
+      restoreLook: async () => {
+        pattern = 'aurora';
+        zones = [{
+          id: 'all', patternId: 'aurora', brightness: 1, speed: 1, hueShift: 0,
+          customHue: 32, customSaturation: 230, customBreathe: false,
+          breatheLowerPct: 85, breatheUpperPct: 100, breatheCycleSeconds: 9, customDrift: false,
+        }];
+        blockFirstReadback = true;
+        return { ok: true, appliedPatternId: 'aurora' };
+      },
+      postControl: async command => {
+        commands.push(command);
+        if (command.patternId === 'fire') {
+          pattern = 'fire';
+          zones = structuredClone(initialZones);
+        }
+        return { ok: true };
+      },
+    });
+    const starting = session.start().catch(error => error);
+    await reading;
+    const stopping = session.stop();
+    assert.equal(session.status().state, 'stopping');
+    assert.deepEqual(commands, []);
+    finishReadback();
+    await starting;
+    assert.deepEqual(await stopping, { reason: 'user', restored: true });
+    assert.deepEqual(commands, [{ patternId: 'fire', syncZones: true }]);
+    assert.equal(session.status().active, false);
+    assert.equal(session.status().restored, true);
+    assert.equal(session.status().state, 'restored');
   });
+}
+
+test('a changed discovery address keeps the paired card but changing the pairing fences Stop', async () => {
+  const previousWindow = globalThis.window;
+  const storage = new Map([
+    ['lw_card_host', 'lightweaver.local'],
+    ['lw_card_identity_v1', JSON.stringify({ version: 1, id: 'card' })],
+  ]);
+  globalThis.window = { location: { protocol: 'http:' }, localStorage: { getItem: name => storage.get(name) } };
+  try {
+    for (const replaceCard of [false, true]) {
+      let streaming = false;
+      const writes = [];
+      const session = createPatternLabPreviewSession({
+        host: 'lightweaver.local',
+        readStatus: async () => ({ cardId: 'card', currentLookId: 'fire', streaming }),
+        readZones: async () => ({ syncZones: false, zones: [{ id: 'all', patternId: 'fire' }] }),
+        createStream: () => ({
+          start() { streaming = true; return true; },
+          async stop({ cancel }) { await cancel(() => true); },
+        }),
+        postControl: async (body, { host }) => {
+          writes.push({ host, body });
+          streaming = false;
+          return { ok: true };
+        },
+      });
+      await session.start();
+      storage.set('lw_card_host', '192.168.18.70');
+      if (replaceCard) storage.set('lw_card_identity_v1', JSON.stringify({ version: 1, id: 'another-card' }));
+      await session.stop();
+      assert.deepEqual(writes, replaceCard ? [] : [{ host: 'lightweaver.local', body: { cancelStream: true } }]);
+      assert.equal(session.status().state, replaceCard ? 'superseded' : 'restored');
+      storage.set('lw_card_host', 'lightweaver.local');
+    }
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test('an installed look is reselected once when releasing an unlinked stream does not resume local output', async () => {
+  const writes = [];
+  const zones = [
+    { id: 'outer', patternId: 'fire' },
+    { id: 'inner', patternId: 'fire' },
+  ];
+  let streaming = false;
+  let outputSource = 'local';
+  const session = createPatternLabPreviewSession({
+    readStatus: async () => ({
+      cardId: 'card', currentLookId: 'evening', currentLookIndex: 0,
+      streaming, lwOutput: { sourceClass: outputSource },
+    }),
+    readZones: async () => ({ syncZones: false, zones }),
+    createStream: () => ({
+      start() { streaming = true; outputSource = 'external'; return true; },
+      push() { return true; },
+      async stop({ cancel }) { await cancel(() => true); },
+    }),
+    postControl: async command => {
+      writes.push(command);
+      if (command.cancelStream) streaming = false;
+      if (command.patternId === 'evening') outputSource = 'local';
+      return { ok: true };
+    },
+  });
+
   await session.start(['010203']);
-  await session.stop('user');
-  assert.equal(restores.length, 1);
-  assert.deepEqual(restores[0][0], { patternId: 'fire' });
-  assert.equal(restores[0][1].exactCardPatternId, 'fire');
-  assert.equal(restores[0][1].installedControlPatch, true);
-  assert.deepEqual(restores[0][1].expectedControlPatch, { patternId: 'fire' });
-  assert.equal(restores[0][1].latestOnly, false);
+  assert.deepEqual(await session.stop(), { reason: 'user', restored: true });
+  assert.deepEqual(writes, [{ cancelStream: true }, { patternId: 'evening', syncZones: false }]);
   assert.equal(session.status().state, 'restored');
 });

@@ -109,3 +109,44 @@ export async function installFakeCardBridge(page: Page, card: Pick<CardSimulator
     };
   }, { cardHost: host, bridgeVersion: 6 });
 }
+
+/** Exercise a real popup, WindowProxy and cross-origin message events without leaving the test machine. */
+export async function installPracticeCardPopup(page: Page, card: Pick<CardSimulator, 'relayBridge'>, {
+  hosts = ['lightweaver.local'],
+  shouldServe = () => true,
+}: {
+  hosts?: string[];
+  shouldServe?: (navigation: { host: string; attempt: number }) => boolean;
+} = {}) {
+  const navigations: { at: number; host: string; served: boolean }[] = [];
+  const relays: { at: number; host: string; type: string }[] = [];
+  await page.context().exposeBinding('__lwPracticePopupRelay', async ({ frame }, type: string, payload: unknown) => {
+    const host = new URL(frame.url()).hostname;
+    if (!hosts.includes(host)) throw new Error(`Unexpected practice popup host ${host}`);
+    relays.push({ at: Date.now(), host, type });
+    return card.relayBridge(type, payload);
+  });
+  for (const host of hosts) {
+    await page.context().route(`http://${host}/**`, async route => {
+      if (!route.request().isNavigationRequest()) return route.fallback();
+      const served = shouldServe({ host, attempt: navigations.length + 1 });
+      navigations.push({ at: Date.now(), host, served });
+      if (!served) return route.fulfill({ status: 503, contentType: 'text/plain', body: 'Practice card is joining Wi-Fi.' });
+      return route.fulfill({ contentType: 'text/html', body: `<!doctype html>
+<meta charset="utf-8"><title>Practice card</title><p>Practice card page</p>
+<script>
+  const studio = ${JSON.stringify(STUDIO_ORIGIN)};
+  const host = location.hostname;
+  const send = message => window.opener?.postMessage({ app: 'LightweaverCardBridge', version: 6, host, ...message }, studio);
+  window.addEventListener('message', async event => {
+    const message = event.data;
+    if (event.origin !== studio || event.source !== window.opener || message?.app !== 'LightweaverStudioBridge') return;
+    const answer = await window.__lwPracticePopupRelay(message.type, message.payload);
+    send({ id: message.id, type: message.type, ...answer });
+  });
+  send({ type: 'ready', href: location.href });
+</script>` });
+    });
+  }
+  return { navigations, relays };
+}

@@ -19,6 +19,17 @@
 .set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .set-actions .btn { white-space: nowrap; }
 
+.set-stack-install-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: calc(var(--stack-space) * 2);
+  padding-inline-start: var(--stack-space);
+  border-inline-start: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: var(--stack-text);
+}
+
 /* Card connection / hardware status banner */
 .set-status {
   margin: 4px 0 10px; padding: 9px 12px; border-radius: var(--r-sm);

@@ -103,7 +103,6 @@ test('the owner deletes one look on purpose: six to five saves without a wall', 
   await page.evaluate(() => { window.location.hash = '#screen=pattern'; });
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   await page.getByTestId('project-stack-card').first().getByRole('button', { name: /^Edit / }).click();
-  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   const save = page.getByTestId('pattern-install-on-card');
   await expect(save).toBeEnabled({ timeout: 30_000 });

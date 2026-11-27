@@ -156,9 +156,14 @@ export type CardSimulator = {
   /** Live, mutable. Assertions read this to ask the CARD what it is doing. */
   state: CardStateSpec & {
     cardId: string; bootId: string; stateRevision: number;
+    syncZones?: boolean;
     /** Opt-in complete output topology; legacy fixtures keep the one-output model. */
     explicitOutputs: SimulatedOutput[] | null;
     outputTopology?: SimulatedOutputTopology;
+    /** Simulate an installed build that validates the topology but predates advertising it. */
+    omitOutputTopology?: boolean;
+    /** Exercise the firmware's acknowledgement-only POST, using GET for candidate facts. */
+    minimalWiringCandidateAck?: boolean;
     installedWiringRevision?: number;
     installedWiringDigest?: string;
     stagedOutputs?: SimulatedOutput[];
@@ -182,6 +187,7 @@ export type CardSimulator = {
   unhandled: string[];
   /** Raw pixel-array frames received over the frame-stream WebSocket (see `frames` above). */
   frames: string[][];
+  lastFrameHost(): string | null;
   waitForPlaying(id: string, timeoutMs?: number): Promise<void>;
   /** Answer one bridge-relayed request from the same state. */
   handleBridge(type: string, payload: unknown): Record<string, unknown>;
@@ -464,7 +470,7 @@ function statusBody(state: CardSimulator['state']) {
       // fixtures that predate it keep today's shape.
       ...((state as { symmetrySides?: boolean }).symmetrySides ? { symmetrySides: 1 } : {}),
       firmwareUpdate: { version: 1, network: true, softwareGrant: true },
-      ...(state.outputTopology && {
+      ...(state.outputTopology && !state.omitOutputTopology && {
         outputTopology: {
           version: 1,
           outputPins: [...state.outputTopology.outputPins],
@@ -738,6 +744,12 @@ export function createCardSimulator(
     restartAfterActivateMs?: number;
     outputTopology?: SimulatedOutputTopology;
     initialWiring?: { revision: number; digest: string };
+    /** Installed look identity can differ from its zones' renderer IDs. */
+    previewPlayback?: {
+      syncZones: boolean;
+      zones: { id: string; patternId: string; brightness?: number }[];
+      installedLook?: { id: string; brightness: number };
+    };
   } = {},
 ): CardSimulator {
   const latency = options.latencyMs || CARD_LATENCY_MS;
@@ -848,6 +860,18 @@ export function createCardSimulator(
   // through /api/control, so a simulator with HTTP routes only would leave
   // that whole path unmodelled and every discovery frame silently lost.
   const frames: string[][] = [];
+  let lastFrameHost: string | null = null;
+  const previewPlayback = options.previewPlayback && {
+    syncZones: options.previewPlayback.syncZones,
+    zones: options.previewPlayback.zones.map(zone => ({ ...zone })),
+    streaming: false,
+  };
+  if (previewPlayback) {
+    state.zoneIds = previewPlayback.zones.map(zone => zone.id);
+    for (const zone of previewPlayback.zones) {
+      if (zone.brightness !== undefined) zoneControlsFor(state, zone.id).brightness = zone.brightness;
+    }
+  }
   let dropped = 0;
   let offline = false;
   let stressDelayMs = 0;
@@ -1001,11 +1025,9 @@ export function createCardSimulator(
       state.playlistPlaying = false;
       return;
     }
-    // A pattern written to ONE section of a card with several leaves the card
-    // with no current look, as firmware does (ZonePattern selection clears
-    // activePatternId). Measured on the real card 2026-11-25.
     const zoneTarget = typeof body.zone === 'string' ? body.zone.trim() : '';
-    if (zoneTarget && state.zoneIds.length > 1) {
+    // A pattern selected for one of several sections clears the installed look.
+    if (zoneTarget && state.zoneIds.includes(zoneTarget) && state.zoneIds.length > 1) {
       state.currentIndex = -1;
       state.currentId = '';
       state.playlistPlaying = false;
@@ -1157,7 +1179,14 @@ export function createCardSimulator(
     }
     switch (path) {
       case '/api/status':
-        return ok(statusBody(state));
+        return ok({
+          ...statusBody(state),
+          ...(previewPlayback ? {
+            streaming: previewPlayback.streaming,
+            frameSource: previewPlayback.streaming ? 'studio' : 'internal',
+            lwOutput: { ...(statusBody(state) as { lwOutput: object }).lwOutput, sourceClass: previewPlayback.streaming ? 'external' : 'local' },
+          } : {}),
+        });
       case '/api/firmware-info':
         return ok({
           ...statusBody(state),
@@ -1198,9 +1227,15 @@ export function createCardSimulator(
         return ok(Number.isInteger(limit) ? { ...body, patterns: (body.patterns || []).slice(0, limit) } : body);
       }
       case '/api/zones':
-        // Linked by default; a spec may unlink the sections (as on the real card)
-        // with `card.state.syncZones = false`.
-        return ok({ syncZones: (state as { syncZones?: boolean }).syncZones !== false, kaleidoscopeMappings: [], zones: zonesFor(state) });
+        return ok({
+          syncZones: previewPlayback?.syncZones ?? state.syncZones ?? true,
+          blackout: state.currentId === 'blackout',
+          kaleidoscopeMappings: [],
+          zones: zonesFor(state).map(zone => ({
+            ...zone,
+            patternId: previewPlayback?.zones.find(item => item.id === zone.id)?.patternId ?? zone.patternId,
+          })),
+        });
       case '/api/control':
         if (state.commandReady === false) {
           return {
@@ -1215,6 +1250,30 @@ export function createCardSimulator(
         if (typeof payload.colorOrder === 'string' && /^[RGBW]{3,4}$/.test(payload.colorOrder)) {
           (state as { liveColorOrder?: string }).liveColorOrder = payload.colorOrder;
           state.stateRevision += 1;
+        }
+        if (previewPlayback) {
+          if (payload.cancelStream) previewPlayback.streaming = false;
+          if (typeof payload.syncZones === 'boolean') previewPlayback.syncZones = payload.syncZones;
+          const id = typeof payload.patternId === 'string' ? payload.patternId : '';
+          const installed = options.previewPlayback?.installedLook;
+          if (id && (state.patterns.some(pattern => pattern.id === id) || payload.zone)) {
+            const targets = targetZoneIds(payload);
+            for (const zone of previewPlayback.zones) {
+              if (!targets.includes(zone.id)) continue;
+              if (!payload.zone && installed?.id === id) {
+                zone.patternId = options.previewPlayback?.zones.find(initial => initial.id === zone.id)?.patternId ?? id;
+                zoneControlsFor(state, zone.id).brightness = installed.brightness;
+              } else {
+                zone.patternId = id;
+              }
+            }
+            state.currentId = payload.zone && previewPlayback.zones.length > 1 ? '' : id;
+            state.currentIndex = payload.zone ? -1 : state.patterns.findIndex(pattern => pattern.id === id);
+            applyZoneControlFields(payload);
+            state.playlistPlaying = false;
+            state.stateRevision += 1;
+            return ok(controlAcknowledgement(state, payload));
+          }
         }
         applyControl(payload);
         return ok(controlAcknowledgement(state, payload));
@@ -1300,6 +1359,9 @@ export function createCardSimulator(
         // candidate. A direct J07 bare-wiring probe has no project identity,
         // so only that narrower shape leaves the active project untouched.
         state.stagedConfigPayload = candidate.projectFingerprint ? candidate : undefined;
+        if (state.minimalWiringCandidateAck) {
+          return ok({ ok: true, state: 'staged', activationId: state.activationId ?? STAGED_ACTIVATION_ID, nextStep: 'activate' });
+        }
         return ok(wiringStatusBody(state));
       }
       case '/api/wiring/activate': {
@@ -1632,6 +1694,7 @@ export function createCardSimulator(
     requests,
     unhandled,
     frames,
+    lastFrameHost: () => lastFrameHost,
     playingId: () => state.currentId,
     refuse(path, refusal) {
       refusals.set(path, {
@@ -1741,7 +1804,11 @@ export function createCardSimulator(
             try {
               const payload = JSON.parse(String(message));
               const pixels = payload?.seg?.[0]?.i;
-              if (Array.isArray(pixels)) frames.push(pixels);
+              if (Array.isArray(pixels)) {
+                frames.push(pixels);
+                lastFrameHost = host;
+                if (previewPlayback) previewPlayback.streaming = true;
+              }
             } catch { /* not a frame chunk this simulator understands — ignored, not fatal */ }
           });
         });

@@ -1,0 +1,71 @@
+.wiring-pin-evidence,
+.wiring-pin-actions {
+  --pin-evidence-gap: .5em;
+}
+
+.wiring-pin-evidence {
+  display: grid;
+  gap: var(--pin-evidence-gap);
+  min-width: 0;
+  color: var(--text-hi);
+}
+
+.wiring-pin-facts,
+.wiring-pin-mismatches {
+  display: grid;
+  gap: var(--pin-evidence-gap);
+  margin: 0;
+}
+
+.wiring-pin-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--pin-evidence-gap);
+}
+
+.wiring-pin-facts dt {
+  color: var(--text-lo);
+}
+
+.wiring-pin-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.wiring-pin-mismatches {
+  list-style: none;
+  padding: 0;
+}
+
+.wiring-pin-mismatches li {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--pin-evidence-gap);
+}
+
+.wiring-pin-mismatches span {
+  color: var(--text-mid);
+}
+
+.wiring-pin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pin-evidence-gap);
+}
+
+.wiring-pin-actions > .btn {
+  text-decoration: none;
+}
+
+.card-workspace-screen .lw-fact:has(.wiring-pin-evidence) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.card-workspace-screen .lw-fact:has(.wiring-pin-evidence) .lw-fact-v {
+  justify-content: flex-start;
+}
+
+.wire-discovered-list:has(.wiring-pin-evidence) {
+  scroll-margin-block-start: var(--lw-tap, 44px);
+}

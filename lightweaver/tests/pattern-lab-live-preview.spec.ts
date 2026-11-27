@@ -2,11 +2,15 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import { choosePattern, closeControls, openControls } from './helpers/pattern-lab.ts';
 
 declare global {
-  interface Window { __patternLabFrames: string[]; }
+  interface Window { __patternLabFrames: string[]; __recordPatternLabFrame: () => Promise<void>; }
 }
 
 async function installCardHarness(page: Page) {
   const controlBodies: Record<string, unknown>[] = [];
+  let currentPatternId = 'aurora';
+  let cancelledAtFrame = 0;
+  let frameCount = 0;
+  await page.exposeFunction('__recordPatternLabFrame', () => { frameCount += 1; });
   await page.addInitScript(() => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1,
@@ -24,7 +28,10 @@ async function installCardHarness(page: Page) {
       constructor(_url: string) {
         setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 0);
       }
-      send(payload: string) { window.__patternLabFrames.push(payload); }
+      send(payload: string) {
+        window.__patternLabFrames.push(payload);
+        void window.__recordPatternLabFrame().catch(() => {});
+      }
       close() { this.readyState = 3; this.onclose?.(); }
     }
     Object.defineProperty(window, 'WebSocket', { configurable: true, value: FakeWebSocket });
@@ -53,8 +60,9 @@ async function installCardHarness(page: Page) {
       return;
     }
     if (url.pathname === '/api/firmware-info' || url.pathname === '/api/status') {
+      const streaming = frameCount > cancelledAtFrame;
       await route.fulfill({ status: 200, headers, json: {
-        cardId: 'test-card', name: 'Test card', firmwareVersion: '1.0.0', buildId: 'test-build',
+        cardId: 'test-card', currentPatternId, streaming, name: 'Test card', firmwareVersion: '1.0.0', buildId: 'test-build',
         capabilities: { physicalFrameOrder: { version: 1 } },
       } });
       return;
@@ -62,16 +70,11 @@ async function installCardHarness(page: Page) {
     if (url.pathname === '/api/control' && request.method() === 'POST') {
       const body = request.postDataJSON() as Record<string, unknown>;
       controlBodies.push(body);
-      // requireLivePreviewAcknowledgement (cardLiveControl.js) confirms the
-      // applied look via response.appliedPatternId, not response.patternId —
-      // every other card-control test fixture in this suite echoes it
-      // (card-control-drawer.spec.ts, patterns-v3.spec.ts,
-      // wiring-workspace.spec.ts). This fixture was missing it, so any push
-      // that actually named a pattern (the restore-after-stop call) failed
-      // acknowledgement with "did not report which pattern … it applied".
-      await route.fulfill({ status: 200, headers, json: body.cancelStream && !body.patternId
-        ? { ok: true }
-        : { ok: true, cardId: 'test-card', patternId: body.patternId || 'aurora', appliedPatternId: body.patternId || 'aurora' } });
+      if (typeof body.patternId === 'string') currentPatternId = body.patternId;
+      if (body.cancelStream) cancelledAtFrame = frameCount;
+      await route.fulfill({ status: 200, headers, json: {
+        ok: true, cardId: 'test-card', appliedPatternId: currentPatternId,
+      } });
       return;
     }
     await route.fulfill({ status: 404, headers, json: { ok: false } });
@@ -112,14 +115,7 @@ test('library-only gradient still uses Preview on Lights frames and Stop restore
   await page.getByRole('button', { name: 'Stop preview' }).click();
   await expect(page.locator('.plab-live-preview [role="status"]')).toContainText('Previous card look restored');
   expect(controls.some(body => body.cancelStream && !body.patternId)).toBe(true);
-  expect(controls.some(body => (
-    body.patternId === 'aurora'
-    && body.brightness === 0.62
-    && body.zone === 'all'
-    && body.syncZones === false
-    && body.driftMin === 12
-    && body.driftMax === 211
-  ))).toBe(true);
+  expect(controls.some(body => body.patternId === 'aurora')).toBe(false);
 });
 
 test('leaving Pattern Lab rolls back an active frame-stream preview', async ({ page }) => {
@@ -134,7 +130,7 @@ test('leaving Pattern Lab rolls back an active frame-stream preview', async ({ p
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await expect(page.getByTestId('pattern-lab-screen')).toHaveCount(0);
   await expect.poll(() => controls.filter(body => body.cancelStream && !body.patternId).length).toBe(1);
-  await expect.poll(() => controls.some(body => body.patternId === 'aurora' && body.zone === 'all')).toBe(true);
+  expect(controls.some(body => body.patternId === 'aurora')).toBe(false);
 });
 
 test('Live preview keeps following native, Mandelbrot and Lotus selections until stopped', async ({ page }) => {

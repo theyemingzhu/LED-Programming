@@ -8,7 +8,7 @@ import { createPatternLabPreviewSession } from '../lib/patternLabPreviewSession.
 import { lookFromRecipe } from '../lib/patternLabHandoff.js';
 import { recipeUsesNativeCardLook } from '../lib/patternLabFromLook.js';
 import { patternLabSelectedTargetId } from '../lib/patternLabSectionEditing.js';
-import { pushLivePreviewToCard } from '../lib/cardLiveControl.js';
+import { useProject } from '../state/ProjectContext.jsx';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import usePatternLabWorker from './usePatternLabWorker.js';
 import { patternLabDisplayStrips, patternLabWorkerColorLookup as workerColorLookup } from '../lib/patternLabSampleMapping.js';
@@ -263,6 +263,9 @@ export default function PatternLabPreview({
   selectedStripIds = null,
   onStripSelect = null,
 }) {
+  const projectId = useProject()?.projectId;
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
   const physicalSessionRef = useRef(null);
   const transitionRef = useRef(Promise.resolve());
   const physicalGenerationRef = useRef(0);
@@ -346,7 +349,7 @@ export default function PatternLabPreview({
     if (!worker.failure) return null;
     const copy = PREVIEW_FAILURES[worker.failure] || PREVIEW_FAILURES['worker-error'];
     return { key: worker.failure, ...copy };
-  }, [worker.failure]);
+  }, [usesNativeLook, worker.failure]);
   // Report the mode actually SERVED, not the one requested. A degraded worker is
   // forced down to the preview budget, and this same frame is what gets pushed to a
   // physical card — claiming 1024 samples for a 384-sample frame would be a lie in
@@ -392,25 +395,23 @@ export default function PatternLabPreview({
     setPatternGaveUpLive(false);
     setPhysicalPreview({ state: 'starting', active: false, error: null });
     const timer = setTimeout(() => {
-      transitionRef.current = transitionRef.current.catch(() => {}).then(async () => {
+      transitionRef.current = transitionRef.current.catch(() => {}).then(async previous => {
         if (!current()) return;
-        if (usesNativeLook) {
-          try {
-            const look = lookFromRecipe(latestRecipeRef.current)?.defaultLook;
-            if (!look) throw new Error('This look cannot play natively on the card.');
-            const reply = await pushLivePreviewToCard(look, { host: cardStatus.host || '', timeoutMs: 2200, latestOnly: false, previewArbitration: { isCurrent: current } });
-            if (reply?.ok === false || reply?.delivered === false || reply?.skipped === true) {
-              throw new Error(reply.message || reply.reason || 'The card did not accept this look.');
-            }
-            if (current()) setPhysicalPreview({ state: 'native-look', active: true, delivered: true, error: null });
-          } catch (error) {
-            if (current()) setPhysicalPreview({ state: 'error', active: false, error });
-          }
+        if (previous?.state === 'error' || previous?.state === 'superseded') {
+          setPhysicalPreview(previous);
+          setLiveEnabled(false);
+          return;
+        }
+        const nativeLook = usesNativeLook ? lookFromRecipe(latestRecipeRef.current)?.defaultLook : null;
+        if (usesNativeLook && !nativeLook) {
+          setPhysicalPreview({ state: 'error', active: false, error: new Error('This look cannot play natively on the card.') });
           return;
         }
         const session = createPatternLabPreviewSession({
           host: cardStatus.host || '',
           fallbackLook,
+          nativeLook,
+          validateCurrent: () => projectIdRef.current === projectId,
           onStateChange: next => { if (current()) setPhysicalPreview(next); },
         });
         physicalSessionRef.current = session;
@@ -428,12 +429,15 @@ export default function PatternLabPreview({
       physicalSessionRef.current = null;
       // stop() cancels synchronously even if its snapshot read is unfinished.
       const stopping = session?.stop('selection-changed');
-      transitionRef.current = transitionRef.current.catch(() => {}).then(() => stopping).catch(() => {});
+      transitionRef.current = transitionRef.current.catch(() => {}).then(async () => {
+        await stopping;
+        return session?.status();
+      }).catch(error => ({ state: 'error', active: false, error }));
     };
-  }, [cardStatus.connected, cardStatus.host, engineKey, liveEnabled, nativeRecipeKey, readyForPhysical, thumbnail, usesNativeLook]);
+  }, [cardStatus.connected, cardStatus.host, engineKey, liveEnabled, nativeRecipeKey, projectId, readyForPhysical, thumbnail, usesNativeLook]);
 
   useEffect(() => {
-    if (!worker.failure || !TERMINAL_WORKER_FAILURES.has(worker.failure)) return;
+    if (usesNativeLook || !worker.failure || !TERMINAL_WORKER_FAILURES.has(worker.failure)) return;
     const session = physicalSessionRef.current;
     if (!session) return;
     physicalSessionRef.current = null;
@@ -442,12 +446,13 @@ export default function PatternLabPreview({
       .then(() => setPhysicalPreview(session.status()))
       .catch(error => setPhysicalPreview({ ...session.status(), state: 'error', active: false, error }))
       .finally(() => setLiveEnabled(false));
-  }, [worker.failure]);
+  }, [usesNativeLook, worker.failure]);
 
   async function togglePhysicalPreview() {
     if (liveEnabled) {
       const session = physicalSessionRef.current;
       physicalSessionRef.current = null;
+      if (session) setPhysicalPreview({ state: 'stopping', active: false, error: null });
       setLiveEnabled(false);
       if (session) {
         try {
@@ -463,6 +468,7 @@ export default function PatternLabPreview({
       }
       return;
     }
+    transitionRef.current = transitionRef.current.then(() => undefined, () => undefined);
     setLiveEnabled(true);
   }
 
@@ -578,8 +584,10 @@ export default function PatternLabPreview({
         // verbatim for the frame-stream path.
         const statusText = sectionPreviewUnsupported
           ? 'Section edits are preserved. Preview this section from Patterns; Lab needs a verified card section mapping before controlling it.'
+          : physicalPreview.state === 'superseded'
+          ? physicalPreview.error?.message || live.caption
           : physicalPreview.error
-          ? `Live preview failed: ${physicalPreview.error.message}. ${physicalPreview.restored ? 'Previous card look restored.' : 'Check your lights before retrying.'}`
+          ? `Live preview failed: ${physicalPreview.error.message.replace(/\.$/, '')}. ${physicalPreview.restored ? 'Previous card look restored.' : 'Check your lights before retrying.'}`
           : patternGaveUpLive
             ? live.caption
           : physicalPreview.state === 'native-look'
@@ -588,13 +596,13 @@ export default function PatternLabPreview({
               ? 'Connection lost · reconnect the card to resume Live preview.'
               : liveEnabled && !hasRenderedFrame
                 ? 'Preparing the selected pattern before sending it to your lights…'
+                : physicalPreview.state === 'stopping'
+                  ? live.caption
                 : live.key === 'restored'
                   ? 'Previous card look restored'
                   : physicalPreview.active && !physicalPreview.delivered
                     ? 'Sending the first frame · waiting for the card…'
-                    : liveEnabled ? live.caption : usesNativeLook && physicalPreview.state === 'stopped'
-                    ? 'Live preview off · the card keeps the last requested look.'
-                    : 'Live preview off · turn on to follow your selections.';
+                    : liveEnabled ? live.caption : 'Live preview off · turn on to follow your selections.';
         const label = liveEnabled ? 'Stop preview' : 'Live preview';
         const liveKey = physicalPreview.state === 'native-look' ? 'native-look' : live.key;
         return (
@@ -661,7 +669,7 @@ export default function PatternLabPreview({
               type="button"
               className="plab-live-preview-action"
               aria-pressed={liveEnabled}
-              disabled={!liveEnabled && (!cardStatus.connected || !readyForPhysical)}
+              disabled={physicalPreview.state === 'stopping' || (!liveEnabled && (!cardStatus.connected || !readyForPhysical))}
               onClick={togglePhysicalPreview}
               style={{
                 width: '100%',
