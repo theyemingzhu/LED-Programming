@@ -886,9 +886,16 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // ── Auto-load from localStorage on mount ─────────────────────────────────
   const didLoadRef = useRef(false);
   const restoredFromLibraryRef = useRef(false);
+  const recoveryBaselineRef = useRef(null);
   useEffect(() => {
     if (didLoadRef.current) return;
     didLoadRef.current = true;
+    try {
+      recoveryBaselineRef.current = {
+        primary: localStorage.getItem(LS_AUTOSAVE_KEY),
+        backup: localStorage.getItem(LS_AUTOSAVE_BACKUP_KEY),
+      };
+    } catch { /* no reliable baseline for an unload write */ }
     try {
       if (initialProjectEnvelope?.project && initialProjectEnvelope?.contentHash) {
         repositoryHeadRef.current = {
@@ -1073,8 +1080,11 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     ));
   }, [projectLifecycle, serializeProject]);
 
-  const saveBrowserRecovery = useCallback(() => (
-    writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject())
+  const saveBrowserRecovery = useCallback((expectedCopies) => (
+    writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject(), {
+      expectedCopies,
+      onMirrored: text => { recoveryBaselineRef.current = { primary: text, backup: text }; },
+    })
   ), [serializeProject]);
 
   const flushProjectAutosave = useCallback(() => {
@@ -1121,7 +1131,13 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         || current.editedRevision !== projectLifecycle.editedRevision) return;
       // Only the current browser draft can be saved synchronously on exit.
       // Leave the repository queue and its conflict handling to the normal flush.
-      try { saveBrowserRecovery(); } catch { /* previous recovery copies remain */ }
+      try {
+        if (saveBrowserRecovery(recoveryBaselineRef.current)) return;
+        // A page held in the back/forward cache must not later run the same
+        // stale timer against a newer draft it already declined to overwrite.
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      } catch { /* previous recovery copies remain */ }
     };
     window.addEventListener('pagehide', savePendingRecovery);
     return () => {

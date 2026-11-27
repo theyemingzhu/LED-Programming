@@ -107,15 +107,19 @@ test('a fresh layout offers primitive choices and creates a centered selected ci
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 });
 
-test('a newly created strip survives a browser reload before the delayed autosave', async ({ page }) => {
-  await gotoFreshLayout(page);
-  await expect.poll(() => readAutosaveStrips(page)).toHaveLength(2);
+async function holdDelayedAutosave(page: any) {
   // Keep the 500 ms timer pending across a real browser reload, independent of CI speed.
   await page.evaluate(() => {
     const schedule = window.setTimeout;
     window.setTimeout = ((callback, delay, ...args) =>
       schedule(callback, delay === 500 ? 60_000 : delay, ...args)) as typeof window.setTimeout;
   });
+}
+
+test('a newly created strip survives a browser reload before the delayed autosave', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await expect.poll(() => readAutosaveStrips(page)).toHaveLength(2);
+  await holdDelayedAutosave(page);
   const picker = page.getByTestId('layout-primitive-picker');
   await picker.getByRole('button', { name: 'Create line' }).click();
   const rows = page.locator('.la-strip-row');
@@ -132,6 +136,31 @@ test('a newly created strip survives a browser reload before the delayed autosav
     return { mirrored: primary === backup, names: JSON.parse(primary!).layout.strips.map((strip: { name: string }) => strip.name) };
   });
   expect(saved).toEqual({ mirrored: true, names: ['Line'] });
+});
+
+test('reloading a dirty tab preserves a newer draft saved from another Studio tab', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  await expect.poll(async () => (await readAutosaveStrips(page))?.map((strip: { name: string }) => strip.name)).toEqual(['Line']);
+
+  const newerTab = await page.context().newPage();
+  await newerTab.goto('/#screen=layout');
+  await expect(newerTab.locator('.la-strip-row')).toHaveCount(1);
+  await newerTab.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await newerTab.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Circle', exact: true }).click();
+  await expect.poll(async () => (await readAutosaveStrips(newerTab))?.map((strip: { name: string }) => strip.name)).toEqual(['Line', 'Circle']);
+  await newerTab.close();
+
+  // The older tab starts a new edit after the newer tab has already saved.
+  await holdDelayedAutosave(page);
+  await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await page.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Square', exact: true }).click();
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Line', 'Square']);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Line', 'Circle']);
+  const mirrors = await page.evaluate(() => localStorage.getItem('lw_autosave_v3') === localStorage.getItem('lw_autosave_v3_backup'));
+  expect(mirrors).toBe(true);
 });
 
 test('an untouched fresh starter survives autosave reload, but a saved legacy circle layout is never hidden', async ({ page }) => {
