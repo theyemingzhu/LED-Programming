@@ -70,7 +70,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
               cardId: (state.outcome === 'wrong-card' || (state.outcome === 'wrong-status-card' && message.command === 'status')) ? 'lw-112233445566' : cardId,
               bootId: 'usb-wifi-boot-1', firmwareVersion: release.firmwareVersion, buildId: release.buildId, buildNumber: release.buildNumber,
               usbWifiProvisioning: true, freshInstallEligible: !connected, attemptId,
-              wifi: { transition: connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', stationIp: connected && state.outcome !== 'already-configured-early' ? '192.168.18.70' : '', handoffGeneration: attemptId ? Math.max(state.generation, 1) : 0,
+              wifi: { transition: state.outcome === 'already-configured' ? 'station' : connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', transitionPending: state.outcome !== 'already-configured', stationIp: connected && state.outcome !== 'already-configured-early' ? '192.168.18.70' : '', handoffGeneration: attemptId ? Math.max(state.generation, 1) : 0,
                 joinFailed: Boolean(failure), lastError: failure, failureReason: failure === 'unknown' ? 'connection_failed' : failure.replaceAll('-', '_'), driverReason: failure === 'ssid-not-found' ? 201 : failure === 'authentication-failed' ? 202 : 0, apActive: true },
               ...(message.command === 'scan' ? { scanning: false, networks: [{ ssid: 'Gallery scanned network', rssi: -42, secure: true }] } : {}),
             };
@@ -358,6 +358,16 @@ test('a different LAN card cannot clear an inspect flow or enter strip discovery
     return Object.values(registry.flows).some((entry: any) => entry.flow.operation === 'inspect-card');
   })).toBe(true);
   expect(await page.evaluate(() => (window as any).__usbWifiBridge.types.filter((type: string) => type === 'config'))).toEqual([]);
+});
+
+test('USB install with a settled station connection skips entering Wi-Fi credentials', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'already-configured');
+  await fillWifi(page);
+  await install(page);
+  await expect(page.getByRole('heading', { name: 'Set up card', exact: true })).toBeVisible();
+  await expect(page.getByTestId('usb-wifi-setup')).toHaveCount(0);
+  await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
+  expect((await serialCommands(page)).map((command: any) => command.command)).toEqual(['hello']);
 });
 
 test('Find never offers USB credential writes to a configured current card', async ({ page, request }) => {

@@ -1704,7 +1704,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               setCardState({ state: 'ready', hardware: running, error: '' });
               setUsbFirmwareRead({ state: 'done', progress: 1, bytesRead: 0, totalBytes: 0 });
               setUsbInspectionReleasedForSetup(true);
-              if (runtimeSession.identity.freshInstallEligible) {
+              if (runtimeSession.identity.freshInstallEligible && !runtimeSession.identity.stationIp) {
                 wifiInstallRef.current = { kind: 'existing-current', flow: started, port, expected };
                 wifiSessionRef.current = runtimeSession;
                 setCommissioning(started);
@@ -1824,10 +1824,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         const session = await openUsbWifiSession({ port: context.port, expected: context.expected,
           helloReadyTimeoutMs: context.helloReadyTimeoutMs || 0 });
         if (!mountedRef.current) { await session.close(); return null; }
+        reportInstallFirmwareEvidence({ ...session.identity, id: session.identity.cardId, source: 'usb-runtime' });
         if (context.kind === 'preserving-update') {
           preservingUsbRuntimeVerifiedRef.current = true;
           setPreservingUsbRuntimeVerified(true);
-          reportInstallFirmwareEvidence({ ...session.identity, id: session.identity.cardId, source: 'usb-runtime' });
           const saved = readFirmwareUpdateSession();
           if (saved?.mode === 'usb' && saved.cardId === session.identity.cardId
             && saved.targetBuildId === session.identity.buildId
@@ -1838,6 +1838,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         const savedAttempt = context.kind === 'preserving-update'
           ? readFirmwareUpdateSession()?.usbWifiAttempt || context.attempt
           : context.flow.usbWifiAttempt;
+        if (!savedAttempt && session.identity.stationIp) {
+          wifiSessionRef.current = session;
+          await completeWifiSetup({ state: 'station', stationIp: session.identity.stationIp });
+          return null;
+        }
         if (context.kind === 'preserving-update' && session.identity.freshInstallEligible !== true) {
           if (savedAttempt) {
             wifiSessionRef.current = session;
@@ -1855,9 +1860,6 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           return null;
         }
         wifiSessionRef.current = session;
-        if (context.kind !== 'preserving-update') {
-          reportInstallFirmwareEvidence({ ...session.identity, id: session.identity.cardId, source: 'usb-runtime' });
-        }
         if (savedAttempt) {
           setWifiStatus({ state: 'joining', message: 'Checking the previous Wi-Fi attempt on this exact card…' });
           try {
@@ -2090,6 +2092,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       ? readFirmwareUpdateSession()?.usbWifiAttempt || wifiInstallRef.current.attempt
       : wifiInstallRef.current?.flow?.usbWifiAttempt);
     const preservingUsbWifi = wifiInstallRef.current?.kind === 'preserving-update';
+    const checkingWifiUsb = wifiStatus.state === 'connecting';
     const wifiForm = (
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
@@ -2397,8 +2400,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     if (installState === 'wifi-setup') return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
-        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>{pendingSetupSave ? 'Save card setup progress' : 'Connect to Wi-Fi'}</InstallHeading></header>
-        {wifiForm}
+        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>{pendingSetupSave ? 'Save card setup progress' : checkingWifiUsb ? 'Checking card Wi-Fi' : 'Connect to Wi-Fi'}</InstallHeading></header>
+        {checkingWifiUsb ? <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p> : wifiForm}
       </div></div>
     );
     const releaseReady = releaseState.state === 'ready';
