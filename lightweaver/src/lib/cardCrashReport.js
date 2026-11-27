@@ -12,14 +12,15 @@ const REASON_WORDS = {
   brownout: 'lost power briefly (brownout)',
 };
 
-const PHASE_WORDS = {
-  idle: 'idle',
-  render: 'drawing lights',
-  configSave: 'saving a project',
-  wifi: 'handling Wi-Fi',
-  storage: 'using storage',
-  update: 'updating',
-  http: 'answering a request',
+// The firmware can classify a recent request by path without knowing whether
+// it was still in progress when the reset occurred.
+const ACTIVITY_SENTENCES = {
+  render: 'Recent activity involved drawing lights.',
+  configSave: 'Recent activity involved project or wiring settings.',
+  wifi: 'Recent activity involved Wi-Fi.',
+  storage: 'Recent activity involved storage.',
+  update: 'Recent activity involved an update.',
+  http: 'The card recorded a recent HTTP request.',
 };
 
 const HEX32 = /^0x[0-9a-f]{8}$/;
@@ -66,10 +67,15 @@ export function parseCardCrashReport(status) {
 export function describeCardCrash(report) {
   if (report?.state !== 'recorded') return '';
   const { crash } = report;
-  const what = REASON_WORDS[crash.reason] || 'restarted unexpectedly';
-  const doing = PHASE_WORDS[crash.phase] || 'doing something unknown';
+  const what = Object.hasOwn(REASON_WORDS, crash.reason) ? REASON_WORDS[crash.reason] : 'restarted unexpectedly';
+  const activity = Object.hasOwn(ACTIVITY_SENTENCES, crash.phase) ? ACTIVITY_SENTENCES[crash.phase] : null;
   const hours = (crash.uptimeMs / 3600000).toFixed(2);
-  return `The card ${what} while ${doing}, after ${hours} hours running. It has done this ${crash.sequence} time${crash.sequence === 1 ? '' : 's'}.`;
+  const resetWord = crash.sequence === 1 ? 'reset' : 'resets';
+  return [
+    `The card ${what} after ${hours} hours running.`,
+    activity,
+    `The card has recorded ${crash.sequence} unexpected ${resetWord} in total.`,
+  ].filter(Boolean).join(' ');
 }
 
 // The Health row's line: the plain sentence for a recorded crash, a short
@@ -91,9 +97,9 @@ export function formatCardCrashDetails(report, { cardId = '', firmwareVersion = 
     describeCardCrash(report),
     `Card: ${cardId || 'unknown'}`,
     `Firmware: ${firmwareVersion || 'unknown'} (build ${build})`,
-    `Crash number: ${crash.sequence}`,
+    `Total unexpected resets: ${crash.sequence}`,
     `Reset reason: ${crash.resetReason} (${crash.reason})`,
-    `Doing: ${crash.phase}`,
+    `Recorded phase: ${crash.phase}`,
     `Task: ${crash.task || 'unknown'}`,
     `Uptime: ${crash.uptimeMs} ms`,
     `Free memory: ${crash.freeHeap} bytes (lowest ${crash.minFreeHeap})`,

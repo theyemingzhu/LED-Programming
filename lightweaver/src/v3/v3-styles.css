@@ -909,7 +909,11 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-palette-presets button:disabled { opacity: .55; cursor: wait; }
 .card-control-actions { display: flex; gap: 8px; justify-content: space-between; border-top: 1px solid var(--border-hair); padding-top: 17px; }
 .card-control-actions .primary { background: var(--accent); border-color: var(--accent-hi); color: var(--on-accent); }
-.card-control-loading { margin: 24px 0; color: var(--text-mid); }
+.card-loading-status:empty { position: absolute; }
+.card-loading-status:not(:empty) { display: flex; align-items: center; gap: 8px; }
+.card-loading-status .lw-notice-spinner, .card-status-control .lw-notice-spinner { margin-top: 0; }
+.card-control-loading:not(:empty) { margin: 24px 0; color: var(--text-mid); }
+.card-connection-loading:not(:empty) { margin-top: 14px; font-size: 12.5px; }
 .card-control-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 11px; border: 1px solid color-mix(in srgb, var(--danger) 60%, var(--border)); border-radius: var(--r-sm); background: color-mix(in srgb, var(--danger) 10%, var(--bg-panel)); }
 .card-control-error p { margin: 0; color: var(--text-hi); font-size: 12px; line-height: 1.4; }
 .card-connection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }

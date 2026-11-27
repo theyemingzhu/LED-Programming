@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { CardLoadingStatus } from './CardLoadingStatus.jsx';
 import { ClientPlayerLink } from './ClientPlayerLink.jsx';
 import { readCardPatternsFromCard, readCardZonesFromCard, pushLivePreviewToCard, readBackLivePreview } from '../../lib/cardLiveControl.js';
 import {
@@ -97,7 +98,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
   }, [host, link.card?.id, link.transport, onClose, open, readContextKey, reloadKey]);
 
   if (!open) return null;
-  const view = controls?.view;
+  const view = controls?.readContextKey === readContextKey ? controls.view : null;
   // The lifecycle is the one status authority; the app shell always passes
   // it, and a bare render derives the same diagnosis from the link.
   // connectionLabel, not label: this line answers "Card connection", and
@@ -196,7 +197,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
         {!safeControlsReady ? <div className="card-control-error" role="status"><p>Card controls are paused until this exact card and installed project are verified.</p><button type="button" className="btn" onClick={onReconnect}>Reconnect</button></div> : null}
 
         {loadError ? <div className="card-control-error" role="alert"><p>{loadError}</p><button type="button" className="btn" onClick={() => setReloadKey(key => key + 1)}>Try again</button></div> : null}
-        {!controls && !loadError ? <p className="card-control-loading" role="status">Reading the card controls…</p> : null}
+        <CardLoadingStatus className="card-control-loading">{!view && !loadError ? 'Reading the card controls…' : ''}</CardLoadingStatus>
         {view ? <div className="card-control-body">
           <section aria-labelledby="card-pattern-heading">
             <h3 id="card-pattern-heading">Pattern on the card</h3>

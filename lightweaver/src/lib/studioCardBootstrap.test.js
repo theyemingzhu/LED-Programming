@@ -21,12 +21,15 @@ test('Studio reload restores its persisted exact card through direct transport',
     readIdentity: () => ({ id: 'lw-card-a', name: 'Saved card' }),
     readHost: () => 'lightweaver.local',
     candidateHosts: () => ['192.168.18.70', 'lightweaver.local'],
-    connectTransport: async options => { calls.push(options); return authority; },
+    probeTransport: async options => { calls.push(options); return authority; },
+    activateTransport: probe => probe,
     persistIdentity: value => { persisted = value; return true; },
   });
 
   assert.equal(result, authority);
-  assert.deepEqual(calls, [{ host: '192.168.18.70', expectedCardId: 'lw-card-a' }]);
+  assert.deepEqual(calls.map(({ host, expectedCardId }) => ({ host, expectedCardId })), [
+    { host: '192.168.18.70', expectedCardId: 'lw-card-a' },
+  ]);
   assert.equal(persisted.id, 'lw-card-a');
   assert.equal(persisted.address, '192.168.18.70');
   assert.equal(persisted.bootId, 'boot-new');
@@ -40,16 +43,48 @@ test('Studio falls through stale hosts until the exact paired card answers', asy
     readIdentity: () => ({ id: 'lw-card-a', address: '192.168.18.70' }),
     readHost: () => 'lightweaver.local',
     candidateHosts: () => ['lightweaver.local', '192.168.18.70'],
-    connectTransport: async ({ host }) => {
+    probeTransport: async ({ host }) => {
       calls.push(host);
       return host === '192.168.18.70'
         ? { connected: true, host, cardId: 'lw-card-a', card: { id: 'lw-card-a' } }
         : { connected: false, reason: 'direct-unavailable' };
     },
+    activateTransport: probe => probe,
     persistIdentity: () => true,
   });
   assert.equal(result.connected, true);
   assert.deepEqual(calls, ['lightweaver.local', '192.168.18.70']);
+});
+
+test('a silent remembered route cannot hold up a matching alternate or activate a late reply', { timeout: 1000 }, async () => {
+  const calls = [];
+  const activations = [];
+  const remembered = { id: 'lw-card-a', address: '192.168.18.70' };
+  const matching = { connected: true, host: 'lightweaver.local', cardId: remembered.id };
+  let firstSignal;
+  const result = await bootstrapStudioCardConnection({
+    bootstrapLink: async () => ({ state: 'disconnected' }),
+    isConnected: () => false,
+    readIdentity: () => remembered,
+    candidateHosts: () => [remembered.address, '192.168.4.1', matching.host],
+    probeTransport: async ({ host, expectedCardId, signal }) => {
+      assert.equal(expectedCardId, remembered.id);
+      calls.push(host);
+      if (host === remembered.address) {
+        firstSignal = signal;
+        await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+        return { ...matching, host };
+      }
+      if (host === '192.168.4.1') return { connected: false, reason: 'wrong-card' };
+      return matching;
+    },
+    activateTransport: probe => { activations.push(probe); return probe; },
+    persistIdentity: () => true,
+  });
+  assert.equal(result, matching);
+  assert.deepEqual(calls, [remembered.address, '192.168.4.1', matching.host]);
+  assert.deepEqual(activations, [matching]);
+  assert.equal(firstSignal.aborted, true);
 });
 
 test('Studio never races direct transport against a restored bridge', async () => {
@@ -58,7 +93,7 @@ test('Studio never races direct transport against a restored bridge', async () =
   const result = await bootstrapStudioCardConnection({
     bootstrapLink: async () => bridge,
     isConnected: state => state.state === 'connected-bridge',
-    connectTransport: async () => { directCalls += 1; },
+    probeTransport: async () => { directCalls += 1; },
   });
   assert.equal(result, bridge);
   assert.equal(directCalls, 0);
@@ -124,6 +159,7 @@ test('Studio probes only well-known hosts for a plugged-in card this browser has
     readStatus: async options => { calls.push(options); return status; },
     reportStatus: report => { reports.push(report); },
     getLinkState: () => foundUnpaired,
+    activateTransport: probe => probe,
     persistIdentity: () => { persistCalls += 1; return true; },
   });
   assert.equal(result, foundUnpaired);
@@ -179,7 +215,7 @@ test('Studio reload writes down the firmware the card is actually running, whole
     }),
     readHost: () => 'lightweaver.local',
     candidateHosts: () => ['lightweaver.local'],
-    connectTransport: async () => ({
+    probeTransport: async () => ({
       connected: true,
       host: 'lightweaver.local',
       cardId: 'lw-card-a',
@@ -189,6 +225,7 @@ test('Studio reload writes down the firmware the card is actually running, whole
         id: 'lw-card-a', firmwareVersion: '1.1.0', buildId: 'b'.repeat(40), buildNumber: 1548,
       },
     }),
+    activateTransport: probe => probe,
     persistIdentity: value => { persisted = value; return true; },
   });
   // All three firmware fields move together, or the record describes a build

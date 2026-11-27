@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatGpio } from '../lib/cardPinout.js';
+import { CardLoadingStatus } from '../components/card/CardLoadingStatus.jsx';
 import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { FirstSaveOrFind } from '../components/card/FirstSaveOrFind.jsx';
 import './lw-setup.css';
@@ -1101,12 +1102,11 @@ export function SetupScreen({
               ) : (
                 <button type="button" className="btn primary" data-testid="setup-connect-card" onClick={() => onOpenConnectionCenter?.()}>{connectionLabel}</button>
               )}
-              {pairState.message && (
-                <p
-                  className={pairState.busy ? 'lw-setup-progress' : 'card-connection-failure'}
-                  role="status"
-                  data-testid="setup-pair-failure"
-                >{pairState.message}</p>
+              <CardLoadingStatus className="lw-setup-progress">
+                {pairState.busy ? (pairState.message || 'Looking for the Lightweaver card…') : ''}
+              </CardLoadingStatus>
+              {!pairState.busy && pairState.message && (
+                <p className="card-connection-failure" role="status" data-testid="setup-pair-failure">{pairState.message}</p>
               )}
               {(!canFindInPlace || (pairState.message && !pairState.busy)) && (
                 <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
