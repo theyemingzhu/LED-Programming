@@ -24,7 +24,7 @@ import {
   sendCardBridgeRequest,
   verifyCardBridgeIdentity,
 } from './cardBridge.js';
-import { cardHostToUrl, normalizeCardHost, readStoredCardHost, rememberCardHost, writeStoredCardHost } from './cardConnection.js';
+import { cardHostToUrl, normalizeCardHost, readStoredCardHost, rememberCardHost, rememberVerifiedPairedCardHost, writeStoredCardHost } from './cardConnection.js';
 import {
   classifyPairedCardReadiness,
   compareCardIdentity,
@@ -1878,6 +1878,15 @@ export function reportDirectCardStatus({
       type: 'direct-status', connected: true, host, card: identity, expectedCard,
       acknowledgedAt, allowAdopt, blank, readiness: status,
     });
+    // The local status poll may establish the link before Studio bootstrap.
+    // The verified address also belongs in the pairing used on the next load.
+    const verified = link.getState();
+    if (rememberedCard?.id === identity.id && rememberedCard.address !== verified.host
+      && verified.state === 'connected-direct' && !verified.handoffCorrelation
+      && verified.host === normalizeCardHost(host) && verified.card?.id === identity.id
+      && verified.validatedBootId === status?.bootId) {
+      rememberVerifiedPairedCardHost(verified.host, identity.id);
+    }
     return;
   }
   if (detectedStatus) {
