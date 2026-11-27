@@ -2582,16 +2582,20 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     const upstream = await page.request.fetch(`http://localhost:${testPort}${requested.pathname}${requested.search}`);
     await route.fulfill({ response: upstream });
   });
+  await page.clock.install();
   await page.goto('https://led.mandalacodes.com/#screen=card&section=overview', {
     waitUntil: 'domcontentloaded',
   });
 
-  const result = await page.evaluate(async () => {
+  const setup = await page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
     const handoff = await import('/src/lib/cardWifiHandoff.js');
     const cardLink = await import('/src/lib/cardLink.js');
     const commissioning = await import('/src/lib/cardCommissioningFlow.js');
     const cardPushClient = await import('/src/lib/cardPushClient.js');
+    // Attach the production link observer before the fixture emits navigation,
+    // just as an open Studio page observes an actual card page.
+    cardLink.getSharedCardLink();
 
     const priorCard = {
       version: 1,
@@ -2772,36 +2776,51 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     const hostBeforeFinal = localStorage.getItem('lw_chip_card_host');
     emitReady();
 
-    const deadline = Date.now() + 7000;
-    while (Date.now() < deadline && !cardLink.getCardLinkState().handoffStationVerified) {
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    const linkAfterFinal = cardLink.getCardLinkState();
-    const bridgeAfterFinal = bridge.getCardBridgeState();
     (window as any).__blankProductionPath = {
       messageTypes, flowId, replacementFlowId, correlation,
-      expectedFreshEvidence: structuredClone(status),
+      readFreshEvidence: () => structuredClone(status),
       capturedPush: null,
     };
     (window as any).__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ = async (
       runtimePackage: Record<string, unknown>,
       options: Record<string, unknown>,
     ) => {
-      (window as any).__blankProductionPath.capturedPush = structuredClone({ runtimePackage, options });
-      return cardPushClient.pushConfigToCard(runtimePackage, options);
+      const fixture = (window as any).__blankProductionPath;
+      const start = fixture.messageTypes.length;
+      fixture.capturedPush = structuredClone({ runtimePackage, options });
+      try {
+        return await cardPushClient.pushConfigToCard(runtimePackage, options);
+      } finally {
+        fixture.pushTypes = fixture.messageTypes.slice(start);
+      }
     };
 
+    return { hostBeforeFinal, ackTimeoutMs: cardLink.CARD_LINK_PING_TIMEOUT_MS };
+  });
+
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).__blankProductionPath.messageTypes.filter((type: string) => type === 'wifi-handoff-ack').length,
+  )).toBe(1);
+  // The fixture drops the acknowledgement reply and reloads the same card
+  // page. Drive the real ACK timeout and the subsequent half-second status
+  // check without racing a wall-clock deadline on a loaded runner.
+  await page.clock.runFor(setup.ackTimeoutMs + 1_000);
+  const result = await page.evaluate(async hostBeforeFinal => {
+    const bridge = await import('/src/lib/cardBridge.js');
+    const cardLink = await import('/src/lib/cardLink.js');
+    const fixture = (window as any).__blankProductionPath;
+    fixture.expectedFreshEvidence = fixture.readFreshEvidence();
     return {
       protocol: location.protocol,
       hostBeforeFinal,
       persistedHost: localStorage.getItem('lw_chip_card_host'),
       priorIdentity: JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null'),
-      linkAfterFinal,
-      bridgeAfterFinal,
-      ackCount: messageTypes.filter(type => type === 'wifi-handoff-ack').length,
-      statusCount: messageTypes.filter(type => type === 'status').length,
+      linkAfterFinal: cardLink.getCardLinkState(),
+      bridgeAfterFinal: bridge.getCardBridgeState(),
+      ackCount: fixture.messageTypes.filter((type: string) => type === 'wifi-handoff-ack').length,
+      statusCount: fixture.messageTypes.filter((type: string) => type === 'status').length,
     };
-  });
+  }, setup.hostBeforeFinal);
 
   expect(result.protocol).toBe('https:');
   expect(result.hostBeforeFinal).toBe('192.168.4.1');
@@ -2860,6 +2879,7 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     return {
       types,
       configsSent,
+      pushTypes: fixture.pushTypes,
       authorityAfterRestore,
       capturedPush: fixture.capturedPush,
       expectedFreshEvidence: fixture.expectedFreshEvidence,
@@ -2875,10 +2895,12 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
   expect(productionPath.capturedPush.runtimePackage.config.kaleidoscopeMappings).toHaveLength(1);
   expect(productionPath.capturedPush.options.cardEvidence).toEqual(productionPath.expectedFreshEvidence);
   expect(productionPath.types).not.toContain('wiring-candidate');
-  const configIndex = productionPath.types.indexOf('config');
+  // Scope command ordering to the actual push; the provisioning screen may
+  // independently compare firmware before the owner presses Restore.
+  const configIndex = productionPath.pushTypes.indexOf('config');
   expect(configIndex).toBeGreaterThanOrEqual(0);
-  expect(productionPath.types.slice(0, configIndex)).not.toContain('firmware-info');
-  expect(productionPath.types.slice(configIndex + 1)).toContain('firmware-info');
+  expect(productionPath.pushTypes.slice(0, configIndex)).not.toContain('firmware-info');
+  expect(productionPath.types.slice(productionPath.types.indexOf('config') + 1)).toContain('firmware-info');
   expect(productionPath.recoveryCleared).toBe(true);
   expect(productionPath.replacement).toMatchObject({ ok: true, state: 'retargeted' });
   expect(productionPath.replacementState).toMatchObject({
