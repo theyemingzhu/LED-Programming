@@ -1,4 +1,15 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": []
+  "waiting": [
+    {
+      "id": "saved-wifi-first-click",
+      "what": "Make Use saved network confirm readiness on the first click without interrupting the rest of setup.",
+      "why": "Include the bench-tested card setup fix in the next signed firmware release.",
+      "added": "2026-11-27",
+      "source": {
+        "kind": "patch",
+        "patch": "firmware-queue/patches/saved-wifi-first-click.patch"
+      }
+    }
+  ]
 }
