@@ -339,6 +339,9 @@ export function CardConnectionCenter({
       return;
     }
     const controller = new AbortController();
+    const setupNetworkRetry = exactHost && rawHost === SETUP_HOST
+      ? { cardId: readPersistedCardIdentity()?.id || '' }
+      : null;
     connectRun.current = controller;
     setDirectBusy(true);
     setDirectAttempt(null);
@@ -353,7 +356,7 @@ export function CardConnectionCenter({
       });
       if (controller.signal.aborted || result.reason === 'cancelled') return;
       if (!result.ok) {
-        setDirectAttempt({ ...result, connected: false });
+        setDirectAttempt({ ...result, connected: false, setupNetworkRetry });
         if (result.reason === 'firmware-incompatible' && result.observedCard?.id) {
           const version = result.observedCard.firmwareVersion ? ` firmware v${result.observedCard.firmwareVersion}` : ' firmware';
           const build = cardBuildLabel(result.observedCard);
@@ -386,6 +389,14 @@ export function CardConnectionCenter({
       evidence: { rememberedCard, ...flowEvidence },
     });
     if (next.route !== 'setup-network') connect();
+  };
+
+  const retryConnection = fallback => {
+    const setupRetry = directAttempt?.setupNetworkRetry;
+    if (setupRetry && setupRetry.cardId === (readPersistedCardIdentity()?.id || '')) {
+      return connect(SETUP_HOST, { bridge: true });
+    }
+    return fallback();
   };
 
   const chooseFactoryBeacon = () => {
@@ -762,7 +773,7 @@ export function CardConnectionCenter({
               </>
             ) : sameWifiFailure ? (
               <>
-                <button type="button" className="btn primary" onClick={chooseWorkingCard}>Try again</button>
+                <button type="button" className="btn primary" onClick={() => retryConnection(chooseWorkingCard)}>Try again</button>
                 <button type="button" className="btn" onClick={chooseFactoryBeacon}>Use Lightweaver setup Wi-Fi</button>
                 <button type="button" className="btn" onClick={() => setConnectionDetailsOpen(true)}>Enter a known card IP</button>
               </>
@@ -771,7 +782,7 @@ export function CardConnectionCenter({
                 ? <button type="button" className={postConnectButtonClass} data-connection-action onClick={closeAndRestore}>Done</button>
                 : <button type="button" className={postConnectButtonClass} data-connection-action onClick={onOpenSetup}>Continue in Setup</button>
             ) : (
-              <button type="button" className="btn primary" onClick={() => connect()} disabled={directBusy}>
+              <button type="button" className="btn primary" onClick={() => retryConnection(connect)} disabled={directBusy}>
                 {directBusy ? 'Connecting…' : directAttempt ? 'Try again' : 'Connect this card'}
               </button>
             )}

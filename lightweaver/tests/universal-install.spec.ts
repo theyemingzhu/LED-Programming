@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { MIN_TAP } from './harness/tapSize';
+import { createCardSimulator } from './harness/cardSimulator';
+import { cardState, MATRIX_BUILD_ID, MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION } from './harness/cardStates';
+import { createDefaultProject } from '../src/lib/projectModel.js';
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -106,24 +109,108 @@ test('a secure top-level installer that can use browser USB never offers the sec
   await expect(page.locator('a[href="https://led.mandalacodes.com/#screen=flash&mode=install"]')).toHaveCount(0);
 });
 
-test('a blocked card-page popup on the install-to-card handoff shows visible popup guidance', async ({ page }) => {
-  await page.addInitScript(() => {
+async function openInstallCardHandoffWithPopupsBlocked(page: Page, { paired = false } = {}) {
+  const project = { ...createDefaultProject(), id: 'lwproj-installer-handoff-draft', name: 'Existing installer draft' };
+  await page.addInitScript(({ identity, draft }) => {
+    if (window !== window.top) return;
     Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => ({}) } });
-    // Simulate a popup blocker refusing the named card-page window.
-    window.open = () => null;
-    // A stored setup-network host routes the working-card flow to the
-    // card-page handoff (join the card's setup network, then Continue after setup
-    // opens the card page bridge window).
-    window.localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    const state = window as Window & {
+      blockedCardPopupAttempts: number;
+      cardPopupsAllowed?: boolean;
+      resumeDirectForTest?: () => Promise<void>;
+    };
+    state.blockedCardPopupAttempts = 0;
+    const open = window.open.bind(window);
+    window.open = (url, target, features) => {
+      if (state.cardPopupsAllowed) return open(url, target, features);
+      if (target === 'lightweaver-card-bridge') {
+        state.blockedCardPopupAttempts += 1;
+        void state.resumeDirectForTest?.();
+      }
+      return null;
+    };
+    if (identity) localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(draft));
+  }, {
+    identity: paired ? { version: 1, id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID } : null,
+    draft: project,
   });
   await page.goto('/#screen=flash&mode=install');
-
   await page.getByTestId('card-link-status').click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByRole('heading', { name: 'Finish card setup' })).toBeVisible();
   await expect(dialog.getByText(/Power the card, join the card’s own Wi-Fi network/)).toBeVisible();
-  await dialog.getByRole('button', { name: 'Continue after setup', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('The browser could not open the legacy card page. Allow popups, then try again.');
+  expect(await blockedCardPopupAttempts(page)).toBe(0);
+  return { dialog, continueSetup: dialog.getByRole('button', { name: 'Continue after setup', exact: true }) };
+}
+
+function blockedCardPopupAttempts(page: Page) {
+  return page.evaluate(() => (window as Window & { blockedCardPopupAttempts: number }).blockedCardPopupAttempts);
+}
+
+async function installHandoffEvidence(page: Page) {
+  return page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const { state, card } = getSharedCardLink().getState();
+    const identity = JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null');
+    const draft = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    return { state, cardId: card?.id, storedCardId: identity?.id, draftId: draft?.id, draftName: draft?.name };
+  });
+}
+
+test('a blocked card-page popup on the install-to-card handoff shows visible popup guidance after the search', async ({ page }) => {
+  const writes: string[] = [];
+  page.on('request', request => {
+    if (/^http:\/\/(?:192\.168\.4\.1|lightweaver\.local)\//.test(request.url()) && !['GET', 'OPTIONS'].includes(request.method())) {
+      writes.push(request.url());
+    }
+  });
+  const { dialog, continueSetup } = await openInstallCardHandoffWithPopupsBlocked(page);
+  await page.clock.install();
+  await continueSetup.click();
+  await expect.poll(() => blockedCardPopupAttempts(page)).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect(dialog.getByRole('status').filter({ hasText: 'Looking for your card' })).toBeVisible();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+
+  // Exhaust the setup-network handoff deadline without shortening production
+  // timeouts or making the user reissue the search.
+  await page.clock.fastForward(211_000);
+  await expect(dialog.getByRole('alert')).toContainText(/No reply from the card.*allow the card page to open/i);
+  const retry = dialog.getByRole('button', { name: 'Try again', exact: true });
+  await expect(retry).toBeEnabled();
+  expect(await blockedCardPopupAttempts(page)).toBe(1);
+  expect(await installHandoffEvidence(page)).toMatchObject({
+    state: 'disconnected', cardId: undefined, storedCardId: undefined,
+    draftId: 'lwproj-installer-handoff-draft', draftName: 'Existing installer draft',
+  });
+  // Simulate allowing popups. Stub navigation only, leaving all actual card
+  // status and mutation endpoints blocked.
+  await page.context().route('http://192.168.4.1/**', route => route.request().isNavigationRequest()
+    ? route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Card setup page</title>' })
+    : route.abort('connectionrefused'));
+  await page.evaluate(() => { (window as Window & { cardPopupsAllowed: boolean }).cardPopupsAllowed = true; });
+  const [popup] = await Promise.all([page.waitForEvent('popup'), retry.click()]);
+  await expect(popup).toHaveURL(url => url.origin === 'http://192.168.4.1');
+  expect(await popup.evaluate(() => window.name)).toBe('lightweaver-card-bridge');
+  expect(writes).toEqual([]);
+});
+
+test('an exact direct response completes the install handoff even when the popup is blocked', async ({ page }) => {
+  const card = createCardSimulator(cardState('factory-blank'));
+  card.goOffline();
+  await card.install(page);
+  await page.exposeFunction('resumeDirectForTest', () => card.goOnline());
+  const { dialog, continueSetup } = await openInstallCardHandoffWithPopupsBlocked(page, { paired: true });
+  await continueSetup.click();
+  await expect.poll(() => installHandoffEvidence(page)).toMatchObject({
+    state: 'connected-direct', cardId: MATRIX_CARD_ID, storedCardId: MATRIX_CARD_ID,
+    draftId: 'lwproj-installer-handoff-draft', draftName: 'Existing installer draft',
+  });
+  expect(await blockedCardPopupAttempts(page)).toBe(1);
+  await expect(dialog.getByRole('alert').filter({ hasText: /allow.*card page to open/i })).toHaveCount(0);
+  expect(card.requests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toEqual([]);
 });
 
 test('technician controls remain separately labelled outside install mode', async ({ page }) => {
