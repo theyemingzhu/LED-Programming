@@ -164,3 +164,22 @@ test('stop while snapshot is pending prevents a stale session starting or restor
   assert.deepEqual(calls, []);
   assert.equal(session.status().active, false);
 });
+
+test('a card that was playing one of its looks gets that look back, not section-by-section patterns', async () => {
+  const restores = [];
+  const session = createPatternLabPreviewSession({
+    readSnapshot: async () => ({ syncZones: false, currentLookId: 'fire', zones: [{ id: 'outer', patternId: 'fire' }, { id: 'inner', patternId: 'fire' }] }),
+    createStream: () => ({ start: () => true, push: () => true, async stop() {} }),
+    restoreLook: async (look, options) => { restores.push([look, options]); },
+    resetOutput: async () => { throw new Error('should not reset'); },
+  });
+  await session.start(['010203']);
+  await session.stop('user');
+  assert.equal(restores.length, 1);
+  assert.deepEqual(restores[0][0], { patternId: 'fire' });
+  assert.equal(restores[0][1].exactCardPatternId, 'fire');
+  assert.equal(restores[0][1].installedControlPatch, true);
+  assert.deepEqual(restores[0][1].expectedControlPatch, { patternId: 'fire' });
+  assert.equal(restores[0][1].latestOnly, false);
+  assert.equal(session.status().state, 'restored');
+});
