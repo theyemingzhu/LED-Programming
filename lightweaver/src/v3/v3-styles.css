@@ -55,6 +55,11 @@
   --stack-text: 12px;
   --stack-control-height: 28px;
   --stack-touch-height: 44px;
+  --stack-card-width: 148px;
+  --stack-card-max-width: 152px;
+  --stack-art-size: 24px;
+  --stack-card-art-width: 42px;
+  --stack-action-ink: color-mix(in oklab, var(--accent-hi) 65%, var(--text-hi));
   --stack-target-width: 8rem;
 }
 
@@ -114,6 +119,31 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; bo
   display: flex;
   flex-wrap: wrap;
   column-gap: calc(var(--stack-space) * 2);
+}
+.pm .stack-library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--stack-space);
+}
+.pm .stack-library-tabs > .btn[role="tab"] {
+  justify-content: center;
+  min-height: var(--stack-control-height);
+  color: var(--text-mid);
+  background: var(--bg-panel);
+  font-size: var(--stack-text);
+  white-space: nowrap;
+}
+.pm .stack-library-tabs > .btn[role="tab"]:not([aria-selected="true"]):hover { color: var(--text-hi); border-color: var(--border); }
+.pm .stack-library-tabs > .btn[aria-selected="true"] {
+  color: var(--text-hi);
+  font-weight: 600;
+  border-color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.pm .stack-library-tabs > .btn:focus-visible { outline-color: var(--stack-action-ink); }
+@media (pointer: coarse) {
+  .pm .stack-library-tabs > .btn[role="tab"] { min-height: var(--stack-touch-height); }
 }
 
 @media (max-width: 640px), (pointer: coarse) {

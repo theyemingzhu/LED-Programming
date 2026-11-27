@@ -52,6 +52,64 @@ const namedLook = (id: string, label: string) => ({
   },
 });
 
+test('stack body selects locally, preserves open drafts, and targets actions independently', async ({ page }) => {
+  const first = namedLook('copper', 'Copper Dusk');
+  const second = namedLook('blue', 'Blue Hour Along the Eastern Frame');
+  const stale = namedLook('stale', 'Older arrangement');
+  delete first.sectionLooks['patch-default-ring-3'];
+  delete second.sectionLooks['patch-default-ring-3'];
+  let commands = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && /^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/.test(request.url())) commands += 1;
+  });
+  await openStackProject(page, 'stack-body-selection', [first, second, stale], true);
+  const library = page.getByRole('tablist', { name: 'Lighting library' });
+  const patternsTab = library.getByRole('tab', { name: 'Patterns' });
+  const stacksTab = library.getByRole('tab', { name: /Project stacks/ });
+  await expect(patternsTab).toHaveAttribute('tabindex', '0');
+  await patternsTab.press('End');
+  await expect(stacksTab).toBeFocused();
+  await expect(stacksTab).toHaveAttribute('aria-selected', 'true');
+  await expect(library.getByRole('tab', { name: 'Patterns' })).toHaveAttribute('tabindex', '-1');
+  await expect(page.getByRole('tabpanel', { name: 'Project stacks' })).toBeVisible();
+
+  const card = (id: string) => page.locator(`[data-stack-id="${id}"]`);
+  const firstButton = card(first.id).getByRole('button', { name: `Select ${first.label}` });
+  const secondButton = card(second.id).getByRole('button', { name: `Select ${second.label}` });
+  await card(first.id).getByRole('button', { name: `Edit ${first.label}`, exact: true }).click();
+  await page.getByTestId('look-name').fill('Copper draft');
+  await card(first.id).click({ position: { x: 3, y: 3 } });
+  await expect(page.getByTestId('look-name')).toHaveValue('Copper draft');
+  await expect(firstButton).toHaveAttribute('aria-pressed', 'true');
+  await card(stale.id).getByRole('button', { name: `Update sections for ${stale.label}` }).click();
+  await expect(page.getByTestId('look-name')).toHaveValue('Copper draft');
+  await expect(firstButton).toHaveAttribute('aria-pressed', 'true');
+
+  await card(second.id).locator('.project-stack-thumbnail').first().click();
+  await expect(secondButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(secondButton).toBeFocused();
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  await card(first.id).getByRole('button', { name: `Add ${first.label} to playlist`, exact: true }).click();
+  await expect(card(first.id).getByRole('status', { name: 'In playlist' })).toBeVisible();
+  await expect(secondButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+
+  await card(first.id).getByRole('button', { name: `Preview ${first.label}`, exact: true }).click();
+  await expect(firstButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  await card(first.id).getByRole('button', { name: `Edit ${first.label}`, exact: true }).click();
+  await expect(page.getByTestId('look-name')).toHaveValue('Copper draft');
+  await expect(page.getByTestId('look-save-status')).toHaveText('Unsaved look changes');
+  await secondButton.press('Space');
+  await expect(secondButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  await stacksTab.press('ArrowLeft');
+  await expect(patternsTab).toBeFocused();
+  await expect(patternsTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel', { name: 'Patterns' })).toBeVisible();
+  expect(commands).toBe(0);
+});
+
 test('opening a saved look on a phone keeps its preview and save action in view', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openStackProject(page, 'phone-look-preview', [namedLook('amber-tides', 'Amber Tides')], true);

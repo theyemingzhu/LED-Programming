@@ -66,27 +66,49 @@
   border-inline-start: 2px solid var(--stack-color, var(--border));
   color: var(--text-hi);
 }
-.pm .project-stack-library-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0; }
-.pm .project-stack-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; }
-.pm .project-stack-tabs button { min-height: var(--lw-tap, 44px); border: 1px solid var(--border-hair); border-radius: 8px; background: transparent; color: var(--text-mid); padding: 7px 11px; cursor: pointer; }
-.pm .project-stack-tabs button[aria-selected='true'] { background: var(--bg-sel); border-color: var(--accent-line); color: var(--text); }
-.pm .project-stack-new { min-height: var(--lw-tap, 44px); white-space: nowrap; }
+.pm .project-stack-library-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--stack-space); margin-block: var(--stack-space); }
+.pm .project-stack-new { min-height: var(--stack-control-height); white-space: nowrap; }
 .pm .project-stack-howto { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 9px; padding: 0 10px 8px; color: var(--text-mid); font-size: 11px; }
 .pm .project-stack-library > .search { margin: 3px 0 7px; }
 .pm .project-stack-shelf { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; padding: 0 0 8px; max-height: none; overflow: visible; }
-.pm .project-stack-card { box-sizing: border-box; display: flex; flex: 0 0 148px; flex-direction: column; width: 148px; max-width: 152px; min-width: 0; padding: 6px; border: 1px solid var(--border-hair); border-radius: 8px; background: var(--bg-panel); }
-.pm .project-stack-card.is-active { background: var(--bg-sel); border-color: var(--accent-line); }
-.pm .project-stack-name-button { display: flex; flex-direction: column; justify-content: center; min-width: 0; width: 100%; min-height: 28px; padding: 0; border: 0; background: transparent; color: var(--text-hi); text-align: left; cursor: pointer; }
-.pm .project-stack-name-button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.pm .project-stack-card {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 var(--stack-card-width);
+  flex-direction: column;
+  width: var(--stack-card-width);
+  max-width: var(--stack-card-max-width);
+  min-width: 0;
+  padding: var(--stack-space);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .pm .project-stack-card:not(.is-active):hover { border-color: var(--border); }
+}
+.pm .project-stack-card.is-active { background: var(--bg-sel); border-color: var(--accent-hi); }
+.pm .project-stack-name-button { display: flex; flex-direction: column; justify-content: center; min-width: 0; width: 100%; min-height: var(--stack-control-height); padding: 0; border: 0; background: transparent; color: var(--text-hi); text-align: left; cursor: pointer; }
+.pm .project-stack-name-button strong { display: block; max-width: 100%; overflow-wrap: anywhere; font-size: var(--stack-text); font-weight: 600; }
 .pm .project-stack-name-button:hover strong { text-decoration: underline; text-underline-offset: 3px; }
-.pm .project-stack-name-button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-mid); font-size: 10px; }
 .pm .project-stack-thumbnails { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 24px; margin: 2px 0 6px; }
-.pm .project-stack-thumbnail { display: block; box-sizing: border-box; flex: 0 0 24px; width: 24px; height: 24px; border: 1px solid color-mix(in srgb, var(--text-mid) 35%, transparent); border-radius: 4px; background: var(--stack-gradient, var(--bg-elev)); background-size: cover; background-position: center; }
+.pm .project-stack-thumbnail { display: block; box-sizing: border-box; flex: 0 0 var(--stack-art-size); width: var(--stack-art-size); height: var(--stack-art-size); border: 1px solid color-mix(in srgb, var(--text-mid) 35%, transparent); border-radius: var(--r-sm); background: var(--stack-gradient, var(--bg-elev)); background-size: cover; background-position: center; }
 .pm .project-stack-thumbnail.is-off { background: #252b30 !important; }
 .pm .project-stack-card-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px; margin-top: auto; }
-.pm .project-stack-card-actions > button { min-width: 0; min-height: 30px; padding: 2px 3px; border: 1px solid var(--border-hair); border-radius: 6px; background: var(--bg-elev); color: var(--text-hi); font: inherit; font-size: 10px; line-height: 1.2; text-align: center; white-space: nowrap; cursor: pointer; }
-.pm .project-stack-card-actions > button:hover { border-color: var(--accent-line); background: var(--bg-sel); }
-.pm .project-stack-card-actions > .project-stack-in-playlist { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 30px; color: var(--text-mid); font-size: 10px; white-space: nowrap; }
+.pm.pm-workspace .project-stack-card-actions > .btn {
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--stack-control-height);
+  padding-inline: 0;
+  font-size: var(--stack-text);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.pm .project-stack-card-actions > .btn:hover:not(:disabled) { border-color: var(--accent-hi); }
+.pm .project-stack-card :is(.btn, .project-stack-name-button):focus-visible { outline-color: var(--stack-action-ink); }
+.pm .project-stack-card-actions > .project-stack-in-playlist { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: var(--stack-control-height); color: var(--text-mid); font-size: var(--stack-text); white-space: nowrap; }
 .pm .project-stack-card-actions > button:disabled { cursor: default; opacity: .55; }
 .pm .project-stack-card-warning { padding: 0 0 7px; color: var(--warn); font-size: 11px; }
 .pm .project-stack-rename { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px 0 8px; }
@@ -128,11 +150,7 @@
 }
 @media (max-width: 700px) {
   .pm .project-stack-library-head { align-items: flex-start; }
-  .pm .project-stack-card { flex-basis: min(152px, calc((100% - 6px) / 2)); width: min(152px, calc((100% - 6px) / 2)); }
-  .pm .project-stack-name-button small { white-space: normal; line-height: 1.2; }
-  .pm .project-stack-thumbnail { flex-basis: 22px; width: 22px; height: 22px; }
-  .pm .project-stack-card-actions { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px; }
-  .pm.pm-workspace .project-stack-card-actions > .btn { padding-inline: 0; justify-content: center; }
+  .pm .project-stack-card { flex-basis: min(var(--stack-card-max-width), calc((100% - var(--stack-space)) / 2)); width: min(var(--stack-card-max-width), calc((100% - var(--stack-space)) / 2)); }
   .pm .project-stack-inline-editor .project-stack-save { padding: 10px; }
 }
 @media (max-width: 640px), (pointer: coarse) {
@@ -141,8 +159,12 @@
   .pm :is(.project-stack-save-footer, .project-stack-actions, .project-stack-fix-title, .project-stack-fix-result) .wordlink,
   .pm .project-stack-close { min-height: var(--lw-tap, 44px); }
 }
+@media (pointer: coarse) {
+  .pm.pm-workspace .project-stack-card-actions > .btn,
+  .pm .project-stack-new { min-height: var(--stack-touch-height); }
+}
 @media (max-width: 320px) {
-  .pm .project-stack-card { flex-basis: min(152px, 100%); width: min(152px, 100%); }
+  .pm .project-stack-card { flex-basis: min(var(--stack-card-max-width), 100%); width: min(var(--stack-card-max-width), 100%); }
 }
 
 .pm .pm-tune-pane .pm-tuning-scope {

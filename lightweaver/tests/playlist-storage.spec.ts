@@ -709,6 +709,9 @@ test('Playlist keeps missing runtime proof visible while recovery runs, then ask
 
 test('Playlist serializes card mutations behind recovery so the final physical command matches the live row', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
+  project.devices.standaloneController.looks = [{
+    id: 'recovery-look', label: 'Recovery candidate', defaultLook: { patternId: 'fire' },
+  }];
   const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-recovery');
   card.refuse('/api/control', { status: 200, body: { ok: true, cardId: card.state.cardId } });
   await gotoPlaylist(page, project);
@@ -717,14 +720,24 @@ test('Playlist serializes card mutations behind recovery so the final physical c
   await rows.first().getByRole('button', { name: 'Live' }).click();
   const failure = page.getByTestId('playlist-card-status');
   await expect(failure).toContainText('The preview reached the card, but its runtime did not report which pattern or revision it applied.');
-  await failure.getByRole('button', { name: 'Recover lights' }).click();
-
-  await expect(rows.nth(1).getByRole('button', { name: 'Live' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Reset live' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Install playlist on card' })).toBeDisabled();
-  await expect(page.getByRole('textbox', { name: 'Card address' })).toBeDisabled();
-  await expect(page.locator('.pl-chip').first()).toBeDisabled();
-  expect(controlRequestCount(card)).toBe(1);
+  const releaseRecovery = card.holdNextReply('/api/frame');
+  try {
+    await failure.getByRole('button', { name: 'Recover lights' }).click();
+    await expect(rows.nth(1).getByRole('button', { name: 'Live' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Reset live' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Install playlist on card' })).toBeDisabled();
+    await expect(page.getByRole('textbox', { name: 'Card address' })).toBeDisabled();
+    const look = page.getByTestId('playlist-stack-recovery-look');
+    await expect(look.getByRole('checkbox')).toBeDisabled();
+    await look.getByText('Recovery candidate', { exact: true }).click();
+    await expect(look.getByRole('checkbox')).not.toBeChecked();
+    await expect(page.getByRole('button', { name: 'Add selected' })).toBeDisabled();
+    await page.getByRole('tab', { name: 'Patterns' }).click();
+    await expect(page.locator('.pl-chip').first()).toBeDisabled();
+    expect(controlRequestCount(card)).toBe(1);
+  } finally {
+    releaseRecovery();
+  }
 
   await expect(page.getByTestId('playlist-card-status')).toContainText('Recovery frame sent. Confirm warm white is visible on the physical lights.');
   expect(physicalCommandsFrom(card).slice(-3)).toEqual(['recover:1', 'reboot', 'recover:2']);

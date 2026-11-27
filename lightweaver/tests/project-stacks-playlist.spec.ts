@@ -43,6 +43,78 @@ async function openPlaylist(page, project) {
   await page.goto('/#screen=playlist', { waitUntil: 'domcontentloaded' });
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  const phone = viewport.width < 500;
+  test.describe(phone ? 'Playlist stack touch targets' : 'Playlist stack pointer targets', () => {
+    test.use({ viewport, hasTouch: phone, isMobile: phone });
+
+    test('body gestures use the native checkbox once and leave actions independent', async ({ page }) => {
+      const { project } = projectWithStacks();
+      await openPlaylist(page, project);
+      const tablist = page.getByRole('tablist', { name: 'Playlist sources' });
+      const stacksTab = tablist.getByRole('tab', { name: /Project stacks/ });
+      const patternsTab = tablist.getByRole('tab', { name: 'Patterns' });
+      await expect(stacksTab).toHaveAttribute('tabindex', '0');
+      await expect(patternsTab).toHaveAttribute('tabindex', '-1');
+      await stacksTab.press('ArrowRight');
+      await expect(patternsTab).toBeFocused();
+      await expect(patternsTab).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tabpanel', { name: 'Patterns' })).toBeVisible();
+      await patternsTab.press('Home');
+      await expect(stacksTab).toBeFocused();
+      await expect(stacksTab).toHaveAttribute('aria-selected', 'true');
+
+      const card = page.getByTestId('playlist-stack-stack-1');
+      const other = page.getByTestId('playlist-stack-stack-2');
+      const blocked = page.getByTestId('playlist-stack-stack-3');
+      const checkbox = card.getByRole('checkbox');
+      await checkbox.evaluate(input => input.addEventListener('change', () => {
+        sessionStorage.setItem('stack-changes', String(Number(sessionStorage.getItem('stack-changes') || '0') + 1));
+      }));
+      const changes = () => page.evaluate(() => Number(sessionStorage.getItem('stack-changes') || '0'));
+      const press = (target, options = {}) => phone ? target.tap(options) : target.click(options);
+      const gestures = [card.getByText('Stack 1', { exact: true }), card.locator('.pl-art'), card.locator('.pl-stack-meta'), card];
+      for (const [index, target] of gestures.entries()) {
+        await press(target, index === 3 ? { position: { x: 3, y: 3 } } : {});
+        if (index % 2 === 0) await expect(checkbox).toBeChecked();
+        else await expect(checkbox).not.toBeChecked();
+        expect(await changes()).toBe(index + 1);
+      }
+      await press(checkbox);
+      await expect(checkbox).toBeChecked();
+      expect(await changes()).toBe(5);
+      await checkbox.press('Space');
+      await expect(checkbox).not.toBeChecked();
+      expect(await changes()).toBe(6);
+
+      await press(card.getByRole('button', { name: 'Show sections' }));
+      await expect(card.getByRole('button', { name: 'Hide sections' })).toBeVisible();
+      await expect(checkbox).not.toBeChecked();
+      expect(await changes()).toBe(6);
+      await press(other.locator('.pl-stack-head strong'));
+      await press(card.locator('.pl-stack-head strong'));
+      await expect(page.getByRole('button', { name: 'Add selected (2)' })).toBeEnabled();
+      await expect(page.getByTestId('playlist-stack-selection-preview').getByRole('listitem')).toHaveText(['1. Stack 1', '2. Stack 2']);
+      await press(card.getByRole('button', { name: 'Add look' }));
+      await expect(checkbox).toBeDisabled();
+      await expect(checkbox).not.toBeChecked();
+      await expect(other.getByRole('checkbox')).toBeChecked();
+      expect(await changes()).toBe(7);
+      await press(card.locator('.pl-stack-head strong'));
+      await press(blocked.locator('.pl-stack-head strong'));
+      await expect(blocked.getByRole('checkbox')).toBeDisabled();
+      await expect(blocked.getByRole('checkbox')).not.toBeChecked();
+      await expect(page.getByRole('button', { name: 'Add selected (1)' })).toBeEnabled();
+      expect(await changes()).toBe(7);
+      await press(page.getByRole('button', { name: 'Add selected (1)' }));
+      await expect(page.locator('[data-testid^="playlist-row-combo-"]')).toHaveCount(2);
+      await press(card.getByRole('link', { name: 'Edit look' }));
+      await expect(page.getByTestId('look-name')).toHaveValue('Stack 1');
+      expect(await changes()).toBe(7);
+    });
+  });
+}
+
 test('project stacks have their own picker, exact details, and ordered multi-add', async ({ page }) => {
   const { project, targets } = projectWithStacks();
   project.devices.standaloneController.looks[0].sectionLooks[targets[0].id] = { patternId: 'blackout' };

@@ -261,7 +261,8 @@
   .pm.pm-workspace .pm-main { display: flex; flex-direction: column; min-height: 0; }
   .pm.pm-workspace .pm-main > .pm-target { flex: 0 0 auto; }
   .pm.pm-workspace .pm-main > .pm-browse { flex: 1 1 auto; min-height: 400px; display: flex; flex-direction: column; }
-  .pm.pm-workspace .pm-main > .pm-browse > .pm-cards { flex: 1 1 auto; min-height: 300px; overflow-y: auto; align-content: start; }
+  .pm.pm-workspace .pm-pattern-bank { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .pm.pm-workspace .pm-pattern-bank > .pm-cards { flex: 1 1 auto; min-height: 300px; overflow-y: auto; align-content: start; }
 }
 @media (max-width: 1100px) {
   .pm.pm-workspace .pm-section-footer { flex-wrap: wrap; }
@@ -370,7 +371,6 @@
   .pm.pm-workspace .pm-actions > .btn,
   .pm.pm-workspace .pm-actions > .pm-menu { flex: 1 0 auto; }
   .pm.pm-workspace .pm-menu > .btn { width: 100%; }
-  .pm.pm-workspace .project-stack-tabs button { padding-inline: 8px; }
   .pm.pm-workspace .pm-section-identity > strong,
   .pm.pm-workspace .pm-section-pattern-name {
     max-width: none;

@@ -125,6 +125,8 @@ import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderC
 import { PatternPreview } from './PatternPreview.jsx';
 import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
 import { ProjectStackSummary } from '../components/patterns/ProjectStackSummary.jsx';
+import { StackLibraryTabs, stackLibraryPanelId } from '../components/patterns/StackLibraryTabs.jsx';
+import { activateStackCardControl } from '../components/patterns/activateStackCardControl.js';
 import {
   addProjectStacksToPlaylist,
   createProjectStackId,
@@ -3818,22 +3820,22 @@ function writeSectionDisplayOrder(projectId, ids) {
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   <div className="project-stack-library-head">
-                    <div className="project-stack-tabs" role="tablist" aria-label="Lighting library">
-                      <button type="button" role="tab" aria-selected={libraryTab === 'patterns'} onClick={() => setLibraryTab('patterns')}>Patterns</button>
-                      <button type="button" role="tab" aria-selected={libraryTab === 'stacks'} onClick={() => setLibraryTab('stacks')}>Project stacks ({savedLooks.length})</button>
-                    </div>
+                    <StackLibraryTabs scope="lighting-library" label="Lighting library" value={libraryTab} onChange={setLibraryTab} lookCount={savedLooks.length} />
                     <button type="button" className="btn project-stack-new" data-testid="stack-new" onClick={startNewStack}>{canResumeNewDraft ? 'Resume new draft' : '+ New look'}</button>
                   </div>
                   {expandedStackId === null && (scratchError || /could not|wait for|error/i.test(lookSaveState)) && <p className="project-stack-launch-error" role="alert">{scratchError || lookSaveState}</p>}
                   {libraryTab === 'patterns' && expandedStackId !== null && <div className="project-stack-howto"><button type="button" className="wordlink" data-testid="stack-return-save" onClick={() => setLibraryTab('stacks')}>Back to look</button></div>}
-                  {libraryTab === 'stacks' ? <div className="project-stack-library" role="tabpanel" aria-label="Project stacks">
+                  {libraryTab === 'stacks' ? <div className="project-stack-library" role="tabpanel" id={stackLibraryPanelId('lighting-library', 'stacks')} aria-label="Project stacks">
                     <label className="search"><span className="sr-only">Search saved looks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder={`Search looks in ${projectName || 'this project'}`} /></label>
                     <div className="project-stack-shelf">
                       {savedLooks.filter(saved => saved.label.toLowerCase().includes(stackSearch.toLowerCase())).map(saved => {
                         const summary = summarizeProjectStack(saved, targetsForSavedLook(saved));
                         const compatibility = getProjectStackCompatibility(saved);
                         const useCount = playlist.filter(item => item.lookId === saved.id).length;
-                        return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card" data-stack-id={saved.id}>
+                        return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card" data-stack-id={saved.id}
+                          onClick={event => {
+                            if (saved.id !== activeLookId) activateStackCardControl(event, '.project-stack-name-button');
+                          }}>
                           <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Select ${saved.label}`} aria-pressed={saved.id === activeLookId} onClick={() => selectSavedStack(saved, summary.review.needsReview)}>
                             <strong>{saved.label}</strong>
                           </button>
@@ -3859,7 +3861,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No saved looks yet. Choose a pattern for each section, then save a complete look.</p>}
                     </div>
-                  </div> : <>
+                  </div> : <div className="pm-pattern-bank" role="tabpanel" id={stackLibraryPanelId('lighting-library', 'patterns')} aria-label="Patterns">
                   <div className="pm-bank-bar">
                   <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
                     <strong>{handoffInvalid ? 'Choose a current section' : `Editing: ${selectedTarget?.kind === 'section'
@@ -3996,7 +3998,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                       </button>
                     </div>
                   }
-                  </>}
+                  </div>}
+                  <div role="tabpanel" id={stackLibraryPanelId('lighting-library', libraryTab === 'stacks' ? 'patterns' : 'stacks')} hidden />
                 </div>
 
                 {/* Reserved ground above the Design target card: this used to
