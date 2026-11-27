@@ -107,6 +107,33 @@ test('a fresh layout offers primitive choices and creates a centered selected ci
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 });
 
+test('a newly created strip survives a browser reload before the delayed autosave', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await expect.poll(() => readAutosaveStrips(page)).toHaveLength(2);
+  // Keep the 500 ms timer pending across a real browser reload, independent of CI speed.
+  await page.evaluate(() => {
+    const schedule = window.setTimeout;
+    window.setTimeout = ((callback, delay, ...args) =>
+      schedule(callback, delay === 500 ? 60_000 : delay, ...args)) as typeof window.setTimeout;
+  });
+  const picker = page.getByTestId('layout-primitive-picker');
+  await picker.getByRole('button', { name: 'Create line' }).click();
+  const rows = page.locator('.la-strip-row');
+  await expect(rows).toHaveCount(1);
+  expect(await readAutosaveStrips(page)).toHaveLength(2);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('Line');
+  const saved = await page.evaluate(() => {
+    const primary = localStorage.getItem('lw_autosave_v3');
+    const backup = localStorage.getItem('lw_autosave_v3_backup');
+    return { mirrored: primary === backup, names: JSON.parse(primary!).layout.strips.map((strip: { name: string }) => strip.name) };
+  });
+  expect(saved).toEqual({ mirrored: true, names: ['Line'] });
+});
+
 test('an untouched fresh starter survives autosave reload, but a saved legacy circle layout is never hidden', async ({ page }) => {
   await gotoFreshLayout(page);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3') !== null)).toBe(true);

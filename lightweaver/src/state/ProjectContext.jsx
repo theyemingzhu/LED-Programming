@@ -1073,10 +1073,15 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     ));
   }, [projectLifecycle, serializeProject]);
 
+  const saveBrowserRecovery = useCallback(() => (
+    writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject())
+  ), [serializeProject]);
+
   const flushProjectAutosave = useCallback(() => {
     clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
     try {
-      const saved = writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject());
+      const saved = saveBrowserRecovery();
       if (saved) setLastSaved(Date.now());
       if (saved && repository?.save) {
         const project = serializeProject();
@@ -1101,17 +1106,30 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     } catch {
       return false;
     }
-  }, [repository, serializeProject]);
+  }, [repository, saveBrowserRecovery, serializeProject]);
 
   useEffect(() => {
-    clearTimeout(saveTimerRef.current);
     // A saved library copy recovered over an unreadable primary must not
     // immediately erase the old primary and backup merely by being opened.
     if (deferAutosaveForSavedLibraryRestore(restoredFromLibraryRef.current, projectLifecycle)) return undefined;
     restoredFromLibraryRef.current = false;
     saveTimerRef.current = setTimeout(flushProjectAutosave, 500);
-    return () => clearTimeout(saveTimerRef.current);
-  }, [flushProjectAutosave, projectLifecycle]);
+    const savePendingRecovery = () => {
+      const current = projectLifecycleRef.current;
+      if (saveTimerRef.current === null || !hasUnsavedChanges(current)
+        || current.generation !== projectLifecycle.generation
+        || current.editedRevision !== projectLifecycle.editedRevision) return;
+      // Only the current browser draft can be saved synchronously on exit.
+      // Leave the repository queue and its conflict handling to the normal flush.
+      try { saveBrowserRecovery(); } catch { /* previous recovery copies remain */ }
+    };
+    window.addEventListener('pagehide', savePendingRecovery);
+    return () => {
+      window.removeEventListener('pagehide', savePendingRecovery);
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    };
+  }, [flushProjectAutosave, projectLifecycle, saveBrowserRecovery]);
 
   const loadProject = useCallback((data) => {
     return applyProject(data);
