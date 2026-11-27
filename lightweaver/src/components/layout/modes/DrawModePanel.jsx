@@ -360,6 +360,7 @@ export function DrawModePanel({
   }, [projectId, projectLifecycle?.generation]);
   const patternPreviewSegments = useMemo(() => patternPicker
     ? buildPatternPreviewSegments({
+      previewPlaybackDirection: true,
       strips, patchBoard, wiring, compiledWiring,
       targets: sectionTargets.filter(target => target.id === patternPicker.targetId),
       resolvePatternId: resolvePreviewPatternId,
@@ -2339,8 +2340,8 @@ export function DrawModePanel({
                         </div>
                         </>}
                         {connectedFamily && <div className="la-part-actions" role="group" aria-label={`${partName} actions`}>
-                          {run && <button type="button" className="btn" aria-label={`Reverse data direction of ${partName}`}
-                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : isSplit ? 'Set direction per run in Advanced wiring' : run.directionPolicy === 'fixed' ? 'This run has a fixed data direction' : 'Reverse which end receives data'}
+                          {run && <button type="button" className="btn" aria-label={`Flip playback direction of ${partName}`}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : isSplit ? 'Set direction per run in Advanced wiring' : run.directionPolicy === 'fixed' ? 'This run has a fixed data direction' : 'Flip the effects in this part. Verify and save to apply on the card.'}
                                   aria-pressed={run.physicalDirection === 'source-reverse'}
                                   disabled={wiring.locked || isSplit || run.directionPolicy === 'fixed'}
                                   onClick={() => toggleRunDirection(run)}><PartActionIcon name="direction"/></button>}

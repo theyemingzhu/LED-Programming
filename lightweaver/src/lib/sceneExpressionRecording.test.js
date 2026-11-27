@@ -116,10 +116,14 @@ test('recording rejects more than 4096 physical LEDs before rendering', async ()
 function bakedPhysicalColours(baked, wiringForMap, frame) {
   const pixelCount = wiringForMap.pixels.length;
   const byStrip = new Map();
+  const reversedRun = wiringForMap.runs.find(run => run.reversed);
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const offset = 64 + (frame * pixelCount + pixel) * 3;
     const hex = [...baked.bytes.slice(offset, offset + 3)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-    const { stripId, sourceLed } = wiringForMap.pixels[pixel];
+    // Undo the fixture's reversed run to compare authored mirror relations.
+    const logical = pixel >= reversedRun.start && pixel < reversedRun.start + reversedRun.count
+      ? reversedRun.start + reversedRun.count - 1 - (pixel - reversedRun.start) : pixel;
+    const { stripId, sourceLed } = wiringForMap.pixels[logical];
     if (stripId == null) continue;
     if (!byStrip.has(stripId)) byStrip.set(stripId, []);
     byStrip.get(stripId)[sourceLed] = hex;
@@ -167,7 +171,10 @@ test('recording hash: unchanged without symmetry, and it moves when the sides ch
   // Golden: the recording of a piece with no symmetry keeps the identity hash it
   // had before symmetry existed (the layout snapshot gains no key).
   // The literal below was produced by the code BEFORE symmetry existed.
-  assert.equal(plain.sidecar.layoutPhysicalOrderSha256, '74ffc2c4cab6bbfc129d53775d91deea736c7cd2d6a79ceaf0d3e61871ce0fff');
+  const legacy = await bakeSceneExpressionFlow(context, { legacyLogicalPlayback: true });
+  assert.equal(legacy.sidecar.layoutPhysicalOrderSha256, '74ffc2c4cab6bbfc129d53775d91deea736c7cd2d6a79ceaf0d3e61871ce0fff');
+  assert.equal((await verifySceneExpressionFlowBake(legacy, context)).ok, true);
+  assert.notEqual(plain.sidecar.layoutPhysicalOrderSha256, legacy.sidecar.layoutPhysicalOrderSha256);
   const withNulls = await bakeSceneExpressionFlow({ ...context, symmetry: null, sidesMirrored: false });
   assert.equal(withNulls.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
 

@@ -1,7 +1,7 @@
 import { PALETTE_DEFAULT } from '../data.js';
 import { expandPatchBoard, normalizePatchBoard } from './patchBoard.js';
 import { applyLookColorModifiers } from './previewColorModifiers.js';
-import { compileWiring } from './wiringCompiler.js';
+import { compileWiring, playbackSourceIndices } from './wiringCompiler.js';
 import { applyPreviewMirrors, sideFlippedByRule } from './mirrorFrame.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
@@ -50,11 +50,13 @@ export function buildPatternPreviewSegments({
   compiledWiring = null,
   symmetry = null,
   targets = [],
+  previewPlaybackDirection = false,
   resolvePatternId = patternId => patternId,
   paletteForPattern = () => PALETTE_DEFAULT,
 } = {}) {
   const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, symmetry }) : null);
   const pixelsByTargetId = new Map();
+  const playbackOrderByTarget = new Map();
   // A side compiles to ONE continuous zone of several ranges, one per strip in
   // the side's order. Its segment is one virtual strip holding every strip's
   // pixels in that order, so the pattern flows through the side as the card
@@ -64,18 +66,27 @@ export function buildPatternPreviewSegments({
   // A continuous zone is one pattern run: its index and count span the zone.
   const continuousZoneIds = new Set();
   if (compiled?.ok) {
+    const playbackIndices = previewPlaybackDirection ? playbackSourceIndices(compiled) : null;
     for (const zone of compiled.zones || []) {
       const pixels = [];
+      const indices = [];
       if (zone.continuous) continuousZoneIds.add(zone.id);
       for (const range of zone.ranges || []) {
         const start = Math.max(0, Math.trunc(Number(range.start) || 0));
         const count = Math.max(0, Math.trunc(Number(range.count) || 0));
         for (let index = 0; index < count; index += 1) {
           const pixel = compiled.pixels[start + index];
-          if (pixel && !pixel.inactive) pixels.push(pixel);
+          if (pixel && !pixel.inactive) {
+            pixels.push(pixel);
+            indices.push(start + index);
+          }
         }
       }
       if (pixels.length) pixelsByTargetId.set(zone.id, pixels);
+      if (playbackIndices && !zone.continuous && indices.some(index => playbackIndices[index] !== index)) {
+        const offsets = new Map(indices.map((index, offset) => [index, offset]));
+        playbackOrderByTarget.set(zone.id, indices.map((index, offset) => offsets.get(playbackIndices[index]) ?? offset));
+      }
       if (zone.mirrorFlip != null) zoneFlipById.set(zone.id, Boolean(zone.mirrorFlip));
     }
   } else {
@@ -121,6 +132,7 @@ export function buildPatternPreviewSegments({
         // Leaving the frame-engine degree shift at zero prevents double use.
         hueShift: 0,
         visualLook: look,
+        playbackOrder: playbackOrderByTarget.get(id) || (id === target.id ? playbackOrderByTarget.get(target.zoneId) : undefined),
         palette: paletteForPattern(sourcePatternId) || PALETTE_DEFAULT,
         ...extra,
       });
@@ -186,6 +198,19 @@ export function fitPreviewViewBox(segments = [], fallbackViewBox = '0 0 640 400'
  * carry `mirrorOf` copy their source; `symmetry` + `sidesMirrored` mirror layout
  * strips whose ids the symmetry names.
  */
+// Keep the SVG positions and authored pattern coordinates fixed. Move only
+// completed RGB samples, as the card does at its native output boundary.
+export function applySectionPlaybackOrder(leds, order) {
+  if (!order) return;
+  const colors = order.map(index => {
+    const led = leds[index];
+    return led ? { r: led.r, g: led.g, b: led.b } : null;
+  });
+  colors.forEach((color, index) => {
+    if (leds[index] && color) Object.assign(leds[index], color);
+  });
+}
+
 export function applyPatternPreviewSegmentLooks(pixels = [], segments = [], tMs = 0, { symmetry = null, sidesMirrored = true } = {}) {
   let offset = 0;
   for (const segment of segments || []) {
@@ -206,6 +231,12 @@ export function applyPatternPreviewSegmentLooks(pixels = [], segments = [], tMs 
       pts: { length: segment?.pixels?.length || segment?.pts?.length || 0 },
     }));
     applyPreviewMirrors({ framePixels: pixels, strips: lengths, symmetry, sidesMirrored });
+  }
+  offset = 0;
+  for (const segment of segments || []) {
+    const count = segment?.pixels?.length || segment?.pts?.length || 0;
+    if (segment?.playbackOrder) applySectionPlaybackOrder(pixels.slice(offset, offset + count), segment.playbackOrder);
+    offset += count;
   }
   return pixels;
 }

@@ -3,6 +3,7 @@ import {
   PATTERN_LAB_WORKER_BUDGETS,
   quantizePatternLabWorkerTime,
 } from '../lib/patternLabWorkerProtocol.js';
+import { playbackSlotsInStripFrame } from '../lib/wiringCompiler.js';
 import { resolvePatternLabControls } from '../lib/patternLabControls.js';
 import { createPatternLabPreviewSession } from '../lib/patternLabPreviewSession.js';
 import { lookFromRecipe } from '../lib/patternLabHandoff.js';
@@ -238,14 +239,16 @@ function byteHex(value) {
   return Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, '0').toUpperCase();
 }
 
-export function patternLabFrameToCardPixels(frame) {
+export function patternLabFrameToCardPixels(frame, physicalSlots) {
   const total = Number(frame?.totalSamples);
   const lookup = workerColorLookup(frame);
   if (!lookup || !Number.isSafeInteger(total) || total < 1) return null;
-  return Array.from({ length: total }, (_, index) => {
+  const pixelAt = index => {
+    if (index < 0 || index >= total) return '000000';
     const color = lookup(index);
     return `${byteHex(color.r)}${byteHex(color.g)}${byteHex(color.b)}`;
-  });
+  };
+  return physicalSlots ? physicalSlots.map(pixelAt) : Array.from({ length: total }, (_, index) => pixelAt(index));
 }
 
 export default function PatternLabPreview({
@@ -263,7 +266,7 @@ export default function PatternLabPreview({
   selectedStripIds = null,
   onStripSelect = null,
 }) {
-  const projectId = useProject()?.projectId;
+  const { projectId, compiledWiring } = useProject() || {};
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const physicalSessionRef = useRef(null);
@@ -329,9 +332,10 @@ export default function PatternLabPreview({
     enabled: true,
   });
   const workerFunction = useMemo(() => workerColorLookup(worker.frame), [worker.frame]);
-  const physicalPixels = useMemo(() => {
-    return patternLabFrameToCardPixels(worker.frame);
-  }, [worker.frame]);
+  const physicalSlots = useMemo(() => compiledWiring?.ok
+    ? playbackSlotsInStripFrame(compiledWiring, geometry.strips, geometry.hidden)
+    : undefined, [compiledWiring, geometry.strips, geometry.hidden]);
+  const physicalPixels = useMemo(() => patternLabFrameToCardPixels(worker.frame, physicalSlots), [worker.frame, physicalSlots]);
   const sampledPixelCount = physicalPixels?.length ?? null;
   const blackPixelCount = physicalPixels
     && physicalPixels.every(color => color === '000000')

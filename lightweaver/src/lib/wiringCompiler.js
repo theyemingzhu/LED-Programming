@@ -71,6 +71,41 @@ function coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById) {
 // as they always did. A symmetry that breaks a rule is left out (every strip
 // then keeps its own zone) and reported as a `symmetry-ignored` warning rather
 // than blocking the whole project.
+// Indices of the logical samples that will reach each physical LED. Match the
+// card's segment copy without changing the compiler's zone/range coordinates.
+export const OUTPUT_PLAYBACK_ORDER = 'output-segments-v1';
+
+export function playbackSourceIndices(compiled) {
+  const indices = (compiled?.pixels || []).map((_, index) => index);
+  for (const run of compiled?.runs || []) {
+    if (!run.reversed) continue;
+    for (let offset = 0; offset < run.count; offset++) {
+      indices[run.start + offset] = run.start + run.count - 1 - offset;
+    }
+  }
+  return indices;
+}
+
+export function pixelsInPlaybackOrder(compiled) {
+  const pixels = compiled?.pixels || [];
+  if (!compiled?.runs?.some(run => run.reversed && run.count > 1)) return pixels;
+  return playbackSourceIndices(compiled).map((source, index) => ({ ...pixels[source], index }));
+}
+
+export function playbackSlotsInStripFrame(compiled, strips, hidden = {}) {
+  const starts = new Map();
+  let start = 0;
+  for (const strip of strips) {
+    if (hidden[strip.id]) continue;
+    starts.set(strip.id, start);
+    start += strip.pixels?.length || 0;
+  }
+  return pixelsInPlaybackOrder(compiled).map(pixel => {
+    const source = starts.get(pixel.stripId);
+    return !pixel.inactive && source !== undefined && Number.isInteger(pixel.sourceLed) ? source + pixel.sourceLed : -1;
+  });
+}
+
 export function compileWiring({ wiring, strips = [], groups = [], symmetry = null, capabilities = CARD_HARDWARE_CAPABILITIES } = {}) {
   const validation = validateWiring(wiring, strips, capabilities);
   const model = validation.wiring;

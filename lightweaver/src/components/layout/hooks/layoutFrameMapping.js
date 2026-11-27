@@ -1,3 +1,4 @@
+import { applySectionPlaybackOrder } from '../../../lib/patternPiecePreview.js';
 import { applyLookColorModifiers } from '../../../lib/previewColorModifiers.js';
 import { sideFlipped } from '../../../lib/pieceSymmetry.js';
 
@@ -17,6 +18,7 @@ export function mapLayoutPatternFrame(frame, { strips, renderSegments, previewTi
     const segment = segmentById.get(stripFrame.id);
     if (!segment) return;
     applyLookColorModifiers(stripFrame.leds, previewTime * 1000, segment.visualLook || {});
+    applySectionPlaybackOrder(stripFrame.leds, segment.playbackOrder);
     segment.pixels.forEach((pixel, ledIndex) => {
       const target = byStrip.get(pixel.stripId);
       if (target && Number.isInteger(pixel.sourceLed)) target.leds[pixel.sourceLed] = stripFrame.leds[ledIndex];

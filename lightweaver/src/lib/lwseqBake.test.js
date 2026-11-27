@@ -497,14 +497,14 @@ test('color journey recording fails with its explicit Studio dependency before r
 const sideOf = (id, stripId) => ({ id, label: id, stripIds: [stripId] });
 const pairSymmetry = orientation => ({ fold: 2, orientation, sides: [sideOf('side-1', 'outer'), sideOf('side-2', 'inner')] });
 
-// physical order in the fixture, read off the bytes: physical 0..2 hold the
-// outer strip's source LEDs 0..2, physical 3 is the spacer, inner is 4..5.
+// Physical 0..2 hold the reversed outer run, 3 is the spacer, and 4..5
+// hold the forward inner run. Restore art order for the symmetry comparison.
 function physicalColours(baked, frame) {
   const at = physical => [...baked.bytes.subarray(
     LWSEQ_HEADER_BYTES + (frame * 6 + physical) * 3,
     LWSEQ_HEADER_BYTES + (frame * 6 + physical) * 3 + 3,
   )];
-  return { outer: [at(0), at(1), at(2)], inner: [at(4), at(5)] };
+  return { outer: [at(2), at(1), at(0)], inner: [at(4), at(5)] };
 }
 
 test('a baked sequence carries symmetry: the twin side holds side 1, stretched, reversed by the rule', async () => {
@@ -536,25 +536,36 @@ test('own mode bakes each side independently and still hashes the choice', async
   assert.notDeepEqual(physicalColours(own, 5).inner, physicalColours(mirrored, 5).inner);
 });
 
-test('a bake without symmetry keeps its bytes and its layout hash', async () => {
+test('legacy bakes keep the original hash and new bakes reverse exactly one physical run', async () => {
+  const legacy = await bakePatternLabRecipe({ ...fixture(), fps: 1 }, { legacyLogicalPlayback: true });
+  assert.equal(legacy.sidecar.layoutPhysicalOrderSha256, '5c2fc52f863a09eba980aa4813a1c6ca9e1e4e36c0123db355994fe94c4ef5e2');
+  assert.equal(sha256(legacy.bytes), '0c6001cd47f40c7227f920c05ae0c1915b84a18d3647c48f5d95d07c6acfbde0');
   const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
-  // The literal was produced by the code BEFORE symmetry existed.
-  assert.equal(plain.sidecar.layoutPhysicalOrderSha256, '5c2fc52f863a09eba980aa4813a1c6ca9e1e4e36c0123db355994fe94c4ef5e2');
+  assert.notEqual(plain.sidecar.layoutPhysicalOrderSha256, legacy.sidecar.layoutPhysicalOrderSha256);
+  let differs = false;
+  for (let frame = 0; frame < plain.sidecar.frameCount; frame++) {
+    const start = LWSEQ_HEADER_BYTES + frame * 18;
+    for (const [to, from] of [2, 1, 0, 3, 4, 5].entries()) {
+      assert.deepEqual(plain.bytes.slice(start + to * 3, start + to * 3 + 3), legacy.bytes.slice(start + from * 3, start + from * 3 + 3));
+    }
+    differs ||= plain.bytes[start] !== legacy.bytes[start];
+  }
+  assert.equal(differs, true);
   const withNull = await bakePatternLabRecipe({ ...fixture(), symmetry: null, sidesMirrored: false, fps: 1 });
   assert.deepEqual(withNull.bytes, plain.bytes);
   assert.equal(withNull.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
   assert.equal(withNull.sidecarJson, plain.sidecarJson);
 });
 
-test('layout hash candidates: one without symmetry, both choices with it', async () => {
+test('layout hash candidates recognize current and legacy bytes for each symmetry choice', async () => {
   const { patternLabBakeLayoutHashCandidates } = await import('./lwseqBake.js');
   const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
   const mirrored = await bakePatternLabRecipe({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: true, fps: 1 });
   const none = await patternLabBakeLayoutHashCandidates({ ...fixture(), fps: 1 });
-  assert.deepEqual(none, [plain.sidecar.layoutPhysicalOrderSha256]);
+  assert.deepEqual(none, [plain.sidecar.layoutPhysicalOrderSha256, '5c2fc52f863a09eba980aa4813a1c6ca9e1e4e36c0123db355994fe94c4ef5e2']);
   // a project whose live choice has since flipped to "own" still recognises the recording
   const later = await patternLabBakeLayoutHashCandidates({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: false, fps: 1 });
-  assert.equal(later.length, 2);
+  assert.equal(later.length, 4);
   assert.ok(later.includes(mirrored.sidecar.layoutPhysicalOrderSha256));
   // but a different set of sides is not recognised
   const swapped = await patternLabBakeLayoutHashCandidates({

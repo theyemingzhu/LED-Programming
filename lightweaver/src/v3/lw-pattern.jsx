@@ -1,3 +1,4 @@
+import { pixelsInPlaybackOrder } from '../lib/wiringCompiler.js';
 /* Light Weaver v3 — Patterns & Mixes (faithful to v3, cleaned + recolored) */
 /* Exact mockup file, converted from window-global script to ES module.
    The visual body (helpers + JSX structure + class names) is the mockup's own.
@@ -342,12 +343,7 @@ function writeSectionDisplayOrder(projectId, ids) {
   // the runtime package consumed by the card.
   function wiringInPhysicalPreviewOrder(compiledWiring) {
     if (!compiledWiring?.pixels?.length || !compiledWiring?.runs?.length) return compiledWiring;
-    const pixels = [...compiledWiring.pixels];
-    for (const run of compiledWiring.runs) {
-      if (!run.reversed || !Number.isInteger(run.start) || !Number.isInteger(run.count) || run.count < 2) continue;
-      pixels.splice(run.start, run.count, ...pixels.slice(run.start, run.start + run.count).reverse());
-    }
-    return { ...compiledWiring, pixels };
+    return { ...compiledWiring, pixels: pixelsInPlaybackOrder(compiledWiring) };
   }
 
   // Runs the REAL compiled pattern through the frame engine on a rAF loop, applies
@@ -1150,6 +1146,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         : `Breathe · ${look.breatheLowerPct}–${look.breatheUpperPct}% · ${look.breatheCycleSeconds}s`;
     const patternPreviewSegments = useMemo(
       () => buildPatternPreviewSegments({
+        previewPlaybackDirection: true,
         strips,
         patchBoard: board,
         wiring,

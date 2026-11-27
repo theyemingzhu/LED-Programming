@@ -159,7 +159,14 @@ test('quick samples match corresponding LWSEQ pixels in reversed physical wiring
   const naturalSlots = new Map();
   let offset = 0;
   strips.forEach(strip => { strip.pixels.forEach((_, i) => naturalSlots.set(`${strip.id}:${i}`, offset + i)); offset += strip.pixels.length; });
-  const physicalSlots = new Map(compiledWiring.pixels.map((pixel, i) => [naturalSlots.get(`${pixel.stripId}:${pixel.sourceLed}`), i]));
+  // The fixture's electrical itinerary is s2 forward, s0 forward, s3
+  // reverse, s1 reverse. Derive expectations without the production mapping.
+  const physicalSources = [2, 0, 3, 1].flatMap(stripIndex => {
+    const strip = strips[stripIndex];
+    const samples = strip.pixels.map((_, led) => naturalSlots.get(`${strip.id}:${led}`));
+    return stripIndex % 2 ? samples.reverse() : samples;
+  });
+  const physicalSlots = new Map(physicalSources.map((source, physical) => [source, physical]));
   for (const sidesMirrored of [false, true]) {
     const geometry = compactPatternLabWorkerGeometry({ strips, symmetry, sidesMirrored, gammaEnabled: true, gammaValue: 2.2 });
     const frame = await workerFrame(geometry, recipe, options, controls.renderTime);

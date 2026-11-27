@@ -47,20 +47,23 @@ export async function recordedSequenceSideMode(asset, project = {}) {
       const matches = [];
       for (const mode of modes) {
         const context = { ...project, symmetry, sidesMirrored: mode !== 'own', fps: asset.manifest.fps };
-        let hash;
+        let hashLayout;
+        let input;
         if (asset.manifest.format === 'lightweaver-lwseq-sidecar') {
-          const { hashPatternLabBakePhysicalOrder } = await import('./lwseqBake.js');
-          hash = await hashPatternLabBakePhysicalOrder({ ...context, recipe: asset.manifest.recipe,
+          ({ hashPatternLabBakePhysicalOrder: hashLayout } = await import('./lwseqBake.js'));
+          input = { ...context, recipe: asset.manifest.recipe,
             groups: project.layoutLayerGroups ?? project.groups,
             audioLanes: asset.manifest.recipe?.offlineAudio,
             render: project.render ?? Object.fromEntries(Object.entries({ bpm: project.bpm,
               gammaEnabled: project.gammaEnabled, gammaValue: project.gammaValue,
-              symSettings: project.symSettings }).filter(([, value]) => value !== undefined)) });
+              symSettings: project.symSettings }).filter(([, value]) => value !== undefined)) };
         } else if (asset.manifest.format === 'lightweaver-flow-lwseq-sidecar') {
-          const { hashSceneExpressionFlowLayout } = await import('./sceneExpressionRecording.js');
-          hash = await hashSceneExpressionFlowLayout({ ...context, scene: asset.manifest.scene });
+          ({ hashSceneExpressionFlowLayout: hashLayout } = await import('./sceneExpressionRecording.js'));
+          input = { ...context, scene: asset.manifest.scene };
         }
-        if (hash && hash === asset.manifest.layoutPhysicalOrderSha256) matches.push(mode);
+        if (!hashLayout) continue;
+        const savedHash = asset.manifest.layoutPhysicalOrderSha256;
+        if (await hashLayout(input) === savedHash || await hashLayout(input, { legacyLogicalPlayback: true }) === savedHash) matches.push(mode);
       }
       if (matches.length === 1) [bakedMode] = matches;
     } catch { /* Unavailable/incomplete legacy inputs leave the choice unknown. */ }
