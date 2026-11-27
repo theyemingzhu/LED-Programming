@@ -649,3 +649,159 @@ assert.doesNotMatch(status, /doc\["wifi"\]\["password"\]/,
   'status may expose saved SSID but must never expose the WiFi password');
 
 console.log('wifi handoff source contract tests passed');
+
+// Execute the emitted setup branch, including startup and the real button handler.
+const setupScript = decodeCppStrings(advancedRoot.slice(
+  advancedRoot.indexOf('"const passwordToggle='),
+  advancedRoot.indexOf('} else if (!needsCommissioning)', advancedRoot.indexOf('"const passwordToggle=')),
+));
+function launchSavedSetup(responses, { savedSsid = 'Gallery', firstPaint = 'Checking Wi-Fi status…' } = {}) {
+  const elements = Object.fromEntries(
+    ['toggle-password', 'ssid', 'rescan', 'setup-more', 'pw', 'join', 'msg', 'reuse-wifi', 'reuse-status', 'saved-ssid', 'wifi-summary', 'wifi-status-retry']
+      .map(id => [id, { id, textContent: '', hidden: false, setAttribute() {}, appendChild() {} }]),
+  );
+  elements['saved-ssid'].textContent = savedSsid;
+  elements['reuse-wifi'].hidden = true;
+  elements['reuse-status'].textContent = firstPaint;
+  const listeners = {};
+  const fire = name => listeners[name]?.({ persisted: true });
+  const requests = [];
+  const writes = [];
+  const timers = [];
+  const context = {
+    $: id => elements[id], setupPageCardId: 'lw-card', setupPageBootId: 'boot',
+    document: { addEventListener() {}, createElement: () => ({}), hidden: false },
+    window: { addEventListener(name, listener) { listeners[name] = listener; } },
+    get: (path, timeout) => {
+      requests.push({ path, timeout });
+      if (path.startsWith('/api/wifi/scan')) return Promise.resolve({ networks: [] });
+      assert.ok(responses.length, 'unexpected status request');
+      return responses.shift().promise;
+    },
+    post: (path, body) => {
+      writes.push({ path, body });
+      return Promise.resolve({ accepted: true, bootId: 'boot', handoffGeneration: 8 });
+    },
+    setTimeout: (callback, delay) => {
+      const timer = { callback, delay, active: true };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout: timer => { timer.active = false; },
+  };
+  vm.runInNewContext(setupScript, context);
+  const runTimer = () => {
+    const next = timers.find(timer => timer.active);
+    assert.ok(next, 'expected a scheduled status check');
+    next.active = false;
+    next.callback();
+  };
+  return { elements, requests, writes, timers, runTimer, fire };
+}
+const setupApStatus = {
+  cardId: 'lw-card', bootId: 'boot',
+  wifi: { configured: true, ssid: 'Gallery', transport: 'ap', apActive: true, transition: 'setup-ap', handoffGeneration: 7 },
+};
+const flushSetup = () => new Promise(setImmediate);
+const withWifi = fields => ({ ...setupApStatus, wifi: { ...setupApStatus.wifi, ...fields } });
+const stationStatus = withWifi({ transport: 'station', apActive: false, transition: 'station', stationIp: '192.168.1.50' });
+assert.match(advancedRoot, /const bool connectedWifi[\s\S]*ConnectivityPhase::Station[\s\S]*WiFi\.status\(\) == WL_CONNECTED[\s\S]*WiFi\.SSID\(\) == cfg\.wifi\.ssid/);
+assert.match(setupMarkup, /if \(connectedWifi\) \{\s*page \+= F\("Connected to "\);\s*page \+= escapeHtml\(cfg\.wifi\.ssid\);/);
+assert.match(setupMarkup, /id='reuse-wifi' type='button' hidden/);
+assert.match(setupMarkup, /id='wifi-change' href='\/\?wifiSetup=1&amp;editWifi=1'/);
+assert.match(setupMarkup, /id='wifi-editor'[\s\S]*if \(wifiConfigured && !editWifi\) page \+= F\(" hidden"\)/);
+{
+  const startup = deferred();
+  const resumed = deferred();
+  const setup = launchSavedSetup([startup, resumed], { firstPaint: 'Connected to Gallery' });
+  assert.equal(setup.elements['reuse-status'].textContent, 'Connected to Gallery');
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+  assert.deepEqual(setup.requests.map(request => request.path), ['/api/status']);
+  startup.resolve(stationStatus);
+  await flushSetup();
+  assert.equal(setup.elements['reuse-status'].textContent, 'Connected to Gallery');
+  assert.equal(setup.writes.length, 0);
+  setup.fire('pagehide');
+  setup.fire('pageshow');
+  assert.match(setup.elements['reuse-status'].textContent, /Checking Wi-Fi status/);
+  resumed.resolve(withWifi({ ssid: 'Other gallery', transition: 'joining', handoffGeneration: 8 }));
+  await flushSetup();
+  assert.equal(setup.elements['reuse-status'].textContent, 'Connecting to Other gallery…');
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+}
+{
+  const startup = deferred();
+  const clicked = Promise.withResolvers();
+  const recovered = deferred();
+  const setup = launchSavedSetup([startup, clicked, recovered]);
+  assert.match(setup.elements['reuse-status'].textContent, /Checking/);
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+  assert.equal(setup.elements['reuse-wifi'].onclick(), undefined);
+  startup.resolve(setupApStatus);
+  await flushSetup();
+  assert.equal(setup.elements['reuse-wifi'].hidden, false);
+  const click = setup.elements['reuse-wifi'].onclick();
+  assert.equal(setup.requests.length, 2, 'a retry must check fresh status before writing');
+  clicked.reject(new TypeError('The card did not answer in time'));
+  await flushSetup();
+  setup.runTimer();
+  recovered.resolve(setupApStatus);
+  await click;
+  assert.equal(setup.writes.length, 1);
+  assert.equal(setup.writes[0].body.reuseSaved, true);
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+}
+for (const [changed, expected] of [
+  [{ ...setupApStatus, bootId: 'other-boot' }, /stale/],
+  [withWifi({ ...stationStatus.wifi, ssid: 'Other gallery' }), /saved network changed/],
+  [withWifi({ transition: 'joining' }), /Connecting to Gallery/],
+  [withWifi({ ...stationStatus.wifi, stationIp: '0.0.0.0' }), /Checking Wi-Fi status/],
+]) {
+  const setup = launchSavedSetup([{ promise: Promise.resolve(setupApStatus) }, { promise: Promise.resolve(changed) }]);
+  await flushSetup();
+  await setup.elements['reuse-wifi'].onclick();
+  assert.equal(setup.writes.length, 0);
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+  assert.match(setup.elements['reuse-status'].textContent, expected);
+}
+{
+  const setup = launchSavedSetup([
+    { promise: Promise.resolve(withWifi({ transition: 'joining', ssid: 'New network' })) },
+    { promise: Promise.resolve(withWifi({ transition: 'recovery-ap', ssid: 'New network', failureReason: 'authentication_failed' })) },
+  ]);
+  await flushSetup();
+  assert.equal(setup.elements['reuse-status'].textContent, 'Connecting to New network…');
+  assert.equal(setup.elements['reuse-wifi'].hidden, true);
+  setup.runTimer();
+  await flushSetup();
+  assert.match(setup.elements['reuse-status'].textContent, /Authentication failed.*Disconnected from New network/);
+  assert.equal(setup.elements['reuse-wifi'].hidden, false);
+  assert.equal(setup.writes.length, 0);
+}
+{
+  const failing = deferred();
+  const setup = launchSavedSetup([failing]);
+  setup.elements.rescan.onclick();
+  assert.deepEqual(setup.requests.map(request => request.path), ['/api/status', '/api/wifi/scan']);
+  // A transient network error is neutral until automatic retries run out.
+  const offline = Array.from({ length: 3 }, () => Promise.withResolvers());
+  const transient = launchSavedSetup([...offline, { promise: Promise.resolve(stationStatus) }], { firstPaint: 'Connected to Gallery' });
+  offline[0].reject(new Error('offline'));
+  await flushSetup();
+  assert.equal(transient.elements['reuse-status'].textContent, 'Checking Wi-Fi status…');
+  assert.equal(transient.elements['wifi-status-retry'].hidden, true);
+  assert.equal(transient.elements['reuse-wifi'].hidden, true);
+  for (const failure of offline.slice(1)) {
+    transient.runTimer();
+    failure.reject(new Error('offline'));
+    await flushSetup();
+  }
+  assert.equal(transient.elements['reuse-status'].textContent, 'Could not check Wi-Fi status.');
+  assert.equal(transient.elements['wifi-status-retry'].hidden, false);
+  assert.equal(transient.elements['reuse-wifi'].hidden, true);
+  transient.elements['wifi-status-retry'].onclick();
+  await flushSetup();
+  assert.equal(transient.elements['reuse-status'].textContent, 'Connected to Gallery');
+  assert.equal(transient.elements['wifi-status-retry'].hidden, true);
+}
+console.log('saved-network setup first paint, lifecycle and action tests passed');

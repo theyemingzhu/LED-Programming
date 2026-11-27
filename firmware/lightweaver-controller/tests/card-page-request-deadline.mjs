@@ -34,12 +34,15 @@ const end = web.indexOf('"$(\'join\').onclick', start);
 const pollScript = [...web.slice(start, end).matchAll(/"((?:[^"\\]|\\.)*)"/g)]
  .map(match => JSON.parse('"' + match[1] + '"')).join('');
 const snapshot = (generation, phase = 'handoff-ready') => ({
- cardId:'lw-test', bootId:'boot-one', wifi:{ssid:'Gallery',handoffGeneration:generation,
+ cardId:'lw-test', bootId:'boot-one', wifi:{configured:true,ssid:'Gallery',handoffGeneration:generation,
  transition:phase, transport:phase==='station'?'station':'ap',apActive:true,
  transitionPending:phase!=='station',stationIp:'192.168.1.42'},
 });
 function runSetup(get, post) {
- const elements = {join:{disabled:false},msg:{textContent:'',className:''}};
+ const elements = Object.fromEntries(
+  ['join', 'msg', 'reuse-wifi', 'reuse-status', 'saved-ssid', 'wifi-summary', 'wifi-status-retry']
+   .map(id => [id, {id, textContent:'', className:'', disabled:false}]),
+ );
  const timers = new Map(), listeners = {}, timeouts = [];
  let now = 0, nextTimer = 0;
  class TestDate extends Date { static now() { return now; } }
@@ -53,7 +56,7 @@ function runSetup(get, post) {
   clearTimeout:id=>timers.delete(id),
  });
  vm.runInContext(pollScript+';globalThis.submit=submitWifi;globalThis.observe=observeExistingWifiJoin;globalThis.start=startWifiJoinPoll;', context);
- const flush = async()=>{for(let i=0;i<8;i++)await Promise.resolve()};
+ const flush = async()=>{for(let i=0;i<16;i++)await Promise.resolve()};
  const tick = async()=>{assert.ok(timers.size,'expected scheduled monitor poll');const [id,timer]=[...timers].sort((a,b)=>a[1].at-b[1].at)[0];timers.delete(id);now=timer.at;timer.fn();await flush()};
  return {context,elements,timers,listeners,timeouts,tick,flush,now:()=>now};
 }
@@ -65,20 +68,25 @@ await savedDespiteLostResponse.context.submit({ssid:'Gallery',password:'test'}, 
 await savedDespiteLostResponse.tick();
 await savedDespiteLostResponse.tick();
 assert.equal(posted, 1, 'a lost successful save response must not cause a second credential write');
-assert.match(savedDespiteLostResponse.elements.msg.textContent, /Connected at/,
+assert.match(savedDespiteLostResponse.elements.msg.textContent, /Connected to Gallery(?: at)?/,
  'the actual saved generation is reconciled into verified progress');
 assert.equal(savedDespiteLostResponse.elements.join.disabled, false);
 
 const offline = runSetup(async()=>{throw new Error('offline')}, async()=>{throw new Error('must not write')});
-await offline.context.submit({reuseSaved:true}, 'Gallery');
-assert.match(offline.elements.msg.textContent, /offline/);
+const offlineClick=offline.context.submit({reuseSaved:true}, 'Gallery');
+await offline.flush();
+await offline.tick();
+await offline.tick();
+await offlineClick;
+assert.equal(offline.timeouts.length,3,'offline preflight has a finite three-read budget per click');
+assert.match(offline.elements['reuse-status'].textContent, /offline/);
 assert.equal(offline.elements.join.disabled,false, 'an unreachable card leaves an actionable retry');
 
 posted=0;
 const alreadyConnected = runSetup(async()=>snapshot(0,'station'), async()=>{posted++});
 await alreadyConnected.context.submit({reuseSaved:true}, 'Gallery');
 assert.equal(posted,0,'using a connected saved network does not write or restart Wi-Fi');
-assert.match(alreadyConnected.elements.msg.textContent,/Connected to saved network/);
+assert.match(alreadyConnected.elements['reuse-status'].textContent,/Connected to Gallery/);
 console.log('lost Wi-Fi save response and saved connection recovery tests passed');
 
 let unchangedWrites=0, unchangedReads=0;
@@ -97,7 +105,7 @@ let missingWrites=0;
 const neverAccepted = runSetup(async()=>snapshot(1), async()=>{
  missingWrites++;
  if(missingWrites===1)throw new Error('request never reached card');
- return {bootId:'boot-one',handoffGeneration:2};
+ return {accepted:true,bootId:'boot-one',handoffGeneration:2};
 });
 await neverAccepted.context.submit({ssid:'Gallery',password:'test'},'Gallery');
 assert.equal(missingWrites,1,'the first lost-response reconciliation does not resend automatically');
@@ -118,7 +126,7 @@ let editedWrites=0, editedReads=0;
 const edited = runSetup(async()=>snapshot(editedReads++<2?1:2), async()=>{
  editedWrites++;
  if(editedWrites===1)throw new Error('response lost');
- return {bootId:'boot-one',handoffGeneration:3};
+ return {accepted:true,bootId:'boot-one',handoffGeneration:3};
 });
 await edited.context.submit({ssid:'Gallery',password:'first'},'Gallery');
 await edited.context.submit({ssid:'Gallery',password:'corrected'},'Gallery');
@@ -136,12 +144,12 @@ assert.equal(bootstrapRecovery.timers.size,1,'failed initial status read schedul
 await bootstrapRecovery.tick();
 assert.equal(bootstrapRecovery.now(),5000,'bootstrap retry backs off from first failure');
 await bootstrapRecovery.tick();
-assert.match(bootstrapRecovery.elements.msg.textContent,/handshake/,
+assert.match(bootstrapRecovery.elements['reuse-status'].textContent,/handshake/,
  'reload during a configured setup-ap retry gap resumes observing failure telemetry');
-await bootstrapRecovery.tick();await bootstrapRecovery.tick();
-assert.match(bootstrapRecovery.elements.msg.textContent,/Connected at/,
+await bootstrapRecovery.tick();await bootstrapRecovery.tick();await bootstrapRecovery.tick();
+assert.match(bootstrapRecovery.elements['reuse-status'].textContent,/Connected to Gallery(?: at)?/,
  'retry-gap reload observes the later join after transient bootstrap failure');
-assert.equal(bootstrapRecovery.timers.size,0);
+assert.equal(bootstrapRecovery.timers.size,1,'the page continues checking current connectivity');
 
 let retry;
 retry = runSetup(async()=>retry.now()<70000
@@ -149,24 +157,24 @@ retry = runSetup(async()=>retry.now()<70000
  : snapshot(4), async()=>{throw new Error('observation must never post')});
 await retry.context.observe();
 while(retry.now()<70000){assert.ok(retry.timers.size,`monitor stopped at ${retry.now()}ms: ${retry.elements.msg.textContent}; state ${vm.runInContext('JSON.stringify({target:wifiJoinTarget,flight:!!wifiJoinFlight,timer:wifiJoinTimer,token:wifiJoinPollToken})',retry.context)}`);await retry.tick();}
-assert.match(retry.elements.msg.textContent,/Retrying…/,
+assert.match(retry.elements['reuse-status'].textContent,/Connecting to Gallery/,
  'a failed join must remain informative after the former 67.5-second limit');
-await retry.tick();
-assert.match(retry.elements.msg.textContent,/Connected at/,
+await retry.tick();await retry.tick();
+assert.match(retry.elements['reuse-status'].textContent,/Connected to Gallery(?: at)?/,
  'a late automatic retry can still reach verified success');
 assert.ok(retry.timeouts.every(n=>n===5000),'each status request has a five-second deadline');
-assert.equal(retry.timers.size,0,'verified success stops observation');
+assert.equal(retry.timers.size,1,'verified success retains one current-state observer');
 
 const reloadedConnected = runSetup(async()=>({...snapshot(0,'station'),wifi:{...snapshot(0,'station').wifi,configured:true}}),async()=>{throw new Error('reload must not post')});
 await reloadedConnected.context.observe();
 await reloadedConnected.tick();
-assert.match(reloadedConnected.elements.msg.textContent,/Connected at/,
+assert.match(reloadedConnected.elements['reuse-status'].textContent,/Connected to Gallery(?: at)?/,
  'a reload after the station joined restores its current status without writing credentials');
 
 const wrongCard = runSetup(async()=>({...snapshot(4),cardId:'lw-other'}),async()=>{});
 wrongCard.context.start('lw-test',4,'boot-one','Gallery');
 await wrongCard.tick();
-assert.doesNotMatch(wrongCard.elements.msg.textContent,/Connected at/);
+assert.doesNotMatch(wrongCard.elements.msg.textContent,/Connected to Gallery(?: at)?/);
 assert.equal(wrongCard.timers.size,0,'a different card cannot schedule a success chain');
 
 let finishOld;
@@ -180,7 +188,7 @@ finishOld(snapshot(4));
 await superseded.flush();
 assert.equal(superseded.elements.msg.textContent,'','a late old-generation reply cannot show success');
 await superseded.tick();await superseded.tick();
-assert.match(superseded.elements.msg.textContent,/Connected at/,
+assert.match(superseded.elements.msg.textContent,/Connected to Gallery(?: at)?/,
  'the new generation alone controls the displayed success');
 
 const backoff = runSetup(async()=>{throw new Error('offline')},async()=>{});
