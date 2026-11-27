@@ -128,6 +128,24 @@ async function saveEvidence(page: Page, info: TestInfo, observed: object, search
   await info.attach(`connection-${label}-screen`, { path, contentType: 'image/png' });
 }
 
+test('a remembered card with a slow initial reply shows connection progress before controls are ready', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await blockUnmodelledLan(page);
+  const { card } = realCard('playing');
+  card.setReplyDelay(1_500);
+  await card.install(page);
+  await startStudio(page, baseURL!, true);
+
+  const footer = page.getByTestId('card-link-status');
+  const spinner = footer.locator('.lw-notice-spinner');
+  await expect(footer).toHaveAccessibleName(/Connecting|Checking card/i, { timeout: 1_000 });
+  await expect(spinner).toBeVisible();
+  await expect(page.getByTestId('installed-control-open')).toHaveCount(0);
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  await expect(footer).toHaveAccessibleName(/Connected/);
+  await expect(spinner).toHaveCount(0);
+});
+
 test('paired card returning from Wi-Fi connects after the first failed probe with one Find action', async ({ page, baseURL }, info) => {
   test.setTimeout(65_000);
   await blockUnmodelledLan(page);
@@ -155,6 +173,9 @@ test('paired card returning from Wi-Fi connects after the first failed probe wit
   timing.wifiDrop(handoffMs);
   try {
     await find.click();
+    const progress = page.getByTestId('setup-active-task').locator('.lw-setup-progress[role="status"]');
+    await expect(progress).toHaveText(/looking|checking|waiting/i, { timeout: 1_000 });
+    await expect(progress.locator('.lw-notice-spinner')).toBeVisible();
     await expect.poll(() => directRequests.some(request => request.outcome === 'no reply'), { timeout: 10_000 }).toBe(true);
     await expect(find).toBeDisabled();
     await expect(page.getByRole('button', { name: /Try again|Check again|Retry/i })).toHaveCount(0);
@@ -166,6 +187,7 @@ test('paired card returning from Wi-Fi connects after the first failed probe wit
     expect(directRequests.some(request => request.at >= handoffMs && request.outcome === 'available')).toBe(true);
     expect(bridge.navigations.some(navigation => !navigation.served)).toBe(true);
     await expect(page.getByTestId('setup-identity-connection')).toContainText('Connected');
+    await expect(progress.locator('.lw-notice-spinner')).toHaveCount(0);
     expect(snapshot.clicks.map(click => click.name)).toEqual([expect.stringMatching(/Find my card|Reconnect this card/i)]);
     expect(snapshot.identity?.id).toBe(MATRIX_CARD_ID);
     expect(card.state.currentId).toBe('fire');
@@ -283,6 +305,8 @@ test('a different card at the remembered address cannot replace the paired card'
 
 test('unreachable card stops looking and offers recovery after one search', async ({ page, baseURL }, info) => {
   await blockUnmodelledLan(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const { card } = realCard('factory-blank');
   const direct = await refuseDirect(page);
   const bridge = await installPracticeCardPopup(page, card, { hosts: CARD_HOSTS, shouldServe: () => false });
@@ -295,7 +319,13 @@ test('unreachable card stops looking and offers recovery after one search', asyn
   let elapsedMs = 0;
   try {
     await search.click();
-    const recovery = connectPanel(page).getByRole('button', { name: /Try again|Check again|Retry/i }).filter({ visible: true }).first();
+    const dialog = connectPanel(page);
+    const progress = dialog.locator('.card-connection-loading[role="status"]');
+    const spinner = progress.locator('.lw-notice-spinner');
+    await expect(progress).toHaveText(/looking|checking|waiting/i, { timeout: 1_000 });
+    await expect(spinner).toBeVisible();
+    await expect(spinner).toHaveCSS('animation-name', 'none');
+    const recovery = dialog.getByRole('button', { name: /Try again|Check again|Retry/i }).filter({ visible: true }).first();
     await expect.poll(() => direct.some(request => request.at >= start && request.method === 'GET'), { timeout: 8_000 }).toBe(true);
     for (let tick = 0; tick < 12 && !(await recovery.isVisible()); tick++) {
       await advanceSearchClock(page, 5_000);
@@ -313,6 +343,10 @@ test('unreachable card stops looking and offers recovery after one search', asyn
     const count = direct.length + bridge.navigations.length;
     await page.clock.fastForward(30_000);
     expect(direct.length + bridge.navigations.length, 'finished search has no active retry loop').toBe(count);
+    await expect(spinner).toHaveCount(0);
+    await recovery.click();
+    await expect(spinner).toBeVisible({ timeout: 1_000 });
+    await expect(recovery).toBeHidden();
   } finally {
     await saveEvidence(page, info, { clock: 'controlled', elapsedMs, directRequests: direct.length, bridge }, 1);
   }

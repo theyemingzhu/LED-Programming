@@ -609,7 +609,7 @@ function OfflineStatusControl({ state, onActivate }) {
   return <span className={`sb-firmware sb-offline is-${state.status}`} data-testid="offline-update-status" role="status">{label}</span>;
 }
 
-function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false, cardBlackedOut = false, cardHost = '', ownEditPending = false }) {
+function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false, cardBlackedOut = false, cardHost = '', ownEditPending = false, restoringCardConnection = false }) {
   // F32: the chip's own recovery — the same request Card Home's banner and
   // the Patterns toolbar button already send, reused through the shell's
   // CardActionsProvider (`recoverLights` wraps
@@ -653,6 +653,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
           open={connectionCenterOpen || cardControlOpen}
           dialogId={cardSurfaceForLifecycle(lifecycle) === 'card-control' ? 'card-control-drawer' : 'card-connection-center'}
           savePending={cardSavePending}
+          restoringConnection={restoringCardConnection}
           blackout={cardBlackedOut}
           onRecoverLights={recoverLights}
           recoveryPending={recoveryPending}
@@ -793,6 +794,7 @@ function Shell({ offlineUpdateController = null }) {
   const commissioningActiveRef = useRef(commissioningActive);
   const installRouteRef = useRef('#screen=card&section=install');
   const [connectionCenterOpen, setConnectionCenterOpen] = useState(false);
+  const [restoringCardConnection, setRestoringCardConnection] = useState(() => Boolean(readPersistedCardIdentity()?.id));
   const [boardSetupEntry, setBoardSetupEntry] = useState(null);
   const [cardSavePending, setCardSavePending] = useState(false);
   const cardSaveRef = useRef(false);
@@ -1405,7 +1407,10 @@ function Shell({ offlineUpdateController = null }) {
     // ever call window.open(url, CARD_BRIDGE_WINDOW_NAME) and silently
     // navigate this very tab in place.
     releaseInheritedBridgeWindowName();
-    void bootstrapStudioCardConnection();
+    let active = true;
+    const finishRestoring = () => { if (active) setRestoringCardConnection(false); };
+    void bootstrapStudioCardConnection().then(finishRestoring, finishRestoring);
+    return () => { active = false; };
   }, []);
   useEffect(() => {
     if (!directCardControl) return;
@@ -2720,6 +2725,7 @@ function Shell({ offlineUpdateController = null }) {
       <NoticeLayer />
 
       <StatusBar
+        restoringCardConnection={restoringCardConnection}
         ownEditPending={ownEditPending}
         link={cardLink}
         lifecycle={cardLifecycle}

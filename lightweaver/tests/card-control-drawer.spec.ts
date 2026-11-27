@@ -108,6 +108,9 @@ test('same-card readiness changes discard delayed drawer reads and reload the cu
   await expect(footer).toHaveAccessibleName(/Gallery Lightweaver.*Connected/);
   await footer.click();
   const drawer = page.getByRole('dialog', { name: 'Gallery Lightweaver controls' });
+  const progress = drawer.getByRole('status').filter({ hasText: 'Reading the card controls…' });
+  await expect(progress.locator('.lw-notice-spinner')).toBeVisible({ timeout: 1_000 });
+  await expect(drawer.getByRole('combobox', { name: 'Pattern' })).toHaveCount(0);
   await expect.poll(() => readCounts.old).toBeGreaterThanOrEqual(2);
 
   // The boot changes first while the browser's saved project remains the same.
@@ -115,6 +118,8 @@ test('same-card readiness changes discard delayed drawer reads and reload the cu
   bootId = 'drawer-boot-2';
   await verifyCard(page, projectFingerprint, bootId, projectRevision);
   await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('new-pattern');
+  await expect(drawer.getByRole('combobox', { name: 'Pattern' })).toBeEnabled();
+  await expect(progress).toHaveCount(0);
   expect(readCounts['boot-current']).toBeGreaterThanOrEqual(2);
   releaseOldReads?.();
   await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('new-pattern');

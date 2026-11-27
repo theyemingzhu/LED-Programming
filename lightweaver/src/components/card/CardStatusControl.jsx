@@ -24,13 +24,16 @@ export function CardStatusControl({
   open = false,
   dialogId = 'card-connection-center',
   savePending = false,
+  restoringConnection = false,
   blackout = false,
   onRecoverLights,
   recoveryPending = false,
 }) {
   const writesNow = !lifecycle?.installedControlsReady && (lifecycle?.state === 'length-mismatch' || lifecycle?.state === 'content-mismatch');
-  const status = savePending ? 'Saving to card' : lifecycle.label;
+  const checkingRememberedCard = restoringConnection && lifecycle.state === 'disconnected';
+  const status = savePending ? 'Saving to card' : checkingRememberedCard ? 'Connecting' : lifecycle.label;
   const connected = status === 'Connected';
+  const checkingCard = !savePending && (checkingRememberedCard || ['connecting', 'confirming', 'verifying'].includes(lifecycle.state));
   const saveToCard = cardFooterNeedsSave(lifecycle) || writesNow || savePending;
   // Gated on `connected`: the shared journey only ever resolves a blackout
   // for the exact card Studio is paired with, and every other status (Save
@@ -65,7 +68,7 @@ export function CardStatusControl({
         data-lifecycle-state={lifecycle?.state || ''}
         data-needs-save={saveToCard ? 'true' : 'false'}
       >
-        <span className="card-status-dot" aria-hidden="true" />
+        <span className={checkingCard ? 'lw-notice-spinner' : 'card-status-dot'} aria-hidden="true" />
         <span className="card-status-copy">
           {!connected && !saveToCard ? (
             <span className="card-status-name">Lightweaver</span>

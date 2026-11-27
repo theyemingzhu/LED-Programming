@@ -35,6 +35,7 @@ import { findPairedCardUsbAddress } from '../../lib/cardUsbReconnect.js';
 import { usbWifiErrorMessage } from '../../lib/usbWifiProvisioning.js';
 import { BridgeResumePanel } from './BridgeResumePanel.jsx';
 import { ConnectedBoardSetup } from './ConnectedBoardSetup.jsx';
+import { CardLoadingStatus } from './CardLoadingStatus.jsx';
 
 function platformCapabilities() {
   if (typeof window === 'undefined') return detectPlatformCapabilities();
@@ -420,6 +421,7 @@ export function CardConnectionCenter({
     if (connectRun.current) return;
     const controller = new AbortController();
     connectRun.current = controller;
+    setFailure('');
     setPairingBusy(true);
     const result = await pairDiscoveredCard(link, { signal: controller.signal });
     if (connectRun.current !== controller) return;
@@ -443,7 +445,7 @@ export function CardConnectionCenter({
   const takeOverConnection = async () => {
     if (!takeoverHost || pairingBusy) return;
     setPairingBusy(true);
-    setFailure('Taking over the card connection…');
+    setFailure('');
     try {
       // Acquisition must begin synchronously inside this click so the browser
       // permits the named card-page window to be reclaimed. Discovery is
@@ -609,6 +611,11 @@ export function CardConnectionCenter({
       buildId={boardBuildId} onOpenBoardManager={onOpenBoardManager} onSetUpLights={onSetUpLights} />
   );
 
+  const loadingMessage = pairingBusy
+    ? (takeoverHost ? 'Taking over the card connection…' : 'Verifying this card…')
+    : directBusy ? (connectProgress || 'Looking for the Lightweaver card…')
+    : showActionBody && action.busy ? 'Checking card readiness…' : '';
+
   const postConnectButtonClass = showBoardSetup ? 'btn' : 'btn primary';
 
   const renderPrimaryAction = () => {
@@ -742,6 +749,7 @@ export function CardConnectionCenter({
         </div>
       )}
 
+      <CardLoadingStatus className="card-connection-loading">{loadingMessage}</CardLoadingStatus>
       {boardCheck}
 
       {showDirectConnect && (
@@ -923,7 +931,6 @@ export function CardConnectionCenter({
         </div>
       ) : null}
 
-      {connectProgress && <p role="status">{connectProgress}</p>}
       {failure && <p className="card-connection-failure" role="alert">{failure}</p>}
       {takeoverHost && (
         <div className="card-connection-actions">
