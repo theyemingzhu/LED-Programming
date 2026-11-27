@@ -3262,21 +3262,38 @@ bool runtimeRename(const String& newPieceName, const String& newHostname, String
     message = "nvs unavailable";
     return false;
   }
-  if (newPieceName.length()) {
-    runtimeConfig.pieceName = newPieceName;
-    pieceName = newPieceName;
-    prefs.putString("pieceName", newPieceName);
-  }
   if (newHostname.length()) {
-    runtimeConfig.wifi.hostname = newHostname;
-    // Persist via the wifi JSON path so it sticks across reboots
+    // Edit the saved record so renaming does not start a new Wi-Fi handoff.
     JsonDocument doc;
-    doc["ssid"] = runtimeConfig.wifi.ssid;
-    doc["password"] = runtimeConfig.wifi.password;
+    if (prefs.isKey("wifi")) {
+      const String savedWifi = prefs.getString("wifi", "");
+      if (deserializeJson(doc, savedWifi) || !doc.is<JsonObject>()) {
+        prefs.end();
+        message = "saved wifi settings could not be read";
+        return false;
+      }
+    } else {
+      doc["ssid"] = runtimeConfig.wifi.ssid;
+      doc["password"] = runtimeConfig.wifi.password;
+    }
     doc["hostname"] = newHostname;
     String serialized;
-    serializeJson(doc, serialized);
-    prefs.putString("wifi", serialized);
+    if (doc.overflowed() || serializeJson(doc, serialized) != measureJson(doc) ||
+        prefs.putString("wifi", serialized) != serialized.length()) {
+      prefs.end();
+      message = "wifi hostname could not be saved";
+      return false;
+    }
+    runtimeConfig.wifi.hostname = newHostname;
+  }
+  if (newPieceName.length()) {
+    if (prefs.putString("pieceName", newPieceName) != newPieceName.length()) {
+      prefs.end();
+      message = "piece name could not be saved";
+      return false;
+    }
+    runtimeConfig.pieceName = newPieceName;
+    pieceName = newPieceName;
   }
   prefs.end();
   message = "saved";
