@@ -1,9 +1,9 @@
 import React from 'react';
 
-const tabId = (scope, value) => `${scope}-tab-${value}`;
+export const stackLibraryTabId = (scope, value) => `${scope}-tab-${value}`;
 export const stackLibraryPanelId = (scope, value) => `${scope}-panel-${value}`;
 
-export function StackLibraryTabs({ scope, label, value, onChange, lookCount, stacksFirst = false }) {
+export function StackLibraryTabs({ scope, label, value, onChange, lookCount, patternsLabel, stacksFirst = false }) {
   const tabs = stacksFirst ? ['stacks', 'patterns'] : ['patterns', 'stacks'];
   const handleKey = (event, index) => {
     let nextIndex;
@@ -22,10 +22,10 @@ export function StackLibraryTabs({ scope, label, value, onChange, lookCount, sta
 
   return <div className="stack-library-tabs" role="tablist" aria-label={label}>
     {tabs.map((tab, index) => <button key={tab} type="button" className="btn" role="tab"
-      id={tabId(scope, tab)} aria-controls={stackLibraryPanelId(scope, tab)}
+      id={stackLibraryTabId(scope, tab)} aria-controls={stackLibraryPanelId(scope, tab)}
       aria-selected={value === tab} tabIndex={value === tab ? 0 : -1}
       onClick={() => onChange(tab)} onKeyDown={event => handleKey(event, index)}>
-      {tab === 'stacks' ? `Project stacks (${lookCount})` : 'Patterns'}
+      {tab === 'stacks' ? `Project stacks (${lookCount})` : patternsLabel}
     </button>)}
   </div>;
 }

@@ -87,7 +87,7 @@ import {
 import '../styles/project-stacks-playlist.css';
 import { StackSectionLink, stackEditHref } from '../components/patterns/StackSectionLink.jsx';
 import { activateStackCardControl } from '../components/patterns/activateStackCardControl.js';
-import { StackLibraryTabs, stackLibraryPanelId } from '../components/patterns/StackLibraryTabs.jsx';
+import { StackLibraryTabs, stackLibraryPanelId, stackLibraryTabId } from '../components/patterns/StackLibraryTabs.jsx';
 
 function readPlaylistSource(projectId, hasStacks) {
   try {
@@ -1436,7 +1436,7 @@ function realPatternShape(patternId) {
               <aside className="pm-aside">
                 <div className="card pm-pane" data-testid="playlist-source-picker" ref={sourcePickerRef} tabIndex={-1}>
                   <button type="button" className="pl-order-jump pl-back-to-order" onClick={() => { playlistOrderRef.current?.scrollIntoView({ block: 'start' }); playlistOrderRef.current?.focus({ preventScroll: true }); }}>Back to order</button>
-                  <StackLibraryTabs scope="playlist-source" label="Playlist sources" value={sourceChoice} onChange={chooseSource} lookCount={savedLooks.length} stacksFirst />
+                  <StackLibraryTabs scope="playlist-source" label="Playlist sources" value={sourceChoice} onChange={chooseSource} lookCount={savedLooks.length} patternsLabel="Patterns" stacksFirst />
                   {sourceChoice === 'stacks' ? <div role="tabpanel" id={stackLibraryPanelId('playlist-source', 'stacks')} aria-label="Project stacks">
                     <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{savedLooks.length}</span></div>
                     <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Adds to the end in library order. Drag entries to set the dial order. To repeat a look, use its playlist row.</p>
@@ -1478,7 +1478,7 @@ function realPatternShape(patternId) {
                       })}
                     </div>
                     {!savedLooks.length && <p className="pl-empty">No saved looks yet. Create one on Patterns.</p>}
-                  </div> : <div role="tabpanel" id={stackLibraryPanelId('playlist-source', 'patterns')} aria-label="Patterns">
+                  </div> : <div role="tabpanel" id={stackLibraryPanelId('playlist-source', 'patterns')} aria-labelledby={stackLibraryTabId('playlist-source', 'patterns')}>
                     <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>
                     <p className="pl-pool-help">Select a pattern to add it. Added patterns stay in place.</p>
                     <div className="pl-pool">

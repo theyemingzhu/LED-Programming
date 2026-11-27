@@ -48,7 +48,7 @@
     "src/lib/cardReturnIntent.js": 2,
     "src/v3/app.jsx": 1,
     "src/v3/lw-pattern.jsx": 1,
-    "src/v3/lw-playlist.jsx": 2,
+    "src/v3/lw-playlist.jsx": 1,
     "src/v3/lw-setup.jsx": 1
   },
   "Scene": {

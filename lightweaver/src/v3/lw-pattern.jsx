@@ -125,7 +125,7 @@ import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderC
 import { PatternPreview } from './PatternPreview.jsx';
 import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
 import { ProjectStackSummary } from '../components/patterns/ProjectStackSummary.jsx';
-import { StackLibraryTabs, stackLibraryPanelId } from '../components/patterns/StackLibraryTabs.jsx';
+import { StackLibraryTabs, stackLibraryPanelId, stackLibraryTabId } from '../components/patterns/StackLibraryTabs.jsx';
 import { activateStackCardControl } from '../components/patterns/activateStackCardControl.js';
 import {
   addProjectStacksToPlaylist,
@@ -3820,7 +3820,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   <div className="project-stack-library-head">
-                    <StackLibraryTabs scope="lighting-library" label="Lighting library" value={libraryTab} onChange={setLibraryTab} lookCount={savedLooks.length} />
+                    <StackLibraryTabs scope="lighting-library" label="Lighting library" value={libraryTab} onChange={setLibraryTab} lookCount={savedLooks.length} patternsLabel="Patterns" />
                     <button type="button" className="btn project-stack-new" data-testid="stack-new" onClick={startNewStack}>{canResumeNewDraft ? 'Resume new draft' : '+ New look'}</button>
                   </div>
                   {expandedStackId === null && (scratchError || /could not|wait for|error/i.test(lookSaveState)) && <p className="project-stack-launch-error" role="alert">{scratchError || lookSaveState}</p>}
@@ -3861,7 +3861,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No saved looks yet. Choose a pattern for each section, then save a complete look.</p>}
                     </div>
-                  </div> : <div className="pm-pattern-bank" role="tabpanel" id={stackLibraryPanelId('lighting-library', 'patterns')} aria-label="Patterns">
+                  </div> : <div className="pm-pattern-bank" role="tabpanel" id={stackLibraryPanelId('lighting-library', 'patterns')} aria-labelledby={stackLibraryTabId('lighting-library', 'patterns')}>
                   <div className="pm-bank-bar">
                   <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
                     <strong>{handoffInvalid ? 'Choose a current section' : `Editing: ${selectedTarget?.kind === 'section'
