@@ -38,3 +38,4 @@
 - [x] Card Home's Health row shows the card's last crash in one plain sentence, only when one is recorded, with Copy crash details (card, firmware build, reset reason, task, memory, trace addresses). Reads `lastCrash` from /api/status; tests in lightweaver/tests/card-home-crash.spec.ts (PR lane) and src/lib/cardCrashReport.test.js.
 
 - [x] 2026-11-27: Stopping a live preview now re-selects the look the card was playing (read from `/api/patterns` before the preview) instead of restoring each section, which left `currentLookId` empty. The practice card now clears its current look on a one-section write, as firmware does; `layout-placed-look.spec.ts` went red on the old code and passes with the fix.
+- [x] 2026-11-27: Real card (lw-b0fe81f61b44, firmware 1.2.8, 5 unlinked sections): a 4-second live preview stopped back on Fire (`/api/patterns` currentId and index the same before and after), no error on the first try. `lightweaver/tests/live-preview-restore.spec.ts`.
