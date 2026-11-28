@@ -157,6 +157,7 @@ export async function importProjectFromPickedFile(file, {
   clearSaveBlock,
   readProjectFile = importProjectFromFile,
 } = {}) {
+  let missingLegacyRecording = false;
   const result = await readProjectFile(file, async data => {
     const document = unwrapProjectFileDocument(data);
     if (Number(data?.envelopeVersion) > PROJECT_ENVELOPE_SCHEMA_VERSION || Number(document?.version) > PROJECT_VERSION) {
@@ -174,12 +175,21 @@ export async function importProjectFromPickedFile(file, {
     let valid;
     try { valid = migrateProject(document); } catch { valid = null; }
     if (!valid) return { ok: false, reason: 'invalid' };
-    return replaceProject(await importPortableProjectMedia(document));
+    const project = await importPortableProjectMedia(document, {
+      onMissingLegacyMedia: () => { missingLegacyRecording = true; },
+    });
+    return replaceProject(project);
   });
   if (result?.ok) {
     clearBrowserAssociation?.();
     detachCloudProject?.();
     clearSaveBlock?.();
+  }
+  if (result?.ok && missingLegacyRecording) {
+    return {
+      ...result,
+      missingRecordingNotice: 'Recording missing from this backup. You can edit the project. Import the original backup or record the sequence again to restore playback.',
+    };
   }
   return result;
 }

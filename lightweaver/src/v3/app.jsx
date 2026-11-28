@@ -2473,7 +2473,11 @@ function Shell({ offlineUpdateController = null }) {
       const result = await importProjectFromPickedFile(file, { replaceProject, ...projectImportCleanup });
       if (result.ok) {
         setProjectsPanelOpen(false);
-        showWorkspaceEvent(`Opened ${result.project?.name || 'project'} from file`);
+        if (result.missingRecordingNotice) {
+          showWorkspaceEvent(result.missingRecordingNotice, { kind: 'info', persistent: true });
+        } else {
+          showWorkspaceEvent(`Opened ${result.project?.name || 'project'} from file`);
+        }
       } else if (result.reason === 'invalid') {
         showWorkspaceEvent('Could not open this project file. Choose a compatible Lightweaver project backup.', { kind: 'error', persistent: true });
       }
