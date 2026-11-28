@@ -49,7 +49,7 @@ import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js'
 import { groupOutputPins, moveStripRunsInOutputOrder, stripMoveTarget } from '../../../lib/wiringModel.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
-import { activeBoardGpios, assignWiringRunToPin } from '../../../lib/gpioAssignments.js';
+import { activeBoardGpios, assignWiringRunsToPin } from '../../../lib/gpioAssignments.js';
 import { createDefaultKaleidoscope } from '../../../lib/kaleidoscope.js';
 import { reflectionEditorPoints } from '../../../lib/reflectionEdit.js';
 import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
@@ -62,7 +62,7 @@ import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
 import { StripCountControl } from '../StripCountControl.jsx';
 import { describeCardPinPlace, formatGpio } from '../../../lib/cardPinout.js';
 import { STRIP_DISCOVERY_ROUTE } from '../../../lib/cardAction.js';
-import { useWiringCard } from './useWiringCard.js';
+import { svgLayerStripId } from '../../../lib/svgLayerWiring.js';
 import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
 import '../symmetry-by-eye.css';
@@ -266,7 +266,7 @@ export function DrawModePanel({
     stripGroupDragOver, setStripGroupDragOver,
     readDraggedStripIds, readDraggedPathEntries,
     createLayerGroupFromEntries, addPathsToGroup, togglePathSelection,
-    addStrip, addSubPathStrip, addSelectedPathsAsStrips, addAllStrips,
+    addStrip, addSubPathStrip, addSelectedPathsAsStrips, addAllStrips, svgWiringIssue,
     renameLayer, renameSubPath, renameGroup,
     deleteLayer, createLayerGroup, deleteLayerGroup,
     toggleGroupExpanded, toggleGroupHidden, reorderLayerOrder, setLayerGroups,
@@ -281,7 +281,7 @@ export function DrawModePanel({
     error, setError, fileRef,
     createStarterPrimitive, clearStarterLayout,
     kaleidoscopeResetNotices,
-    projectWarnings, sectionFamilies, pushLayoutHistory,
+    projectWarnings, sectionFamilies, pushLayoutHistory, wiringCard, cancelSvgWire,
   } = state;
   const {
     wiring, updateWiring, compiledWiring, standaloneController, setStandaloneController,
@@ -552,6 +552,13 @@ export function DrawModePanel({
     return new Set([...counts.keys()].filter(id => counts.get(id) > 1));
   }, [wiring.runs]);
   const outputForStrip = stripId => wiring.outputs.find(output => output.runIds.includes(stripRuns.get(stripId)?.id)) || wiring.outputs[0];
+  const svgLayerMembers = stripId => {
+    const layerId = svgLayerStripId(stripById.get(stripId));
+    if (!layerId || connectedFamilyForStrip(sectionFamilies, stripId)) return [stripId];
+    const outputId = outputForStrip(stripId)?.id;
+    return strips.filter(strip => svgLayerStripId(strip) === layerId && outputForStrip(strip.id)?.id === outputId)
+      .map(strip => strip.id);
+  };
 
   // The Draw list is the physical wiring overview. Each GPIO gets a compact
   // group and the rows inside it are the data order from the card outward.
@@ -859,7 +866,6 @@ export function DrawModePanel({
     return `out${number}`;
   };
 
-  const wiringCard = useWiringCard();
   const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
   const boardPins = new Map();
   const headerPositions = new Map();
@@ -906,9 +912,11 @@ export function DrawModePanel({
         draft.runs.forEach(item => { item.verified = false; });
       }
       ensureRunsForAllStrips(draft);
-      const run = draft.runs.find(item => item.type === 'strip' && item.source?.stripId === stripId);
-      assignWiringRunToPin(draft, {
-        runId: run?.id,
+      const members = new Set(svgLayerMembers(stripId));
+      const runs = draft.runs.filter(item => item.type === 'strip' && members.has(item.source?.stripId));
+      const runIds = members.size > 1 ? runs.map(run => run.id) : runs.slice(0, 1).map(run => run.id);
+      assignWiringRunsToPin(draft, {
+        runIds,
         pin: selectedPin,
         controls: standaloneController?.controls,
         supportedOutputPins: wiringCard.availablePins,
@@ -958,7 +966,13 @@ export function DrawModePanel({
   };
 
   const moveStripsInGpioOrder = (draggedStripIds, targetStripId, placement = 'before') => {
-    const ids = (draggedStripIds || []).filter(id => id && id !== targetStripId);
+    const targetLayer = svgLayerStripId(stripById.get(targetStripId));
+    const targetOutput = outputForStrip(targetStripId)?.id;
+    const ids = (draggedStripIds || []).filter(id => {
+      if (!id || id === targetStripId) return false;
+      const layerId = svgLayerStripId(stripById.get(id));
+      return !layerId || (layerId === targetLayer && outputForStrip(id)?.id === targetOutput);
+    });
     if (!ids.length) return;
     updateWiring(draft => {
       ensureRunsForAllStrips(draft);
@@ -994,7 +1008,9 @@ export function DrawModePanel({
 
   const gpioChoicesForStrip = stripId => {
     const output = outputForStrip(stripId);
-    const canCreateOutput = output?.runIds.length <= 1 || wiring.outputs.length < wiringCard.maxOutputs;
+    const members = new Set(svgLayerMembers(stripId));
+    const runIds = new Set(wiring.runs.filter(run => run.type === 'strip' && members.has(run.source?.stripId)).map(run => run.id));
+    const canCreateOutput = wiring.outputs.filter(item => item.runIds.some(id => !runIds.has(id))).length < wiringCard.maxOutputs;
     return choicesForOutputs(output?.pin, canCreateOutput);
   };
   const gpioChoicesForFamily = family => {
@@ -1051,6 +1067,7 @@ export function DrawModePanel({
                 {strips.length ? 'Replace all strips' : 'Make strips from all'}
               </button>
             </div>
+            {svgWiringIssue && <p className="la-gpio-error" role="status">{svgWiringIssue}</p>}
             <div className="layers" style={{ overflow: 'auto', flex: '0 0 auto', maxHeight: '42%' }}>
               {/* Build ordered list: groups + layers in layerOrder, fallback to layers */}
               {(() => {
@@ -1647,6 +1664,7 @@ export function DrawModePanel({
                 const sideView = group.kind !== 'wire';
                 if (group.kind === 'own' && !groupedStrips.length && !sideDragActive) return null;
                 const groupLeds = groupedStrips.reduce((sum, strip) => sum + (Number(strip.pixelCount) || 0), 0);
+                const svgLayerCount = new Set([...groupedStrips, ...linkedStrips].map(svgLayerStripId).filter(Boolean)).size;
                 const dropSideId = group.kind === 'side' ? group.side.id : null;
                 const acceptsStrips = event => Array.from(event.dataTransfer.types).includes('application/x-lightweaver-strip');
                 return (
@@ -1698,6 +1716,9 @@ export function DrawModePanel({
                   </div>}
                   {group.kind === 'side' && !groupedStrips.length && <p className="la-side-empty">No strips yet. Drag one here.</p>}
                   {group.kind === 'own' && !groupedStrips.length && <p className="la-side-empty">Drop here to play on its own.</p>}
+                  {!sideView && svgLayerCount > 1 && <p className="la-gpio-error" role="status">
+                    {formatGpio(output.pin)} is shared by {svgLayerCount} SVG layers.
+                  </p>}
                   {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => displayStripName(strip, sectionFamilies)).join(', ')}</div>}
                   {groupedStrips.map(s => {
                 const isSel = s.id === (selStripId || existingStrip?.id);
@@ -1722,6 +1743,8 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                const svgLayerId = svgLayerStripId(s);
+                const layerSharesPin = svgLayerId && svgLayerMembers(s.id).length > 1;
                 const runSeparation = isSplit ? planSectionsAtRunBoundaries(s, wiring) : null;
                 const runSeparationGroup = layerGroups.find(group => (group.members || []).some(member =>
                   (typeof member === 'string' ? member : member?.stripId) === s.id));
@@ -1915,6 +1938,7 @@ export function DrawModePanel({
                                 outlineOffset: -1 }}
                        onClick={e => {
                          if (patternPicker) closePatternPicker(false);
+                         cancelSvgWire();
                          if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleStripSel(s.id); return; }
                          // Selecting is the whole gesture now: the panel follows
                          // the selection, so there is nothing left to toggle. It
@@ -1936,7 +1960,7 @@ export function DrawModePanel({
                       <span className={installerSetup ? 'la-installer-strip-actions' : 'la-strip-pin-action'}>
                         <button type="button" className="la-strip-pin-button"
                                 aria-label={`Change pin for ${partName}`}
-                                title={`Change pin for ${partName}`}
+                                title={layerSharesPin ? 'Change GPIO for this SVG layer' : `Change pin for ${partName}`}
                                 data-testid={sideView ? `strip-wire-${s.id}` : undefined}
                                 onClick={event => {
                                   event.stopPropagation();
@@ -1982,6 +2006,23 @@ export function DrawModePanel({
                             : stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
+                      {svgLayerId && run && <button type="button" className="la-svg-strip-flip"
+                                data-testid="layout-svg-strip-flip"
+                                aria-label={`Flip ${partName} direction`}
+                                title={isSplit ? 'Set each physical run’s direction in Advanced wiring' : 'Swap IN and OUT'}
+                                aria-pressed={run.physicalDirection === 'source-reverse'}
+                                disabled={isSplit || run.directionPolicy === 'fixed'}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  if (patternPicker) closePatternPicker(false);
+                                  cancelSvgWire();
+                                  selectStrip(s.id);
+                                  toggleRunDirection(run);
+                                }}>
+                        <svg viewBox="0 0 24 24" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M4 8h15m-4-4 4 4-4 4m5 4H5m4-4-4 4 4 4"/>
+                        </svg>
+                      </button>}
                       {/* Keep the visibility action on the row's outside edge. */}
                       {!installerSetup && <button className={`la-strip-row-eye${hidden[s.id] ? ' is-hidden' : ''}`}
                               aria-label={hidden[s.id] ? `Show ${s.name}` : `Hide ${s.name}`}
@@ -2046,7 +2087,7 @@ export function DrawModePanel({
                             </label>
                           </div>}
                           <label className="la-strip-pin-field">
-                            <span>{isSplit ? 'First run pin' : 'Change pin'}</span>
+                            <span>{layerSharesPin ? 'Layer GPIO' : isSplit ? 'First run pin' : 'Change pin'}</span>
                             <span className="la-gpio-wrap">
                               <select ref={pinEditor} className="la-gpio-select"
                                       aria-label={connectedFamily ? `${partName} GPIO override` : 'GPIO output'}

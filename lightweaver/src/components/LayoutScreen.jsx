@@ -229,6 +229,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     setHoveredLayerId, hoveredSubPathId, setHoveredSubPathId,
     // wire
     wireOverlayMode, setWireOverlayMode,
+    svgWireGeometry, svgWireSource, svgWireMessage, activateSvgWirePort, cancelSvgWire,
     chopStripAtEvent,
     // canvas + preview
     showLight, toggleShowLight, previewPlaying, togglePreviewPlaying, showLeds, setShowLeds,
@@ -441,6 +442,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     },
     wire: {
       wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
+      svgWireGeometry, svgWireSource, svgWireMessage, activateSvgWirePort, cancelSvgWire,
       wiring, compiledWiring,
       firstLedPicker,
       onFirstLedPick: pickFirstLed,

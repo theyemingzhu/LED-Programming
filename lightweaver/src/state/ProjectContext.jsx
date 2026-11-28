@@ -196,6 +196,25 @@ function layoutRootReducer(state, action) {
     }
     case 'layout/setWiring':
       return { ...state, wiring: action.wiring };
+    case 'layout/mapArtworkStrips': {
+      const snapshot = { ...makeLayoutSnapshot(state), wiring: state.wiring };
+      const next = {
+        ...state,
+        strips: action.strips,
+        nextStripSeq: action.strips.reduce((sequence, strip) => {
+          const match = /^strip-(\d+)$/.exec(strip.id);
+          return match ? Math.max(sequence, Number(match[1]) + 1) : sequence;
+        }, state.nextStripSeq),
+        patchBoard: action.replace ? createDefaultPatchBoard(action.strips) : state.patchBoard,
+        ...(action.replace ? { layerGroups: state.layerGroups.filter(group => group.type !== 'strip'), sectionFamilies: [], symmetry: null } : {}),
+        starterPending: false,
+      };
+      return {
+        ...finishMutation(next),
+        wiring: action.wiring,
+        _history: { past: pushSnapshotStack(state._history.past, snapshot), future: [] },
+      };
+    }
     case 'layout/convertRunSections': {
       const result = action.result;
       const snapshot = { ...makeLayoutSnapshot(state), strips: state.strips, wiring: state.wiring, runConversion: {
@@ -524,6 +543,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         return match ? Math.max(max, Number(match[1]) + 1) : max;
       }, 1),
     });
+  }, []);
+  const mapArtworkStrips = useCallback((strips, wiring, { replace = false } = {}) => {
+    dispatchLayout({ type: 'layout/mapArtworkStrips', strips, wiring, replace });
   }, []);
   const compiledWiring = useMemo(() => compileWiring({ wiring, strips, groups: layoutLayerGroups, symmetry: layoutSymmetry }), [wiring, strips, layoutLayerGroups, layoutSymmetry]);
 
@@ -1248,7 +1270,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       wiring, updateWiring, compiledWiring, applyRunSectionConversion,
       sectionTargets, deriveProjectSectionTargets,
       updateStripKaleidoscope,
-      replaceLayoutGeometry,
+      replaceLayoutGeometry, mapArtworkStrips,
       // Layout undo/redo (single shared snapshot stack)
       pushLayoutHistory, undoLayout, redoLayout, layoutHistoryError,
       layoutHistLen,     layoutFutLen,

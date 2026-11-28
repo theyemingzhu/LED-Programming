@@ -12,13 +12,14 @@ function geometrySignature(strip = {}) {
   ]);
 }
 
-export function createSectionFamily(source, members = []) {
+export function createSectionFamily(source, members = [], { splitReversed = Boolean(source?.reversed) } = {}) {
   const memberIds = members.map(member => member?.id).filter(Boolean);
   if (!source?.id || memberIds.length < 2) return null;
   return {
     id: `section-family-${source.id}`,
     parentId: source.id,
     parentName: String(source.name || 'Strip'),
+    ...(splitReversed !== Boolean(source.reversed) ? { splitReversed } : {}),
     source: {
       pathData: String(source.pathData || ''),
       svgLength: Number(source.svgLength) || 0,
@@ -171,8 +172,12 @@ export function reconcileSectionFamilyRuns(draft, {
     while (draft.runs.some(item => item.id === run.id)) run.id = `run-${newMember.id}-${suffix++}`;
     draft.runs.push(run);
     const host = draft.outputs.find(output => beforeRun && output.runIds.includes(beforeRun.id));
-    if (host && beforeRun) host.runIds.splice(host.runIds.indexOf(beforeRun.id) + 1, 0, run.id);
-    else draft.outputs[0]?.runIds.push(run.id);
+    if (host && beforeRun) {
+      const geometryOrderReversed = Boolean(family.splitReversed ?? family.source.reversed) !== Boolean(family.source.reversed);
+      const wireReversed = beforeRun.physicalDirection === 'source-reverse';
+      const insertBefore = newMember.svgWiringLayerId && wireReversed !== geometryOrderReversed;
+      host.runIds.splice(host.runIds.indexOf(beforeRun.id) + (insertBefore ? 0 : 1), 0, run.id);
+    } else draft.outputs[0]?.runIds.push(run.id);
   }
 
   const familyIds = new Set(family?.memberIds || []);
