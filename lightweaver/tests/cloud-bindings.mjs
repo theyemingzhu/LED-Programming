@@ -514,10 +514,34 @@ test('D1 assignment races create one reusable customer draft and clean the losin
   );
   assert.equal((await store.readProject({ id: official.id, identity: owner })).revision, 1);
 
-  assert.deepEqual(await store.unassignCustomerProject({
-    targetAccount: customerAccount, projectId: official.id, actor: owner,
-    idempotencyKey: 'unassign-race-draft',
-  }), { unassigned: true });
+  const restored = await store.restoreRevision({
+    id: draftIds[0], revision: 1, baseRevision: 2,
+    actor: customer, idempotencyKey: 'customer-draft-restore',
+  });
+  assert.equal(restored.revision, 3);
+  assert.equal('createdBy' in restored, false);
+  assert.equal('lastEditor' in restored, false);
+  assert.deepEqual((await store.readProject({ id: draftIds[0], identity: customer })).document, opened.document);
+  assert.deepEqual((await store.listRevisions({ id: draftIds[0], identity: customer })).map(item => item.revision), [3, 2, 1]);
+  assert.equal((await store.readProject({ id: official.id, identity: owner })).revision, 1);
+
+  const racingDb = {
+    prepare: query => db.prepare(query),
+    batch: async statements => {
+      await store.unassignCustomerProject({
+        targetAccount: customerAccount, projectId: official.id, actor: owner,
+        idempotencyKey: 'unassign-race-draft',
+      });
+      return db.batch(statements);
+    },
+  };
+  const beforeRace = (await bucket.list()).objects.map(object => object.key);
+  const racingStore = createD1R2LibraryStore({ PROJECTS_DB: racingDb, PROJECT_BLOBS: bucket });
+  await assert.rejects(racingStore.restoreRevision({
+    id: draftIds[0], revision: 2, baseRevision: 3,
+    actor: customer, idempotencyKey: 'customer-restore-after-unassign',
+  }), error => error.code === 'not_found');
+  assert.deepEqual((await bucket.list()).objects.map(object => object.key), beforeRace);
   await assert.rejects(
     store.readProject({ id: draftIds[0], identity: customer }),
     error => error.code === 'not_found',
@@ -527,7 +551,7 @@ test('D1 assignment races create one reusable customer draft and clean the losin
     idempotencyKey: 'reassign-race-draft',
   });
   assert.equal(reassigned.assignment.draftProjectId, draftIds[0]);
-  assert.equal(reassigned.assignment.project.revision, 2);
+  assert.equal(reassigned.assignment.project.revision, 3);
 
   await accountStore.setAccountStatus({ id: customerAccount.id, status: 'disabled' });
   const disabledAccount = await accountStore.getAccount(customerAccount.id);

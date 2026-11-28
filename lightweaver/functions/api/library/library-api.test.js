@@ -1315,6 +1315,31 @@ test('owner assignment creates one reusable private draft and customer edits nev
   });
   assert.doesNotMatch(customerJson, /Sensitive Owner Label|\(owner\)|customer one|\(customer-one\)/i);
 
+  const restorePath = `/projects/${draftId}/revisions/1/restore`;
+  const restored = await call(store, {
+    identity: identities['customer-one'],
+    accountStore, method: 'POST', path: restorePath, body: { baseRevision: 2 },
+  });
+  assert.equal(restored.response.status, 200);
+  assert.equal(restored.payload.project.revision, 3);
+  assert.equal('lastEditor' in restored.payload.project, false);
+  assert.equal('createdBy' in restored.payload.project, false);
+  const restoredDraft = await call(store, {
+    identity: identities['customer-one'], accountStore, path: `/projects/${draftId}`,
+  });
+  assert.deepEqual(restoredDraft.payload.project.document, draft.payload.project.document);
+  const restoredHistory = await call(store, {
+    identity: identities['customer-one'], accountStore, path: `/projects/${draftId}/revisions`,
+  });
+  assert.deepEqual(restoredHistory.payload.revisions.map(revision => revision.revision), [3, 2, 1]);
+  const staleRestore = await call(store, {
+    identity: identities['customer-one'],
+    accountStore, method: 'POST', path: restorePath, requestId: 'customer-stale-restore',
+    body: { baseRevision: 2 },
+  });
+  assert.equal(staleRestore.response.status, 409);
+  assert.equal(staleRestore.payload.error.code, 'revision_conflict');
+
   const unchangedOfficial = await call(store, {
     identity: identities.owner, accountStore, path: `/projects/${official.payload.project.id}`,
   });
@@ -1337,6 +1362,13 @@ test('owner assignment creates one reusable private draft and customer edits nev
     identity: identities['customer-one'], accountStore, path: `/projects/${draftId}`,
   })).response.status, 404);
 
+  const unauthorizedRestore = await call(store, {
+    identity: identities['customer-one'],
+    accountStore, method: 'POST', path: restorePath, requestId: 'unassigned-customer-restore',
+    body: { baseRevision: 3 },
+  });
+  assert.equal(unauthorizedRestore.response.status, 404);
+
   const reassigned = await call(store, {
     identity: identities.owner,
     accountStore,
@@ -1346,7 +1378,7 @@ test('owner assignment creates one reusable private draft and customer edits nev
     body: { projectId: official.payload.project.id },
   });
   assert.equal(reassigned.payload.assignment.draftProjectId, draftId);
-  assert.equal(reassigned.payload.assignment.project.revision, 2);
+  assert.equal(reassigned.payload.assignment.project.revision, 3);
 });
 
 test('customers cannot discover official or other customer projects and cannot use shared-library mutations', async () => {
@@ -1379,6 +1411,12 @@ test('customers cannot discover official or other customer projects and cannot u
     const hidden = await call(store, { identity: customer, accountStore, path: `/projects/${hiddenId}` });
     assert.equal(hidden.response.status, 404, hiddenId);
     assert.equal(hidden.payload.error.code, 'not_found');
+    const denied = await call(store, {
+      identity: customer, accountStore, method: 'POST',
+      path: `/projects/${hiddenId}/revisions/1/restore`, body: { baseRevision: 1 },
+    });
+    assert.equal(denied.response.status, 404, hiddenId);
+    assert.equal(denied.payload.error.code, 'not_found');
   }
 
   const deniedRoutes = [
@@ -1386,7 +1424,6 @@ test('customers cannot discover official or other customer projects and cannot u
     ['POST', `/projects/${ownDraftId}/duplicate`, {}],
     ['POST', `/projects/${ownDraftId}/archive`, { baseRevision: 1 }],
     ['POST', `/projects/${ownDraftId}/unarchive`, { baseRevision: 1 }],
-    ['POST', `/projects/${ownDraftId}/revisions/1/restore`, { baseRevision: 1 }],
     ['DELETE', `/projects/${ownDraftId}`, { baseRevision: 1, confirmation: 'DELETE' }],
     ['GET', '/assets/custom-patterns', undefined],
     ['PUT', '/assets/custom-patterns', { baseRevision: 0, value: { patterns: [] } }],

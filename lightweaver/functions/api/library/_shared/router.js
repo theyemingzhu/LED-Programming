@@ -478,9 +478,6 @@ export async function handleLibraryRequest({
       && segments[2] === 'revisions'
       && segments[4] === 'restore') {
       if (method !== 'POST') return errorResponse(405, 'method_not_allowed', 'The method is not allowed for this route.', requestId);
-      if (identity.role === 'customer') {
-        return errorResponse(403, 'forbidden', 'Customers cannot restore project revisions.', requestId);
-      }
       const revision = Number(segments[3]);
       if (!Number.isInteger(revision) || revision < 1) {
         throw new LibraryValidationError('invalid_request', 'A valid revision number is required.');

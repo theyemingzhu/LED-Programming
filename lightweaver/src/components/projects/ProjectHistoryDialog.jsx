@@ -108,7 +108,7 @@ export function ProjectHistoryDialog({ project, revisions, loading, onClose, onR
               <div className="cloud-history-row" key={revision.revision} data-testid={`history-revision-${revision.revision}`}>
                 <div>
                   <strong>Revision {revision.revision}</strong>
-                  <span>{formatRevisionTime(revision.createdAt)} · {revision.editor || 'Unknown editor'}{revision.archived ? ' · archived' : ''}</span>
+                  <span>{formatRevisionTime(revision.createdAt)}{revision.editor ? ` · ${revision.editor}` : ''}{revision.archived ? ' · archived' : ''}</span>
                 </div>
                 {onRestore && <button
                   type="button"

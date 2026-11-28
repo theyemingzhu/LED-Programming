@@ -856,8 +856,10 @@ class LibraryFixture {
         return;
       }
       if (segments[0] === 'projects' && project && segments[2] === 'revisions' && segments[4] === 'restore' && method === 'POST') {
-        if (this.role === 'customer') {
-          await json(route, { error: { code: 'forbidden', message: 'Customers cannot restore project revisions.' } }, 403);
+        if (currentAccount?.role === 'customer'
+          && (project.draftOwnerAccountId !== currentAccount.id
+            || !this.assignments.get(currentAccount.id)?.has(project.draftOfProjectId || ''))) {
+          await json(route, { error: { code: 'not_found', message: 'Project not found.' } }, 404);
           return;
         }
         const source = project.revisions.find(item => item.revision === Number(segments[3]));
@@ -2410,7 +2412,7 @@ test('owner assigns and unassigns official projects while workers have no accoun
   expect(statuses).toEqual([403, 403]);
 });
 
-test('customer sees only assigned drafts, autosaves them, and cannot use shared-library controls', async ({ page }) => {
+test('customer saves and restores their assigned draft without access to shared-library controls', async ({ page }) => {
   const fixture = new LibraryFixture('customer', 'client@example.test');
   const assigned = fixture.seed('Assigned sculpture');
   fixture.seed('Other sculpture');
@@ -2431,6 +2433,8 @@ test('customer sees only assigned drafts, autosaves them, and cannot use shared-
   await page.getByRole('button', { name: 'Open' }).click();
   await expect(page.getByTestId('cloud-sync-status')).toHaveText('Saved online');
   await page.getByLabel('Project name').fill('Customer draft edit');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   await expect.poll(() => fixture.projects.get(draft.id)?.revision).toBe(2);
   const denied = await page.evaluate(async ({ officialId, draftId }) => Promise.all([
     fetch('/api/library/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(response => response.status),
@@ -2440,8 +2444,19 @@ test('customer sees only assigned drafts, autosaves them, and cannot use shared-
     fetch(`/api/library/projects/${draftId}/duplicate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(response => response.status),
   ]), { officialId: assigned.id, draftId: draft.id });
   expect(denied).toEqual([403, 403, 403, 404, 403]);
-  await page.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Project history' }).getByRole('button', { name: 'Restore' })).toHaveCount(0);
+  const historyButton = page.getByRole('button', { name: 'History', exact: true });
+  const historyDialog = page.getByRole('dialog', { name: 'Project history' });
+  await historyButton.click();
+  await expect(historyDialog.getByTestId('history-revision-2').getByRole('button', { name: 'Current' })).toBeDisabled();
+  await historyDialog.getByTestId('history-revision-1').getByRole('button', { name: 'Restore' }).click();
+  await expect(historyDialog).toHaveCount(0);
+  await expect(page.getByLabel('Project name')).toHaveValue('Assigned sculpture');
+  expect(draft.revisions.map(revision => revision.document.name)).toEqual([
+    'Assigned sculpture', 'Customer draft edit', 'Assigned sculpture',
+  ]);
+  expect(assigned.revision).toBe(1);
+  await historyButton.click();
+  await expect(historyDialog.getByTestId('history-revision-3').getByRole('button', { name: 'Current' })).toBeDisabled();
   await expect(page.locator('body')).not.toContainText('owner@example.test');
 });
 
