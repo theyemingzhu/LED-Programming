@@ -166,8 +166,7 @@ test('oversized SVG, pattern, and project files are rejected by size before pars
     mimeType: 'image/svg+xml',
     buffer: Buffer.alloc(2 * 1024 * 1024 + 1, 0x20),
   });
-  await page.waitForTimeout(50);
-  assert.match(await page.locator('#toast').textContent(), /SVG.*2 MB.*limit/i);
+  await page.locator('#toast').filter({ hasText: /SVG.*2 MB.*limit/i }).waitFor();
   assert.equal(await page.locator('#imported-svg').innerHTML(), importedBefore);
 
   const patternCountBefore = await page.locator('#pattern-cards .pattern-card').count();
@@ -180,8 +179,7 @@ test('oversized SVG, pattern, and project files are rejected by size before pars
     mimeType: 'application/json',
     buffer: Buffer.alloc(64 * 1024 + 1, 0x20),
   });
-  await page.waitForTimeout(50);
-  assert.match(await page.locator('#toast').textContent(), /Pattern.*64 KB.*limit/i);
+  await page.locator('#toast').filter({ hasText: /Pattern.*64 KB.*limit/i }).waitFor();
   assert.equal(await page.locator('#pattern-cards .pattern-card').count(), patternCountBefore);
 
   chooserPromise = page.waitForEvent('filechooser');
@@ -192,7 +190,6 @@ test('oversized SVG, pattern, and project files are rejected by size before pars
     mimeType: 'application/json',
     buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 0x20),
   });
-  await page.waitForTimeout(50);
-  assert.match(await page.locator('#toast').textContent(), /Project.*5 MB.*limit/i);
+  await page.locator('#toast').filter({ hasText: /Project.*5 MB.*limit/i }).waitFor();
   assert.equal(await page.locator('#confirm-overlay').getAttribute('class'), 'confirm-overlay hidden');
 });
