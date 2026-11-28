@@ -1,7 +1,27 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const IDENTITIES = ['scanner', 'plasma', 'chase', 'meteor'];
 const evidenceDir = process.env.LW_FLIP_EVIDENCE;
+
+async function expectDataDirection(page: Page, stripId: string, first: number, second: number) {
+  const marker = page.getByTestId('first-led-marker');
+  const arrow = marker.getByTestId('strip-data-arrow');
+  const point = (index: number) => page.getByTestId(`strip-led-${stripId}-${index}`).locator('circle').first()
+    .evaluate(dot => [Number(dot.getAttribute('cx')), Number(dot.getAttribute('cy'))]);
+  await expect(marker).toBeVisible();
+  await expect(marker).toContainText('LED 1');
+  await expect(arrow).toBeVisible();
+  const [x, y] = await point(first);
+  const [nextX, nextY] = await point(second);
+  await expect(marker).toHaveAttribute('transform', `translate(${x} ${y})`);
+  const direction = await arrow.evaluate(node => {
+    const matrix = (node as unknown as SVGGElement).transform.baseVal.consolidate()!.matrix;
+    return [matrix.a, matrix.b];
+  });
+  const distance = Math.hypot(nextX - x, nextY - y);
+  expect(direction[0]).toBeCloseTo((nextX - x) / distance);
+  expect(direction[1]).toBeCloseTo((nextY - y) / distance);
+}
 
 test('four sections keep independent effects while Draw flips only the chosen run', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -53,23 +73,47 @@ test('four sections keep independent effects while Draw flips only the chosen ru
   await expect.poll(async () => new Set(await ledColors(ids[1])).size).toBeGreaterThan(1);
   const beforeColors = await Promise.all(ids.map(ledColors));
   expect(beforeColors[1]).not.toEqual([...beforeColors[1]].reverse());
-  await flipPart(1);
+  const play = page.getByTestId('layout-preview-play');
+  await expect(play).toHaveText('Play');
+  await rows.nth(1).locator('.layer-name').click();
+  await expectDataDirection(page, ids[1], 0, 1);
+  if (evidenceDir) await page.screenshot({ path: `${evidenceDir}/part-2-forward-desktop.png` });
+  const flip = page.getByRole('button', { name: 'Flip playback direction of Part 2', exact: true });
+  await flip.click();
+  await expect(play).toHaveText('Play');
+  await expectDataDirection(page, ids[1], 9, 8);
   await expect.poll(() => ledColors(ids[1])).toEqual([...beforeColors[1]].reverse());
   for (const index of [0, 2, 3]) expect(await ledColors(ids[index])).toEqual(beforeColors[index]);
   await expect.poll(directions).toEqual(['source-forward', 'source-reverse', 'source-forward', 'source-forward']);
   if (evidenceDir) await page.screenshot({ path: `${evidenceDir}/part-2-flipped-desktop.png` });
-  await page.getByTestId('layout-preview-play').click();
-  await expect(page.getByTestId('layout-preview-play')).toHaveText('Pause');
+  await flip.click();
+  await expectDataDirection(page, ids[1], 0, 1);
+  await expect.poll(() => ledColors(ids[1])).toEqual(beforeColors[1]);
+  await flip.click();
+  await expectDataDirection(page, ids[1], 9, 8);
+  await expect.poll(directions).toEqual(['source-forward', 'source-reverse', 'source-forward', 'source-forward']);
+  await play.click();
+  await expect(play).toHaveText('Pause');
   await expect.poll(() => ledColors(ids[1])).not.toEqual([...beforeColors[1]].reverse());
   await page.reload();
   await rows.nth(1).locator('.layer-name').click();
-  await expect(page.getByRole('button', { name: 'Flip playback direction of Part 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  if (evidenceDir) {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('button', { name: 'Flip playback direction of Part 2', exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${evidenceDir}/part-2-flipped-phone.png` });
-    await page.setViewportSize({ width: 1440, height: 1000 });
-  }
+  await expect(flip).toHaveAttribute('aria-pressed', 'true');
+  await expectDataDirection(page, ids[1], 9, 8);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(flip).toBeVisible();
+  await expectDataDirection(page, ids[1], 9, 8);
+  const label = await page.getByTestId('first-led-marker').locator('rect').boundingBox();
+  expect(label).not.toBeNull();
+  expect(label!.x).toBeGreaterThanOrEqual(0);
+  expect(label!.x + label!.width).toBeLessThanOrEqual(390);
+  await flip.scrollIntoViewIfNeeded();
+  if (evidenceDir) await page.screenshot({ path: `${evidenceDir}/part-2-flipped-phone.png` });
+  await flip.click();
+  await expectDataDirection(page, ids[1], 0, 1);
+  if (evidenceDir) await page.screenshot({ path: `${evidenceDir}/part-2-forward-phone.png` });
+  await flip.click();
+  await expectDataDirection(page, ids[1], 9, 8);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   for (const index of [0, 2, 3]) await flipPart(index);
   await expect.poll(directions).toEqual(reversed);
   const allFlipped = await readProject();
@@ -143,4 +187,38 @@ test('Flip path reverses the rendered light on the same geometry and persists th
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect.poll(async () => (await read()).layout.strips.map((strip: { pathPlaybackFlipped?: boolean }) => strip.pathPlaybackFlipped))
     .toEqual([true, true, true, true]);
+});
+
+
+test('reversing data on a closed strip keeps the chosen LED 1 seam', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/#screen=layout');
+  const picker = page.getByTestId('layout-primitive-picker');
+  await picker.getByRole('button', { name: 'Circle', exact: true }).click();
+  await picker.getByRole('button', { name: 'Create circle' }).click();
+  const reverse = page.getByRole('button', { name: /^Reverse data direction of / });
+  if (!await reverse.isVisible()) await page.locator('.la-strip-row .layer-name').click();
+  const stripId = (await page.locator('path[data-strip-path]').getAttribute('data-strip-path'))!;
+  const seam = 0;
+  await page.getByRole('button', { name: 'Set first LED' }).click();
+  const led = page.getByTestId(`strip-led-${stripId}-${seam}`);
+  await expect(led).toBeVisible();
+  await led.dispatchEvent('pointerdown', { bubbles: true, button: 0 });
+  await expect.poll(() => page.evaluate(id => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.layout?.wiring?.runs.find((run: { source?: { stripId: string } }) => run.source?.stripId === id)?.seamLed;
+  }, stripId)).toBe(seam);
+  await expect(page.getByTestId('connector-seam-handle')).toHaveAttribute('aria-valuenow', String(seam));
+  await expectDataDirection(page, stripId, seam, seam + 1);
+  await reverse.click();
+  await expect(reverse).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('connector-seam-handle')).toHaveAttribute('aria-valuenow', String(seam));
+  const dots = page.locator(`[data-testid^="strip-led-${stripId}-"] > circle:first-child`);
+  const previous = await dots.evaluateAll(leds => {
+    const [first] = leds;
+    const offset = [...leds].reverse().findIndex(led =>
+      led.getAttribute('cx') !== first.getAttribute('cx') || led.getAttribute('cy') !== first.getAttribute('cy'));
+    return leds.length - 1 - offset;
+  });
+  await expectDataDirection(page, stripId, seam, previous);
 });
