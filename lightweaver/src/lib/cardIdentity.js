@@ -203,6 +203,9 @@ function normalizeEvidenceCapabilities(value) {
     ...(Object.hasOwn(value, 'symmetrySides')
       ? { symmetrySides: Number.isFinite(Number(value.symmetrySides)) && Number(value.symmetrySides) >= 1 ? 1 : 0 }
       : {}),
+    ...(Object.hasOwn(value, 'warmFade')
+      ? { warmFade: Number.isFinite(Number(value.warmFade)) && Number(value.warmFade) >= 1 ? 1 : 0 }
+      : {}),
     ...([1, 2].includes(value.sequenceMedia?.version) && Number.isSafeInteger(value.sequenceMedia.maxBytes)
       && Number.isSafeInteger(value.sequenceMedia.chunkBytes)
       ? { sequenceMedia: {

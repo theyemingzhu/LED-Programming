@@ -13,8 +13,7 @@ import { deriveCardAccess } from '../lib/cardAccess.js';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook } from './v3-data.js';
-import { getCardPatternById } from '../lib/cardPatternBank.js';
-import { DEFAULT_CARD_PATTERN_BANK } from '../lib/cardRuntimeContract.js';
+import { CARD_PATTERN_BANK, getCardPatternById } from '../lib/cardPatternBank.js';
 import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry, CARD_READ_RETRY } from '../lib/cardPushClient.js';
 import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { recordingStoreWords } from '../lib/recordingStore.js';
@@ -1056,7 +1055,7 @@ function realPatternShape(patternId) {
     // ── derived view data (real banks, mockup shapes) ─────────────────────
     // Keep the bank in one canonical order. Added patterns remain in place so
     // the library does not reshuffle under the operator's pointer or memory.
-    const patternTiles = DEFAULT_CARD_PATTERN_BANK.map((pattern) => ({
+    const patternTiles = CARD_PATTERN_BANK.map((pattern) => ({
       ...realPatternShape(pattern.id),
       added: playlistContainsPattern(playlist, pattern.id),
     }));

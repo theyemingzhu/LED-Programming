@@ -13,6 +13,25 @@ export const PATTERNS = [
     code: `// Classic animated rainbow across all LEDs\nreturn hsv(fract(index / 60 + time), 1, 1);`,
   },
   {
+    id: 'warm-fade', name: 'Warm Fade',
+    desc: 'An eight-minute loop of gold, amber, and ember red with a gentle pulse',
+    preview: 'linear-gradient(90deg,#e8bf70,#e39a59,#c85e43,#dc854f,#e8bf70)',
+    code:
+`const colors = [[232, 191, 112], [227, 154, 89], [200, 94, 67], [220, 133, 79]];
+const cycle = mod(t, 480) / 480;
+const phase = cycle * colors.length;
+const from = Math.floor(phase);
+const first = colors[from];
+const next = colors[(from + 1) % colors.length];
+const fade = smoothstep(0, 1, phase - from);
+const pulse = 0.94 + 0.06 * cos(TAU * cycle);
+return {
+  r: Math.round(lerp(first[0], next[0], fade) * pulse),
+  g: Math.round(lerp(first[1], next[1], fade) * pulse),
+  b: Math.round(lerp(first[2], next[2], fade) * pulse),
+};`,
+  },
+  {
     id: 'plasma', name: 'Plasma Wave',
     desc: 'Overlapping colour waves based on LED position',
     preview: 'linear-gradient(135deg,#7400b8,#5390d9,#06d6a0,#9bf6ff,#7400b8)',

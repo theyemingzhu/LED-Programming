@@ -1,4 +1,5 @@
 import { DEFAULT_CARD_PATTERN_BANK } from './cardRuntimeContract.js';
+import { CARD_PATTERN_BANK } from './cardPatternBank.js';
 
 export const CARD_PLAYLIST_LIMIT = 32;
 
@@ -17,7 +18,7 @@ export const DEFAULT_PLAYLIST_FADE_MS = 1500;
 export const MIN_PLAYLIST_FADE_MS = 0;
 export const MAX_PLAYLIST_FADE_MS = 10000;
 
-const PATTERN_BY_ID = new Map(DEFAULT_CARD_PATTERN_BANK.map(pattern => [pattern.id, pattern]));
+const PATTERN_BY_ID = new Map(CARD_PATTERN_BANK.map(pattern => [pattern.id, pattern]));
 
 function clampDwellSeconds(value) {
   const n = Number(value);

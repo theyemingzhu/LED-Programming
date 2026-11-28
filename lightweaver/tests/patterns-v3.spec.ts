@@ -304,6 +304,7 @@ async function mockVerifiedInstallCard(page, project, cardId = 'lw-pattern-insta
       projectRevision: installedConfig.projectRevision,
       projectFingerprint: installedConfig.projectFingerprint,
       outputs: installedConfig.led.outputs,
+      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     } });
   });
   await page.route('**/api/status', route => route.fulfill({
@@ -316,6 +317,7 @@ async function mockVerifiedInstallCard(page, project, cardId = 'lw-pattern-insta
       projectRevision: installedConfig.projectRevision,
       projectFingerprint: installedConfig.projectFingerprint,
       led: { pixels: installedConfig.led.pixels },
+      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     },
   }));
   await page.route('**/api/wiring/status', route => route.fulfill({
@@ -347,6 +349,10 @@ async function mockVerifiedInstallCard(page, project, cardId = 'lw-pattern-insta
   });
   await page.route('**/api/control', async route => {
     const body = JSON.parse(route.request().postData() || '{}');
+    if (options.rejectWarmFadeControl && body.patternId === 'warm-fade') {
+      await route.fulfill({ status: 422, json: { ok: false, error: 'pattern unavailable' } });
+      return;
+    }
     await route.fulfill({ json: { ok: true, cardId, patternId: body.patternId, revision: body.revision } });
   });
   await page.addInitScript((id) => {
@@ -1363,6 +1369,65 @@ test('v3 patterns mounts the mockup shell with a chip-ready catalog', async ({ p
   // chips, and is asserted there instead.
   await expect(page.locator('.pt-count')).toContainText(`of ${REAL_PATTERNS.length} shown`);
 });
+
+test('Warm Fade plays and saves at the chosen speed directly in Patterns', async ({ page }) => {
+  await gotoFreshPatterns(page);
+  await page.getByTestId('section-target-all').click();
+  await page.getByRole('button', { name: 'Warm', exact: true }).click();
+  const tile = page.locator('.pm-cards .pmcard[data-pattern-id="warm-fade"]');
+  await expect(tile).toContainText('Warm Fade');
+  await tile.click();
+  await expect(tile).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('section-pattern-all')).toHaveText('Warm Fade');
+  const preview = page.getByTestId('pattern-piece-preview');
+  await expect(preview).toHaveAttribute('data-preview-patterns', 'warm-fade,warm-fade');
+  await expect(preview.locator('canvas')).toBeVisible();
+
+  await setRangeValue(page.getByTestId('look-speed-slider'), '868');
+  await expect(page.getByTestId('look-speed-readout')).toHaveText('1.75×');
+  await page.getByTestId('stack-new').click();
+  await page.getByTestId('look-name').fill('Gallery Warm Fade');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const stack = page.getByTestId('project-stack-card').filter({ hasText: 'Gallery Warm Fade' });
+  await stack.getByRole('button', { name: 'Edit Gallery Warm Fade' }).click();
+  await expect(page.getByTestId('look-speed-readout')).toHaveText('1.75×');
+  await expect(preview).toHaveAttribute('data-preview-patterns', 'warm-fade,warm-fade');
+});
+
+for (const [label, capabilities] of [
+  ['keeps native section playback', { warmFade: 1 }],
+  ['asks for a card update', undefined],
+] as const) {
+  test('Warm Fade install ' + label, async ({ page }) => {
+    const project = createPiecePreviewProject('warm-fade-install');
+    const cardWrites: any[] = [];
+    await mockVerifiedInstallCard(page, project, 'lw-warm-fade', {
+      capabilities,
+      rejectWarmFadeControl: !capabilities,
+      onConfigRequest: config => cardWrites.push(config),
+    });
+    await gotoSavedProjectPatterns(page, project);
+    await page.route('**/api/zones', route => route.fulfill({
+      json: { zones: compileProjectWiring(project).zones },
+    }));
+    await page.getByTestId('section-target-patch-default-inner-circle').click();
+    await page.locator('.pm-cards .pmcard[data-pattern-id="warm-fade"]').click();
+    await setRangeValue(page.getByTestId('look-speed-slider'), '868');
+    await page.getByTitle('Install the current look on the card').click();
+
+    if (capabilities) {
+      await expect.poll(() => cardWrites.at(-1)?.zones?.find(zone => zone.id === 'default-inner-circle'))
+        .toEqual(expect.objectContaining({ patternId: 'warm-fade', speed: 1.75 }));
+    } else {
+      await expect(page.getByTestId('pattern-install-on-card')).toHaveText('Try saving again');
+      await expect(page.getByTestId('pattern-card-status')).toContainText('Update this card to play Warm Fade.');
+      expect(cardWrites).toEqual([]);
+    }
+  });
+}
 
 test('Advanced exposes a gentle bounded breathing envelope', async ({ page }) => {
   await gotoFreshPatterns(page);

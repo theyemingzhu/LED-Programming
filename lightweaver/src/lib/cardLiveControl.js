@@ -8,7 +8,8 @@ import {
   readStoredCardHost,
 } from './cardConnection.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
-import { getCardPatternRuntimeId } from './cardPatternBank.js';
+import { getCardPatternRuntimeId, WARM_FADE_PATTERN_ID } from './cardPatternBank.js';
+import { WARM_FADE_UPDATE_MESSAGE } from './cardAction.js';
 import { DEFAULT_CARD_PATTERN_BANK, normalizeCardOutputSettings } from './cardRuntimeContract.js';
 import {
   CardPushError,
@@ -1362,6 +1363,9 @@ async function sendLivePreviewToCard(look, options = {}) {
     return await pushLivePreviewToHost(host, look, options);
   } catch (error) {
     if (error?.reason === 'superseded' || error?.reason === 'section-layout-mismatch') throw error;
+    if (look?.patternId === WARM_FADE_PATTERN_ID && /\bpattern unavailable\b/i.test(error?.message || '')) {
+      throw new CardPushError('warm-fade-unsupported', WARM_FADE_UPDATE_MESSAGE, error, error.status);
+    }
     if (!isMixedContentBlocked() && options.autoDiscover !== false) {
       requireCurrentPreviewIntent(options);
       const found = await discoverCardStatus({

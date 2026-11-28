@@ -1,5 +1,5 @@
 import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
-import { CARD_PATTERN_BANK } from './cardPatternBank.js';
+import { CARD_PATTERN_BANK, WARM_FADE_PATTERN_ID } from './cardPatternBank.js';
 import { CARD_HARDWARE_CONTRACT, normalizeCardLedType } from './cardHardwareContract.js';
 import { chainPixelOffsets, chainRowIds } from './patchBoard.js';
 import { normalizeBreatheSettings } from './breatheEnvelope.js';
@@ -101,7 +101,8 @@ export function normalizeInclusiveRange(from, to) {
   return { start: Math.min(a, b), count: Math.abs(b - a) + 1, reversed: a > b };
 }
 
-export const DEFAULT_CARD_PATTERN_BANK = CARD_PATTERN_BANK;
+// Keep implicit programs compatible with the existing installed pattern bank.
+export const DEFAULT_CARD_PATTERN_BANK = Object.freeze(CARD_PATTERN_BANK.filter(pattern => pattern.id !== WARM_FADE_PATTERN_ID));
 
 export const DEFAULT_CARD_CONTROLS = Object.freeze({
   encoder: {
@@ -725,6 +726,18 @@ export function runtimeConfigUsesSymmetry(configOrPackage = {}) {
   const uses = zone => zone?.continuous === true || Boolean(zone?.mirrorOf);
   return (Array.isArray(config?.zones) && config.zones.some(uses))
     || (Array.isArray(config?.looks) && config.looks.some(look => Array.isArray(look?.zones) && look.zones.some(uses)));
+}
+
+export function runtimeConfigUsesWarmFade(configOrPackage = {}) {
+  const config = configOrPackage?.config || configOrPackage || {};
+  const looks = config.looks?.length ? config.looks : config.patterns || [];
+  const zoneUsesWarmFade = zone => zone?.patternId === WARM_FADE_PATTERN_ID;
+  return (config.zones || []).some(zoneUsesWarmFade)
+    || looks.some(look => (
+      (look.preset || look.patternId || look.id) === WARM_FADE_PATTERN_ID
+      || (look.zones || []).some(zoneUsesWarmFade)
+    ))
+    || (config.startupPatternId === WARM_FADE_PATTERN_ID && !looks.some(look => look.id === WARM_FADE_PATTERN_ID));
 }
 
 function normalizeColorOrder(value = 'RGB') {

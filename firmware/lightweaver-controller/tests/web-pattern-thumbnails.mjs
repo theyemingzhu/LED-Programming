@@ -25,7 +25,7 @@ assert.match(defaultsRegion, /config\.lookCount\s*=\s*0/,
 const configuredLookIds = [
   'aurora', 'plasma', 'fire', 'ocean', 'ripple', 'lava',
   'rainbow', 'sparkle', 'twinkle', 'meteor', 'chase', 'scanner',
-  'breathe', 'candle', 'ember', 'lightning', 'neon', 'matrix',
+  'breathe', 'warm-fade', 'candle', 'ember', 'lightning', 'neon', 'matrix',
   'heartbeat', 'stained', 'confetti', 'warp', 'pulse-ring', 'blocks',
   'bloom', 'calm', 'drift', 'wave', 'sunset', 'warm-white',
 ];
