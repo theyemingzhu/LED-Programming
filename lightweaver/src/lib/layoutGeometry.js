@@ -3,7 +3,23 @@
 // of docs/layout-redesign-plan.md); behavior is unchanged, only the module
 // boundary moved.
 import { samplePath as libSamplePath } from './mapper.js';
+import { reverseKaleidoscope } from './kaleidoscope.js';
 import { LED_COUNT_MAX } from './controlScale.js';
+
+export function reverseStripPath(strip) {
+  // Older projects can have end-first drawing coordinates without a card
+  // playback flip. Track the user's new Flip path action independently.
+  const { pathPlaybackFlipped, ...rest } = strip;
+  return {
+    ...rest,
+    reversed: !strip.reversed,
+    pixels: (strip.pixels || []).slice().reverse(),
+    ...(!pathPlaybackFlipped ? { pathPlaybackFlipped: true } : {}),
+    ...(strip.kaleidoscope ? { kaleidoscope: reverseKaleidoscope(strip.kaleidoscope, strip.pixelCount) } : {}),
+    ...(Number.isInteger(strip.reflectionPointDraft)
+      ? { reflectionPointDraft: strip.pixelCount - 1 - strip.reflectionPointDraft } : {}),
+  };
+}
 
 // ── Strip identity helpers ─────────────────────────────────────────────────
 

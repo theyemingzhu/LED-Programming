@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
+import { reverseStripPath } from './layoutGeometry.js';
 import { LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
 import {
   MAX_PATTERN_LAB_LWSEQ_BYTES,
@@ -573,4 +574,29 @@ test('layout hash candidates recognize current and legacy bytes for each symmetr
     symmetry: { fold: 2, orientation: 'mirror', sides: [sideOf('side-1', 'inner'), sideOf('side-2', 'outer')] },
   });
   assert.ok(!swapped.includes(mirrored.sidecar.layoutPhysicalOrderSha256));
+});
+
+
+test('a newly baked moving spatial look reverses the flipped strip and keeps its neighbor', async () => {
+  const input = fixture();
+  input.recipe.evolution.durationSeconds = 2;
+  input.recipe.base.patternId = 'plasma';
+  const before = await bakePatternLabRecipe({ ...input, fps: 2 });
+  const frozen = before.bytes.slice();
+  const after = await bakePatternLabRecipe({
+    ...input, fps: 2,
+    strips: [reverseStripPath(input.strips[0]), input.strips[1]],
+  });
+  const pixels = (bytes, frame) => Array.from({ length: 6 }, (_, index) => {
+    const start = LWSEQ_HEADER_BYTES + (frame * 6 + index) * 3;
+    return [...bytes.subarray(start, start + 3)];
+  });
+  const first = pixels(before.bytes, 0);
+  assert.notDeepEqual(first[0], first[2]);
+  assert.notDeepEqual(first, pixels(before.bytes, 3));
+  for (let frame = 0; frame < 4; frame++) {
+    const baseline = pixels(before.bytes, frame);
+    assert.deepEqual(pixels(after.bytes, frame), [...baseline.slice(0, 3).reverse(), ...baseline.slice(3)]);
+  }
+  assert.deepEqual(before.bytes, frozen);
 });

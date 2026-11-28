@@ -161,11 +161,28 @@ export function LayoutCanvas({
   const selectedPhysicalRun = wiring?.runs?.find(run => run.id === selectedWiringRunId);
   const selectedPhysicalStrip = strips.find(strip => strip.id === selectedPhysicalRun?.source?.stripId);
   const selectedClosedStrip = strips.find(strip => strip.id === selStripId && (strip.closed || strip.isClosed) && !hidden[strip.id]);
-  const selectedSeamLed = selectedPhysicalRun?.seamLed
-    ?? (selectedPhysicalRun?.physicalDirection === 'source-reverse'
-      ? selectedPhysicalRun?.source?.to
-      : selectedPhysicalRun?.source?.from);
+  const source = selectedPhysicalRun?.source;
+  const step = selectedPhysicalRun?.physicalDirection === 'source-reverse' ? -1 : 1;
+  const selectedSeamLed = selectedPhysicalRun?.seamLed ?? (step < 0 ? source?.to : source?.from);
   const selectedSeamPoint = selectedPhysicalStrip?.pixels?.[selectedSeamLed];
+  // Use the drawn coordinates in wiring order. A closed path can place its
+  // first and last samples at the same point, so skip coincident samples.
+  let dataAngle = null;
+  if (selectedSeamPoint && source) {
+    let nextLed = selectedSeamLed;
+    for (let offset = 0; offset < source.to - source.from; offset++) {
+      nextLed += step;
+      if (nextLed < source.from) nextLed = source.to;
+      if (nextLed > source.to) nextLed = source.from;
+      const nextPoint = selectedPhysicalStrip.pixels[nextLed];
+      if (!nextPoint) break;
+      const dx = nextPoint.x - selectedSeamPoint.x;
+      const dy = nextPoint.y - selectedSeamPoint.y;
+      if (!dx && !dy) continue;
+      dataAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      break;
+    }
+  }
   const { mode, drawMode, waypoints, ghostPt, ghostD } = draw;
   const canDragStrip = mode === 'draw' && !drawMode && !firstLedPicker && !kaleidoscopeEditor && wireOverlayMode !== 'chop';
   // The offer is worked out only while it could be shown.
@@ -954,13 +971,6 @@ export function LayoutCanvas({
               );
             })()}
 
-            {mode === 'draw' && selectedSeamPoint && (
-              <g data-testid="first-led-marker" transform={`translate(${selectedSeamPoint.x} ${selectedSeamPoint.y})`} style={{ pointerEvents: 'none' }}>
-                <circle r={vbScale * 10} fill="var(--bg-canvas)" stroke="var(--accent)" strokeWidth={vbScale * 2}/>
-                <text textAnchor="middle" dominantBaseline="central" fill="var(--accent)" fontSize={vbScale * 11} fontWeight="700">1</text>
-              </g>
-            )}
-
             {/* ── Symmetry: the mirror line with its two sides named, and each
                    side strip's flow number (in its label, or just before its
                    first LED). A number is a strip handle: tapping selects. ── */}
@@ -1111,6 +1121,33 @@ export function LayoutCanvas({
                 </g>
               );
             })}
+
+            {mode === 'draw' && !drawMode && selectedSeamPoint && !hidden[selectedPhysicalStrip.id] && (() => {
+              const { x, y } = selectedSeamPoint;
+              const halfWidth = dataAngle == null ? 20 : 30;
+              const left = (labelBounds.x - x) / annotationScale + halfWidth + 2;
+              const right = (labelBounds.x + labelBounds.w - x) / annotationScale - halfWidth - 2;
+              const badgeX = Math.max(left, Math.min(right, 0));
+              const badgeY = y - labelBounds.y > 33 * annotationScale ? -23 : 23;
+              return (
+                <g data-testid="first-led-marker" role="img"
+                   aria-label={`LED 1, data input for ${canvasStripLabel(selectedPhysicalStrip, sectionFamilies)}`}
+                   transform={`translate(${x} ${y})`} style={{ pointerEvents: 'none' }}>
+                  <g transform={`scale(${annotationScale})`} fill="var(--bg-canvas)" stroke="var(--accent-hi)">
+                    <path d={`M 0 0 L ${badgeX} ${badgeY}`} strokeWidth="1.5"/>
+                    <circle r="5" strokeWidth="2"/>
+                    <g transform={`translate(${badgeX} ${badgeY})`}>
+                      <rect x={-halfWidth} y="-10" width={halfWidth * 2} height="20" rx="4"/>
+                      <text x={dataAngle == null ? 0 : -10} textAnchor="middle" dominantBaseline="central" stroke="none"
+                            fill="var(--accent-hi)" fontSize="11" fontFamily="var(--font-ui, sans-serif)" fontWeight="700">LED 1</text>
+                      {dataAngle != null && <g data-testid="strip-data-arrow" transform={`translate(17 0) rotate(${dataAngle})`}>
+                        <path d="M -6 0 H 6 M 1 -5 L 6 0 L 1 5" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      </g>}
+                    </g>
+                  </g>
+                </g>
+              );
+            })()}
 
             {/* ── Direction arrows (all visible strips) ── */}
             {mode === 'wire' && !isEditingGesture && strips.filter(s => !hidden[s.id]).map(s => {

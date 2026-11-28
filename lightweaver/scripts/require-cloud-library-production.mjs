@@ -35,6 +35,10 @@ export function readProductionLibraryConfiguration(env = process.env) {
   if (passwordless === 'true') values.STUDIO_PASSWORDLESS_AUTH_ENABLED = passwordless;
   else if (passwordless && passwordless !== 'false') invalid.push('STUDIO_PASSWORDLESS_AUTH_ENABLED');
 
+  const mandala = env.STUDIO_MANDALA_SIGN_IN_ENABLED?.trim() || '';
+  if (mandala === 'true' && passwordless === 'true') values.STUDIO_MANDALA_SIGN_IN_ENABLED = mandala;
+  else if (mandala && mandala !== 'false') invalid.push('STUDIO_MANDALA_SIGN_IN_ENABLED');
+
   if (!nativeAuthReady) {
     invalid.push(...ACCESS_REQUIRED.filter(name => !values[name]));
   }

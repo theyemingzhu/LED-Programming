@@ -94,25 +94,28 @@ export function applyPatternLabMotionToStrips(strips, {
   const normalizedWeights = normalizePatternLabMotionWeights(motionWeights);
   return (strips || []).map(strip => ({
     ...strip,
-    pts: (strip.pts || []).map(point => ({
-      ...point,
-      x: bounds.minX + patternLabMotionCoordinate(
-        (finite(point.x) - bounds.minX) / bounds.range,
+    pts: (strip.pts || []).map(point => {
+      const x = bounds.minX + patternLabMotionCoordinate(
+        (finite(point.patternX ?? point.x) - bounds.minX) / bounds.range,
         { elapsedSeconds, seed, motionWeights: normalizedWeights },
-      ) * bounds.range,
-      y: bounds.minY + patternLabMotionCoordinate(
-        (finite(point.y) - bounds.minY) / bounds.range,
+      ) * bounds.range;
+      const y = bounds.minY + patternLabMotionCoordinate(
+        (finite(point.patternY ?? point.y) - bounds.minY) / bounds.range,
         {
           elapsedSeconds,
           seed: (Number(seed) >>> 0) ^ 0x9e3779b9,
           motionWeights: normalizedWeights,
         },
-      ) * bounds.range,
-      p: patternLabMotionCoordinate(point.p, {
-        elapsedSeconds,
-        seed: (Number(seed) >>> 0) ^ 0x85ebca6b,
-        motionWeights: normalizedWeights,
-      }),
-    })),
+      ) * bounds.range;
+      return {
+        ...point,
+        ...(point.patternX === undefined ? { x, y } : { patternX: x, patternY: y }),
+        p: patternLabMotionCoordinate(point.p, {
+          elapsedSeconds,
+          seed: (Number(seed) >>> 0) ^ 0x85ebca6b,
+          motionWeights: normalizedWeights,
+        }),
+      };
+    }),
   }));
 }

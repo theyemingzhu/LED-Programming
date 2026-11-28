@@ -199,13 +199,18 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
       }
     }
     const wifi = reply.wifi;
-    const stationIp = wifi?.transition === 'station' && wifi.transitionPending === false
-      && wifi.networkBindingsPending !== true && wifi.joinFailed !== true
-      ? normalizeWifiHandoffHost(wifi.stationIp) : '';
+    const localAddress = wifi?.networkBindingsPending !== true && wifi?.joinFailed !== true
+      ? normalizeWifiHandoffHost(wifi?.stationIp) : '';
+    const stationIp = wifi?.transition === 'station' && wifi.transitionPending === false ? localAddress : '';
+    // This address can open the card page. The LAN handoff still requires its
+    // own exact status and acknowledgement before Studio can control the card.
+    const handoffStationIp = wifi?.transition === 'handoff-ready' && wifi.transitionPending === true
+      && wifi.apActive === true && Number.isInteger(wifi.handoffGeneration) && wifi.handoffGeneration > 0
+      ? localAddress : '';
     identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion,
       buildId: reply.buildId, buildNumber: reply.buildNumber,
       freshInstallEligible: reply.freshInstallEligible === true,
-      stationIp });
+      stationIp, handoffStationIp });
   } catch (error) { await close(); throw error; }
   const correlate = reply => {
     if (!attempt || reply.attemptId !== attempt.id || reply.wifi?.handoffGeneration !== attempt.generation) throw failure('attempt_mismatch');
