@@ -436,6 +436,7 @@ async function localBindings() {
     '0002_account_access.sql',
     '0003_account_session_generation.sql',
     '0004_studio_passwordless.sql',
+    '0005_mandala_account_link.sql',
   ]) {
     const migration = await readFile(new URL(`../migrations/${migrationName}`, import.meta.url), 'utf8');
     for (const statement of migration.split(';').map(value => value.trim()).filter(Boolean)) {
