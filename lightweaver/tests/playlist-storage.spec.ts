@@ -4,7 +4,11 @@ import { createDefaultProject, migrateProject } from '../src/lib/projectModel.js
 import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../src/lib/cardStoragePayload.js';
 import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
+import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
+import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
+import { makeDefaultWiring } from '../src/lib/wiringModel.js';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
+import { applyPracticeTiming, REAL_PROFILE, TimingController } from './harness/practiceTiming';
 import { MIN_TAP } from './harness/tapSize';
 
 function makePlaylistProject({ count = 19, oversized = false } = {}) {
@@ -622,6 +626,39 @@ test('adding a saved look auditions it on the matching card', async ({ page }) =
     expect.objectContaining({ zone: 'default-inner-circle', patternId: 'fire' }),
   ]));
   expect(writes).toHaveLength(2);
+});
+
+test('Live on a flipped saved mix leads to Test & Install before sending light commands', async ({ page }) => {
+  const project = makePlaylistProject({ count: 2 });
+  project.layout.strips = createDefaultCircleLayout({ sectionPixelCounts: [11, 10, 10, 10] });
+  project.layout.patchBoard = createDefaultPatchBoard(project.layout.strips);
+  project.layout.wiring = makeDefaultWiring(project.layout.strips);
+  project.devices.standaloneController.looks = [{
+    id: 'saved-fire', label: 'Saved Fire', defaultLook: { patternId: 'fire' }, sectionLooks: {},
+  }];
+  project.devices.standaloneController.playlist = [{
+    id: 'saved-fire-mix', label: 'Saved Fire', type: 'combo', lookId: 'saved-fire', enabled: true, order: 0,
+  }];
+  const card = await mockConnectedPlaylistCard(page, project);
+  await applyPracticeTiming(page, new TimingController(REAL_PROFILE));
+  const originalOutput = preparedForProject(project).config.led.outputs[0];
+  expect(originalOutput.segments).toHaveLength(4);
+  project.layout.wiring.runs[1].physicalDirection = 'source-reverse';
+  const flippedOutput = preparedForProject(project).config.led.outputs[0];
+  expect(flippedOutput.segments.map(segment => segment.id)).toEqual(originalOutput.segments.map(segment => segment.id));
+  expect(flippedOutput.segments.map(segment => segment.direction)).toEqual(['forward', 'reverse', 'forward', 'forward']);
+  await gotoPlaylist(page, project);
+  await waitReconnected(page);
+
+  const row = page.locator('.pl-row').filter({ hasText: 'Saved Fire' });
+  await row.getByRole('button', { name: 'Live', exact: true }).click();
+  const status = page.getByTestId('playlist-card-status');
+  await expect(status).toContainText('Test & Install this project before previewing its saved mix on the card.');
+  expect(physicalCommandsFrom(card)).toEqual([]);
+  expect(card.requests.filter(request => request.path === '/api/config')).toHaveLength(0);
+
+  await status.getByRole('button', { name: 'Test & Install sections' }).click();
+  await expect(page).toHaveURL(/section=setup&task=install-project/);
 });
 
 test('adding an installed pattern skips audition when the card project fingerprint differs', async ({ page }) => {

@@ -13,8 +13,7 @@
 // DOM-backed sampler; tests pass a stub).
 
 import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.js';
-import { stripSourceKey } from '../lib/layoutGeometry.js';
-import { reverseKaleidoscope } from '../lib/kaleidoscope.js';
+import { reverseStripPath, stripSourceKey } from '../lib/layoutGeometry.js';
 import { normalizeSectionFamilies } from '../lib/connectedSections.js';
 import { normalizeSymmetry, removeStripsFromSymmetry } from '../lib/pieceSymmetry.js';
 
@@ -287,13 +286,7 @@ export function layoutReducer(state, action) {
       return pruneRemovedStrips(state, action.ids || []);
 
     case LayoutActions.REVERSE_STRIP: {
-      const strips = state.strips.map(s => s.id !== action.id ? s : {
-        ...s,
-        reversed: !s.reversed,
-        pixels: (s.pixels || []).slice().reverse(),
-        ...(s.kaleidoscope ? { kaleidoscope: reverseKaleidoscope(s.kaleidoscope, s.pixelCount) } : {}),
-        ...(Number.isInteger(s.reflectionPointDraft) ? { reflectionPointDraft: s.pixelCount - 1 - s.reflectionPointDraft } : {}),
-      });
+      const strips = state.strips.map(s => s.id === action.id ? reverseStripPath(s) : s);
       return { ...state, strips };
     }
 

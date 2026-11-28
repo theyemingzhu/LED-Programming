@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { nextStripNames, isGeneratedStripName, stripColorKey } from '../../../lib/stripLabels.js';
 import {
   nextStripId,
+  reverseStripPath,
   STRIP_COLORS,
   sampleStripPixels,
   translatePathData,
@@ -14,7 +15,7 @@ import {
 } from '../../../lib/layoutPrimitives.js';
 import { scaleStripGeometry } from '../../../lib/stripScale.js';
 import { moveStripRowsInChain, normalizePatchBoard } from '../../../lib/patchBoard.js';
-import { reprojectStripKaleidoscope, reverseKaleidoscope } from '../../../lib/kaleidoscope.js';
+import { reprojectStripKaleidoscope } from '../../../lib/kaleidoscope.js';
 import {
   nextSplitName,
   nextSplitNames,
@@ -145,18 +146,7 @@ export function useLayoutStrips(ctx) {
   }, [strips, layers, editCounts, hidden, svgText, viewBox, density, layerGroups, pushLayoutHistory]);
 
   const reverseStrip = (id) => {
-    const newStrips = strips.map(s => {
-      if (s.id !== id) return s;
-      const reversed = !s.reversed;
-      const pixels = s.pixels.slice().reverse();
-      return {
-        ...s,
-        reversed,
-        pixels,
-        ...(s.kaleidoscope ? { kaleidoscope: reverseKaleidoscope(s.kaleidoscope, s.pixelCount) } : {}),
-        ...(Number.isInteger(s.reflectionPointDraft) ? { reflectionPointDraft: s.pixelCount - 1 - s.reflectionPointDraft } : {}),
-      };
-    });
+    const newStrips = strips.map(s => s.id === id ? reverseStripPath(s) : s);
     pushLayoutHistory();
     setStrips(newStrips);
   };

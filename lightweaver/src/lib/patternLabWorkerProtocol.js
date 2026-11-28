@@ -225,8 +225,10 @@ export function compactPatternLabWorkerGeometry(input = {}) {
       hasKaleidoscope: Boolean(strip.kaleidoscopeContext),
     });
     pixels.forEach((pixel, pixelIndex) => {
-      coordinates[cursor * 2] = finiteNumber(pixel?.x);
-      coordinates[cursor * 2 + 1] = finiteNumber(pixel?.y);
+      // The Lab canvas owns displayed points. The worker evaluates the look
+      // at its original art coordinates before RGBs are mapped to the lights.
+      coordinates[cursor * 2] = finiteNumber(pixel.patternX ?? pixel.x);
+      coordinates[cursor * 2 + 1] = finiteNumber(pixel.patternY ?? pixel.y);
       progress[cursor] = pixel.sourceProgress;
       reflectionProgress[cursor] = pixel.reflectionProgress;
       kaleidoscopeProgress[cursor] = pixel.kaleidoscopeProgress;

@@ -7,7 +7,7 @@ import {
 } from './colorJourneyPhases.js';
 import { normalizeColorJourney, sampleColorJourney } from './colorJourney.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
-import { compileWiring } from './wiringCompiler.js';
+import { compileWiring, pixelsInPlaybackOrder } from './wiringCompiler.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 
 export const COLOR_JOURNEY_NATIVE_VERSION = 1;
@@ -23,19 +23,6 @@ function moduloOne(value) {
   return ((value % 1) + 1) % 1;
 }
 
-function physicalPixels(compiled) {
-  const ordered = [];
-  for (const output of compiled.outputs) {
-    for (const segment of output.segments || []) {
-      const run = compiled.runs.find(candidate => candidate.id === segment.id && candidate.outputId === output.id);
-      if (!run || run.count < 1) continue;
-      const pixels = compiled.pixels.slice(run.start, run.start + run.count);
-      ordered.push(...(run.reversed ? pixels.reverse() : pixels));
-    }
-  }
-  return ordered;
-}
-
 function hashText(value) {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -48,6 +35,7 @@ function hashText(value) {
 export function colorJourneyLayoutKey({ strips = [], wiring = null } = {}) {
   const geometry = strips.map(strip => ({
     id: strip.id,
+    ...(strip.pathPlaybackFlipped === true ? { pathPlaybackFlipped: true } : {}),
     points: (strip.pixels || strip.pts || []).map(point => [Number(point.x) || 0, Number(point.y) || 0]),
   }));
   return `cj1-${hashText(JSON.stringify({ geometry, wiring }))}`;
@@ -86,7 +74,7 @@ export function nativeColorJourneySourcePhase16(nativeRecipe, { strips = [], wir
     throw new RangeError('Native Color Journey readback does not match the reconstructed layout.');
   }
   const bySource = new Map();
-  physicalPixels(compiled).forEach((pixel, index) => {
+  pixelsInPlaybackOrder(compiled).forEach((pixel, index) => {
     bySource.set(`${pixel.stripId}:${pixel.sourceLed}`, phase16.slice(index * 4, index * 4 + 4));
   });
   return strips.flatMap(strip => (strip.pixels || strip.pts || []).map((_, index) => bySource.get(`${strip.id}:${index}`) || '')).join('');
@@ -197,7 +185,7 @@ export function compileColorJourneyNativeRecipe({
     || expectedSources.some(source => !sourceSet.has(source))) {
     throw new RangeError('Native Color Journeys require every artwork pixel exactly once; partial or duplicated wiring is unsupported.');
   }
-  const compiledPhysicalPixels = physicalPixels(compiled);
+  const compiledPhysicalPixels = pixelsInPlaybackOrder(compiled);
   if (compiledPhysicalPixels.length !== compiled.totalPixels || compiledPhysicalPixels.length < 1) {
     throw new RangeError('Native Color Journey physical pixel order is incomplete.');
   }
@@ -223,8 +211,8 @@ export function compileColorJourneyNativeRecipe({
       const source = compiledPhysicalPixels[index];
       return retainedBySource.get(`${source.stripId}:${source.sourceLed}`);
     }
-    const x = (Number(pixel.x || 0) - bounds.minX) / bounds.range;
-    const y = (Number(pixel.y || 0) - bounds.minY) / bounds.range;
+    const x = (Number(pixel.patternX ?? pixel.x) - bounds.minX) / bounds.range;
+    const y = (Number(pixel.patternY ?? pixel.y) - bounds.minY) / bounds.range;
     const quantized = Math.round(moduloOne(x + y * 0.35) * 0x10000) & 0xffff;
     return quantized.toString(16).padStart(4, '0');
   }).join('');
