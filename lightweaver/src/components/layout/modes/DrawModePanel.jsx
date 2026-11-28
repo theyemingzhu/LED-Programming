@@ -1201,7 +1201,7 @@ export function DrawModePanel({
                         }
                         <span className="layer-swatch" style={{ background: l._color }}/>
                         <InlineRename value={l.name} onCommit={n => renameLayer(l.layerId, n)}
-                                      className="layer-name"/>
+                                      className="layer-name" showButton={isSel}/>
                         {hasStrip && (
                           <span className="la-stripdot" title="Select LED strip" style={{ cursor: 'pointer' }}
                                 onClick={e => { e.stopPropagation(); if (stripForLayer) selectStrip(stripForLayer.id); }}/>
@@ -1928,7 +1928,7 @@ export function DrawModePanel({
                         {flowPosition}
                       </span> : null}
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
-                                    className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: installerSetup ? '5rem' : 0, color: s.color }}/>
+                                    className="layer-name" showButton={isSel} style={{ cursor: 'pointer', flex: 1, minWidth: installerSetup ? '5rem' : 0, color: s.color }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
                       {installerSetup && <span className="la-installer-strip-summary">
                         {routePins.length ? pinLabel : 'Choose a pin'} · {s.pixelCount.toLocaleString('en-US')} LEDs
