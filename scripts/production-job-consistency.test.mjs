@@ -199,7 +199,7 @@ test('Branch tests proves pull requests on hosted runners and can never deploy',
     const start = text.indexOf(`\n  ${name}:\n`);
     assert.notEqual(start, -1, name);
     const rest = text.slice(start + 1);
-    const next = rest.slice(1).search(/\n  [a-z_]+:\n/);
+    const next = rest.slice(1).search(/\n  [a-z_-]+:\n/);
     return (next === -1 ? rest : rest.slice(0, next + 1)).trimEnd();
   };
   for (const name of ['source', 'browser', 'browser_journeys', 'browser_windowless', 'browser_firmware_update', 'cloud', 'production']) {

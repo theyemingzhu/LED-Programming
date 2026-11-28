@@ -13,15 +13,7 @@ name: Branch tests
 # from a completed "Tests" run, and a pull-request run must never deploy.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'lightweaver/**'
-      - 'led-art-mapper/**'
-      - 'packages/installer-core/**'
-      - 'firmware/**'
-      - 'release/**'
-      - 'scripts/**'
-      - '.github/workflows/**'
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -141,10 +133,13 @@ jobs:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
     runs-on: ubuntu-24.04
-    # Split from browser on 2026-11-24: one job hit the 45-min cap (45:15 on
-    # run 45290952413). The journey chunk now runs beside it in parallel.
-    timeout-minutes: 45
-    name: browser smoke (journeys)
+    # Three file-level shards keep the 30-minute journey suite off the critical path.
+    timeout-minutes: 30
+    name: browser smoke (journeys ${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       LW_BROWSER_FAIL_FAST: 'true'
     steps:
@@ -166,12 +161,12 @@ jobs:
         working-directory: lightweaver
       - name: Run journey browser smoke
         working-directory: lightweaver
-        run: npm run ci:browser-smoke-journeys
+        run: npm run ci:browser-smoke-journeys -- --shard ${{ matrix.shard }}/3
       - name: Upload failed browser traces
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: browser-failure-${{ matrix.shard }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: lightweaver/test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -295,3 +290,36 @@ jobs:
         working-directory: lightweaver
       - run: npm run ci:production
         working-directory: lightweaver
+
+  pr-checks:
+    needs: [classify, source, browser, browser_journeys, browser_windowless, browser_firmware_update, cloud, production]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every selected lane
+        env:
+          CLASSIFICATION: ${{ needs.classify.result }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          test "$CLASSIFICATION" = success
+          while read -r lane job; do
+            selected="$(jq -r --arg lane "$lane" '.classify.outputs[$lane]' <<< "$RESULTS")"
+            actual="$(jq -r --arg job "$job" '.[$job].result' <<< "$RESULTS")"
+            case "$selected:$actual" in
+              true:success|false:skipped) ;;
+              *)
+                echo "::error::Lane $lane job $job had result $actual with selection $selected."
+                exit 1
+                ;;
+            esac
+          done <<'LANES'
+          source source
+          browser browser
+          browser browser_journeys
+          browser browser_windowless
+          browser browser_firmware_update
+          cloud cloud
+          production production
+          LANES

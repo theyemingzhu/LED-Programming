@@ -1,0 +1,65 @@
+name: Merge danger
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: merge-danger-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge-danger:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check the declared risk and owner approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          if [ "$(jq -r '.head.sha' <<< "$pr")" != "$PR_HEAD" ]; then
+            echo "::error::The pull request head changed. The new revision must report its own check."
+            exit 1
+          fi
+          door="$(jq -r '.body // ""' <<< "$pr" | perl -0777 -pe 's/<!--.*?-->//gs' | awk '
+            { sub(/\r$/, "") }
+            /^#{1,2}[[:space:]]/ { in_section = (tolower($0) ~ /^##[[:space:]]+merge danger[[:space:]]*$/); sections += in_section }
+            in_section && tolower($0) ~ /^[[:space:]]*door:/ {
+              count++
+              sub(/^[^:]*:[[:space:]]*/, "")
+              sub(/[[:space:]]*$/, "")
+              door = tolower($0)
+            }
+            END { if (sections == 1 && count == 1) print door }
+          ')"
+          case "$door" in
+            "two-way door")
+              echo "Two-way door declared."
+              ;;
+            "one-way door")
+              if ! jq -e '.labels | any(.name == "owner-approved")' <<< "$pr" >/dev/null ||
+                 ! gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/events?per_page=100" |
+                   jq -e --arg owner "$REPO_OWNER" '
+                     [ .[][] | select(.label.name == "owner-approved" and (.event == "labeled" or .event == "unlabeled")) ]
+                     | max_by([.created_at, .id])
+                     | .event == "labeled" and (.actor.login | strings | ascii_downcase) == ($owner | ascii_downcase)
+                   ' >/dev/null; then
+                echo "::error::A one-way door requires the repository owner to apply the owner-approved label."
+                exit 1
+              fi
+              echo "One-way door approved by the repository owner."
+              ;;
+            *)
+              echo "::error::Add a single 'Door: two-way door' or 'Door: one-way door' line under '## Merge danger'."
+              exit 1
+              ;;
+          esac
