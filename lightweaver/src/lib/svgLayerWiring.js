@@ -48,8 +48,8 @@ export function addSvgLayerWiring(wiring, groups, { availablePins, maxOutputs, c
         }
       }
       output ??= next.outputs.findLast(item => pins.includes(item.pin));
-      if (!output) return { ok: false, error: 'No LED output GPIO is available for the SVG layers.' };
-      if (named !== null && named !== output.pin) warnings.push(`${layer.name} is on GPIO ${output.pin}. Review the GPIO assignment.`);
+      if (!output) return { ok: false, error: 'No LED output is available for the SVG layers.' };
+      if (named !== null && named !== output.pin) warnings.push(`${layer.name} uses ${output.name} on pin ${output.pin}. Review the output assignment.`);
     }
     next.runs.push(...newRuns);
     output.runIds.push(...newRuns.map(run => run.id));

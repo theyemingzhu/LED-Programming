@@ -48,7 +48,7 @@ export function useLayoutWire(ctx) {
       return;
     }
     if (source.stripId === stripId || source.layerId !== target.layerId || source.outputId !== target.outputId) {
-      setSvgWireMessage('Choose another strip on the same SVG layer and GPIO.');
+      setSvgWireMessage('Choose another strip on the same SVG layer and output.');
       return;
     }
     const output = wiring.outputs.find(item => item.id === source.outputId);
@@ -61,7 +61,7 @@ export function useLayoutWire(ctx) {
     const result = updateWiring(draft => {
       const output = draft.outputs.find(item => item.id === source.outputId);
       if (!output?.runIds.includes(source.runId) || !output.runIds.includes(target.runId)) {
-        throw new Error('Both strips must be on the same GPIO.');
+        throw new Error('Both strips must use the same output.');
       }
       output.runIds = output.runIds.filter(id => id !== target.runId);
       output.runIds.splice(output.runIds.indexOf(source.runId) + 1, 0, target.runId);

@@ -1960,7 +1960,7 @@ export function DrawModePanel({
                       <span className={installerSetup ? 'la-installer-strip-actions' : 'la-strip-pin-action'}>
                         <button type="button" className="la-strip-pin-button"
                                 aria-label={`Change pin for ${partName}`}
-                                title={layerSharesPin ? 'Change GPIO for this SVG layer' : `Change pin for ${partName}`}
+                                title={layerSharesPin ? 'Change output for this SVG layer' : `Change pin for ${partName}`}
                                 data-testid={sideView ? `strip-wire-${s.id}` : undefined}
                                 onClick={event => {
                                   event.stopPropagation();
@@ -2087,7 +2087,7 @@ export function DrawModePanel({
                             </label>
                           </div>}
                           <label className="la-strip-pin-field">
-                            <span>{layerSharesPin ? 'Layer GPIO' : isSplit ? 'First run pin' : 'Change pin'}</span>
+                            <span>{layerSharesPin ? 'Layer output' : isSplit ? 'First run pin' : 'Change pin'}</span>
                             <span className="la-gpio-wrap">
                               <select ref={pinEditor} className="la-gpio-select"
                                       aria-label={connectedFamily ? `${partName} GPIO override` : 'GPIO output'}

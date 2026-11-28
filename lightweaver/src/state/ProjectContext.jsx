@@ -991,6 +991,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // ── Debounced auto-save ───────────────────────────────────────────────────
   const saveTimerRef = useRef(null);
   const serializeProject = useCallback(() => {
+    const savedPatchBoard = normalizePatchBoard(patchBoard, strips);
+    // The wiring owns the output count. Save matching metadata for older readers.
+    savedPatchBoard.dataWireCount = wiring.outputs.length || savedPatchBoard.dataWireCount;
     let project = {
       version: PROJECT_VERSION,
       id: projectId,
@@ -1014,7 +1017,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         ...symmetryLayoutFields(layoutSymmetry, layoutSymmetryOfferDismissed),
         sectionFamilies,
         layerOrder: layoutLayerOrder,
-        patchBoard: normalizePatchBoard(patchBoard, strips),
+        patchBoard: savedPatchBoard,
         wiring,
       },
       pattern: {
