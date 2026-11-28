@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
+import { createPracticeCard } from './harness/practiceTiming';
 import { cardState, type CardStateSpec } from './harness/cardStates';
 import { installFakeCardBridge, installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
@@ -44,7 +45,8 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
     if (returnHash) {
       sessionStorage.setItem('lw_card_return_intent_v1', JSON.stringify({ hash: returnHash, cardId }));
     }
-    const imageBytes = new Uint8Array([0xe9, 1, 2]);
+    const inFlightTransfer = outcome === 'silent-transfer';
+    const imageBytes = inFlightTransfer ? new Uint8Array(120_000) : new Uint8Array([0xe9, 1, 2]);
     const recovering = outcome === 'reload-valid' || outcome === 'reload-valid-blank';
     const blankRecovery = outcome === 'reload-valid-blank';
     const disconnectedRecovery = outcome === 'reload-disconnected';
@@ -76,7 +78,7 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       manifest: { target: 'esp32-s3-n16r8', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 1300 },
       ticket: {
         schemaVersion: 1, target: 'esp32-s3-n16r8', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 1300,
-        image: { size: 3, sha256: '0'.repeat(64) },
+        image: { size: imageBytes.byteLength, sha256: '0'.repeat(64) },
         partition: { layout: 'default_16MB.csv', tableSha256: '3'.repeat(64), app0Offset: 0x10000, app1Offset: 0x650000, slotSize: 0x640000 },
         compatibility: { minimumBootstrapBuild: 1198 }, preservation: { dataPartitionsIncluded: false },
       },
@@ -100,6 +102,30 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       });
     }
     (window as any).__LW_UPDATER_ARGUMENTS__ = [];
+    if (inFlightTransfer) {
+      (window as any).__LW_CREATE_FIRMWARE_UPDATER_FOR_TEST__ = options => {
+        const createUpdater = async () => {
+          const { createCardFirmwareUpdater } = await import('/src/lib/cardFirmwareUpdater.js');
+          return createCardFirmwareUpdater({
+            ...options,
+            authority: {
+              cardId, bootId: 'boot-old', ownerSessionId: 'fixture', operationGeneration: 1, projectHead: head,
+              request: async (path, init) => {
+                const response = await fetch('http://lightweaver.local' + path, {
+                  ...init, headers: { ...init.headers, 'Content-Type': 'application/json' },
+                  body: init.body ? JSON.stringify(init.body) : undefined,
+                });
+                return response.json();
+              },
+            },
+          });
+        };
+        const updater = createUpdater();
+        return Object.fromEntries(['preflight', 'begin', 'send', 'commit', 'readStatus']
+          .map(method => [method, async () => (await updater)[method]()]));
+      };
+      return;
+    }
     (window as any).__LW_CREATE_FIRMWARE_UPDATER_FOR_TEST__ = ({ onProgress, softwareGrant, physicalConfirmation }: any) => {
       (window as any).__LW_UPDATER_ARGUMENTS__.push({ softwareGrant, physicalConfirmation });
       const saveExactSession = (phase: string) => sessionStorage.setItem('lw_firmware_update_session_v1', JSON.stringify({
@@ -954,6 +980,53 @@ test('preserving update: an in-place disconnect retains the new session and self
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
   await expect(panel.getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem('lw_firmware_update_session_v1'))).toBeNull();
+});
+
+test('preserving update: a silent card leaves a visible, durable transfer interruption at 27%', async ({ page }) => {
+  const { card, timing } = createPracticeCard(cardState('playing'), { timing: 'real' });
+  let leases = 0;
+  let chunks = 0;
+  let commits = 0;
+  await card.install(page);
+  await page.route('http://lightweaver.local/api/update/**', async route => {
+    const request = route.request();
+    const endpoint = new URL(request.url()).pathname;
+    if (endpoint === '/api/update/preflight') return route.fulfill({ json: { ok: true, updateCapability: 'fixture' } });
+    if (endpoint === '/api/update/begin') return route.fulfill({ json: { ok: true, leaseId: `fixture-${++leases}` } });
+    if (endpoint === '/api/update/chunk') {
+      chunks += 1;
+      if (chunks === 1) {
+        timing.wifiDrop();
+        return route.fulfill({ json: { ok: true, receivedBytes: 32_768 } });
+      }
+      const reply = timing.verdict(request.method(), endpoint);
+      // The lost socket never answers. Studio must release it using its own deadline.
+      if (reply.kind === 'drop') return;
+      return route.abort();
+    }
+    if (endpoint === '/api/update/commit') commits += 1;
+    return route.fulfill({ json: { ok: true, phase: 'failed', lastError: 'update lease expired' } });
+  });
+  await openPreservingFixture(page, 'wifi', 'silent-transfer');
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
+  await expect(panel.getByTestId('preserving-update-progress')).toContainText('27%');
+  await expect(panel.getByRole('alert')).toContainText('27%');
+  await expect(panel.getByRole('alert')).toContainText('stopped responding');
+  expect(chunks).toBe(2);
+  expect(commits).toBe(0);
+  await page.evaluate(() => { location.hash = '#screen=layout'; });
+  await expect(panel).toHaveCount(0);
+  await page.evaluate(() => { location.hash = '#screen=card&section=install'; });
+  await expect(panel.getByRole('alert')).toContainText('27%');
+  await expect(panel.getByRole('alert')).toContainText('stopped responding');
+  await expect.poll(() => timing.state().silent).toBe(false);
+  const nextChunk = page.waitForRequest(request => request.url().endsWith('/api/update/chunk')
+    && request.method() === 'POST' && request.postDataJSON()?.leaseId === 'fixture-2');
+  await panel.getByRole('button', { name: 'Retry Wi-Fi update' }).click();
+  expect((await nextChunk).postDataJSON()).toMatchObject({ offset: 0, sequence: 1 });
+  expect(leases).toBe(2);
+  expect(commits).toBe(0);
 });
 
 test('preserving update: an already healthy exact card clears stale restart evidence outside the update route', async ({ page }) => {

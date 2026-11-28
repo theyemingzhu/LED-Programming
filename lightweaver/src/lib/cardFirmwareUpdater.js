@@ -1,6 +1,9 @@
 import { cardReportsNoTouch } from './cardNeedsTouch.js';
 export const FIRMWARE_UPDATE_CHUNK_BYTES = 32 * 1024;
 export const FIRMWARE_UPDATE_SESSION_KEY = 'lw_firmware_update_session_v1';
+// Leave time for the longest observed card reply gaps (12.8 s) while
+// detecting a dead transfer before the card's 15 s idle lease expires.
+const UPDATE_CHUNK_TIMEOUT_MS = 13_000;
 
 const CARD_ID = /^lw-[A-Za-z0-9][A-Za-z0-9._:-]{0,60}$/;
 const BUILD_ID = /^[a-f0-9]{40}$/;
@@ -134,7 +137,10 @@ function safeSession(value) {
     || !SHA256.test(session.ticketSha256)
     || !Number.isSafeInteger(session.acknowledgedBytes) || session.acknowledgedBytes < 0) return null;
   const usbWifiAttempt = usb ? safeUsbWifiAttempt(value?.usbWifiAttempt) : null;
+  const transferFailure = session.phase === 'transfer-interrupted'
+    && ['timeout', 'connection-lost'].includes(value?.transferFailure) ? value.transferFailure : '';
   return Object.freeze({ ...(usb ? { mode: 'usb' } : {}), ...session,
+    ...(transferFailure ? { transferFailure } : {}),
     ...(usbWifiAttempt ? { usbWifiAttempt } : {}) });
 }
 
@@ -314,7 +320,7 @@ export function createCardFirmwareUpdater({
       throw new Error('Firmware update authority changed. Reconnect and confirm the exact card again.');
     }
   };
-  const session = nextPhase => persistSession({
+  const session = (nextPhase, transferFailure) => persistSession({
     cardId: exactBinding.cardId,
     previousBootId: exactBinding.bootId,
     expectedProjectHead: exactBinding.expectedProjectHead,
@@ -325,6 +331,7 @@ export function createCardFirmwareUpdater({
     ticketSha256: release.ticketSha256,
     phase: nextPhase,
     acknowledgedBytes,
+    transferFailure,
   }, storage);
   const request = async (path, init = {}) => {
     assertCurrent();
@@ -381,21 +388,37 @@ export function createCardFirmwareUpdater({
       phase = 'sending'; session(phase); return result;
     },
     async send() {
-      if (!leaseId) throw new Error('Firmware update has not begun.');
-      for (let offset = acknowledgedBytes, sequence = Math.floor(offset / FIRMWARE_UPDATE_CHUNK_BYTES) + 1;
-        offset < release.imageBytes.byteLength; sequence += 1) {
-        const chunk = release.imageBytes.slice(offset, Math.min(offset + FIRMWARE_UPDATE_CHUNK_BYTES, release.imageBytes.byteLength));
-        const result = await request('/api/update/chunk', {
-          method: 'POST',
-          headers: mutationHeaders(exactBinding),
-          body: body({ leaseId, sequence, offset, data: base64(chunk), updateCapability }),
-        });
-        const next = Number(result.receivedBytes);
-        if (next !== offset + chunk.byteLength) throw new Error('Card update acknowledgement did not match the sent bytes.');
-        acknowledgedBytes = next;
-        offset = next;
-        session('sending');
-        onProgress?.({ phase: 'sending', acknowledgedBytes, totalBytes: release.imageBytes.byteLength });
+      if (!leaseId || phase !== 'sending') throw new Error('Firmware update has no active transfer.');
+      try {
+        for (let offset = acknowledgedBytes, sequence = Math.floor(offset / FIRMWARE_UPDATE_CHUNK_BYTES) + 1;
+          offset < release.imageBytes.byteLength; sequence += 1) {
+          const chunk = release.imageBytes.slice(offset, Math.min(offset + FIRMWARE_UPDATE_CHUNK_BYTES, release.imageBytes.byteLength));
+          const result = await request('/api/update/chunk', {
+            method: 'POST',
+            headers: mutationHeaders(exactBinding),
+            body: body({ leaseId, sequence, offset, data: base64(chunk), updateCapability }),
+            signal: AbortSignal.timeout(UPDATE_CHUNK_TIMEOUT_MS),
+          });
+          const next = Number(result.receivedBytes);
+          if (next !== offset + chunk.byteLength) throw new Error('Card update acknowledgement did not match the sent bytes.');
+          acknowledgedBytes = next;
+          offset = next;
+          session('sending');
+          onProgress?.({ phase: 'sending', acknowledgedBytes, totalBytes: release.imageBytes.byteLength });
+        }
+      } catch (cause) {
+        phase = 'transfer-interrupted';
+        stopWatching();
+        const timedOut = cause?.name === 'TimeoutError';
+        const connectionLost = cause instanceof TypeError;
+        session(phase, timedOut ? 'timeout' : connectionLost ? 'connection-lost' : '');
+        if (timedOut) {
+          throw new Error('The card stopped responding during the firmware transfer.', { cause });
+        }
+        if (connectionLost) {
+          throw new Error('Studio lost the connection during the firmware transfer.', { cause });
+        }
+        throw cause;
       }
       return { ok: true, receivedBytes: acknowledgedBytes };
     },

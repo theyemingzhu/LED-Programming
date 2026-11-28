@@ -555,7 +555,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       && discoveredUsbCard.firmwareVersion === target?.firmwareVersion
       && discoveredUsbCard.buildId === target?.buildId
       && Number(discoveredUsbCard.buildNumber) === Number(target?.buildNumber);
-    const savedUsbSession = mode === 'usb' ? readFirmwareUpdateSession() : null;
+    const savedUpdateSession = readFirmwareUpdateSession();
+    const savedUsbSession = mode === 'usb' ? savedUpdateSession : null;
     const matchingUsbSession = savedUsbSession?.mode === 'usb'
       && savedUsbSession.cardId === card.id && target
       && savedUsbSession.targetBuildId === target.buildId
@@ -565,6 +566,19 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       && ['sending', 'verification-unknown', 'restarting', 'pending-reboot', 'probation', 'valid'].includes(savedUsbSession.phase);
     const usbResultUnknown = matchingUsbSession
       && ['sending', 'verification-unknown'].includes(savedUsbSession.phase);
+    const wifiTransferInterrupted = phase === 'idle' && mode === 'wifi' && target
+      && savedUpdateSession && savedUpdateSession.mode !== 'usb'
+      && savedUpdateSession.cardId === card.id
+      && savedUpdateSession.targetBuildId === target.buildId
+      && savedUpdateSession.acknowledgedBytes < release.imageBytes.byteLength
+      && ['sending', 'transfer-interrupted'].includes(savedUpdateSession.phase);
+    const savedTransferFailureMessage = {
+      timeout: 'The card stopped responding during the firmware transfer.',
+      'connection-lost': 'Studio lost the connection during the firmware transfer.',
+    }[savedUpdateSession?.transferFailure];
+    const interruptedWifiMessage = wifiTransferInterrupted
+      ? `Update stopped at ${Math.round(savedUpdateSession.acknowledgedBytes / release.imageBytes.byteLength * 100)}%. ${error || savedTransferFailureMessage || 'Studio lost the transfer before it finished.'}`
+      : '';
     const softwareGrantAvailable = mode === 'wifi'
       && cardSupportsSoftwareFirmwareUpdateGrant(readiness);
     // Whether this browser could actually obtain the software grant. The card
@@ -619,7 +633,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       : UPDATE_PHASE_LABELS[phase] || '';
     const installedLabel = usbResultUnknown ? 'Not verified after USB transfer' : phase === 'reconnected' && target
       ? `${target.firmwareVersion} · ${formatFirmwareBuildLabel(target)}` : card.recovering
-      ? 'Checking restarted card…'
+      ? wifiTransferInterrupted ? 'Awaiting card readback' : 'Checking restarted card…'
       : `${card.firmwareVersion || 'unknown'} · ${formatFirmwareBuildLabel(card)}`;
     const targetLabel = target ? `${target.firmwareVersion} · ${formatFirmwareBuildLabel(target)}` : 'Verifying signed release…';
     const onProgress = event => {
@@ -650,11 +664,13 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         onFirmwareRecoveryState({ phase });
       } else if (phase !== 'reconnected' && error) {
         onFirmwareRecoveryState({ phase: 'blocked', reason: recoveryBlocker || error });
+      } else if (wifiTransferInterrupted) {
+        onFirmwareRecoveryState({ phase: 'blocked', reason: 'transfer-interrupted' });
       } else {
         onFirmwareRecoveryState(null);
       }
       return undefined;
-    }, [error, onFirmwareRecoveryState, phase, recoveryBlocker, rollback?.reason]);
+    }, [error, onFirmwareRecoveryState, phase, recoveryBlocker, rollback?.reason, wifiTransferInterrupted]);
 
     useEffect(() => {
       if (!target) return;
@@ -813,7 +829,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               throw new Error('The card changed since Studio opened this update. Reconnect the exact card and review its firmware before retrying.');
             }
           }
-          if (!testFactory && !authority) throw new Error('Reconnect this exact card before updating over Wi-Fi.');
+          if (!testFactory && authority?.cardId !== card.id) throw new Error('Reconnect this exact card before updating over Wi-Fi.');
           const softwareGrant = testFactory
             ? window.__LW_SOFTWARE_UPDATE_GRANT_FOR_TEST__ || {
               grantPayload: '{"test":"software-update-grant"}', grantSignature: 'A'.repeat(86),
@@ -1049,7 +1065,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             {mode === 'wifi' ? (
               <>
                 {softwareGrantReady && <p>Studio securely binds this signed update to this exact card, project, and browser session.</p>}
-                {softwareGrantReady && <button className="btn-lg" type="button" onClick={start}>Start secure Wi-Fi update</button>}
+                {softwareGrantReady && <button className="btn-lg" type="button" onClick={start}>
+                  {wifiTransferInterrupted ? 'Retry Wi-Fi update' : 'Start secure Wi-Fi update'}
+                </button>}
                 {grantService.state === 'unknown' && softwareGrantAvailable && <p role="status">Checking secure update authorization…</p>}
                 {!softwareGrantAvailable && <p role="status">This card cannot authorize a Wi-Fi update through Studio. Use the preserving USB update on a computer with Chrome or Edge.</p>}
                 {softwareGrantBlocked && softwareGrantAvailable && (
@@ -1136,7 +1154,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             {continueDestination.label}
           </button>
         )}
-        {error && !usbResultUnknown && <div className="install-check-error" role="alert">{error}</div>}
+        {wifiTransferInterrupted ? (
+          <div className="install-check-error" role="alert">
+            <p>{interruptedWifiMessage}</p>
+            <p>{card.recovering ? 'Reconnect this card, then retry the Wi-Fi update.' : 'Retrying starts a new Wi-Fi transfer.'}</p>
+            {card.recovering && <button className="btn" type="button" onClick={() => {
+              onReconnectCard?.(reconnectHost || readStoredCardHost() || 'lightweaver.local');
+            }}>Reconnect card</button>}
+          </div>
+        ) : error && !usbResultUnknown && <div className="install-check-error" role="alert">{error}</div>}
         {error && factoryUpdateReady && mode === 'wifi' && canWebSerialInstall && (
           <button className="btn" type="button" data-testid="preserving-update-usb-after-error" onClick={() => {
             setConfirming(false);
