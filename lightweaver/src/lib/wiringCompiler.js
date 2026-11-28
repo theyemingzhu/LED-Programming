@@ -75,10 +75,14 @@ function coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById) {
 // card's segment copy without changing the compiler's zone/range coordinates.
 export const OUTPUT_PLAYBACK_ORDER = 'output-segments-v1';
 
-export function playbackSourceIndices(compiled) {
+export function hasPlaybackReversal(compiled) {
+  return compiled?.runs?.some(run => (run.playbackReversed ?? run.reversed) && run.count > 1) ?? false;
+}
+
+export function playbackSourceIndices(compiled, { includePathFlip = true } = {}) {
   const indices = (compiled?.pixels || []).map((_, index) => index);
   for (const run of compiled?.runs || []) {
-    if (!run.reversed) continue;
+    if (!(includePathFlip ? run.playbackReversed ?? run.reversed : run.reversed)) continue;
     for (let offset = 0; offset < run.count; offset++) {
       indices[run.start + offset] = run.start + run.count - 1 - offset;
     }
@@ -88,7 +92,7 @@ export function playbackSourceIndices(compiled) {
 
 export function pixelsInPlaybackOrder(compiled) {
   const pixels = compiled?.pixels || [];
-  if (!compiled?.runs?.some(run => run.reversed && run.count > 1)) return pixels;
+  if (!hasPlaybackReversal(compiled)) return pixels;
   return playbackSourceIndices(compiled).map((source, index) => ({ ...pixels[source], index }));
 }
 
@@ -200,7 +204,13 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
           inactive: false,
         });
       }
-      const compiledRun = { ...run, outputId: output.id, start, count: order.length, reversed: run.physicalDirection === 'source-reverse' };
+      const reversed = run.physicalDirection === 'source-reverse';
+      // A flipped drawing already reorders Studio coordinates. Native effects
+      // only see section indices, so carry that flip into their output mapping.
+      const compiledRun = {
+        ...run, outputId: output.id, start, count: order.length, reversed,
+        ...(strip.pathPlaybackFlipped === true ? { playbackReversed: !reversed } : {}),
+      };
       runs.push(compiledRun);
       const zoneIdentity = zoneByStripId.get(run.source.stripId) || { id: run.source.stripId, label: strip.name || run.source.stripId };
       const zoneId = zoneIdentity.id;
@@ -210,8 +220,8 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
     }
     const count = pixels.length - outputStart;
     const outputRuns = runs.filter(run => run.outputId === output.id && run.count > 0 && run.type !== 'cable');
-    const segments = outputRuns.map(run => ({ id: run.id, count: run.count, direction: run.reversed ? 'reverse' : 'forward' }));
-    const stripDirections = new Set(outputRuns.filter(run => run.type === 'strip').map(run => run.reversed ? 'reverse' : 'forward'));
+    const segments = outputRuns.map(run => ({ id: run.id, count: run.count, direction: (run.playbackReversed ?? run.reversed) ? 'reverse' : 'forward' }));
+    const stripDirections = new Set(outputRuns.filter(run => run.type === 'strip').map(run => (run.playbackReversed ?? run.reversed) ? 'reverse' : 'forward'));
     const direction = stripDirections.size === 1 ? [...stripDirections][0] : stripDirections.size > 1 ? 'mixed' : 'forward';
     outputs.push({ id: output.id, name: output.name || output.id, pin: output.pin, start: outputStart, count, pixels: count, direction, segments });
   }

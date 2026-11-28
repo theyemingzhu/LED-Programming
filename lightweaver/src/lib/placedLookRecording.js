@@ -1,4 +1,4 @@
-import { OUTPUT_PLAYBACK_ORDER, pixelsInPlaybackOrder } from './wiringCompiler.js';
+import { hasPlaybackReversal, OUTPUT_PLAYBACK_ORDER, pixelsInPlaybackOrder } from './wiringCompiler.js';
 // A placed look saved with the project: its LWSEQ1 recording plus a sidecar
 // that keeps the look itself, so the project's recording library, the card
 // install path and "Record again" treat it like any other recording.
@@ -36,7 +36,7 @@ async function sha256(input) {
 /** What the bake read besides the look, in a stable form. */
 export function placedLookLayout({ look, strips = [], compiledWiring = null, symmetry = null } = {}, { legacyLogicalPlayback = false } = {}) {
   const normalized = normalizePlacedLook(look);
-  const playbackOrderChanged = compiledWiring?.runs?.some(run => run.reversed && run.count > 1);
+  const playbackOrderChanged = hasPlaybackReversal(compiledWiring);
   return {
     ...(!legacyLogicalPlayback && playbackOrderChanged ? { playbackOrder: OUTPUT_PLAYBACK_ORDER } : {}),
     strips: (strips || []).map(strip => ({

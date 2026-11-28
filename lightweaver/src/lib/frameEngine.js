@@ -249,8 +249,8 @@ export function renderPixelFrame({
     let ptIndex = 0;
 
     for (const pt of s.pts || []) {
-      let nx = (pt.x - bounds.minX) / bounds.range;
-      let ny = (pt.y - bounds.minY) / bounds.range;
+      let nx = ((pt.patternX ?? pt.x) - bounds.minX) / bounds.range;
+      let ny = ((pt.patternY ?? pt.y) - bounds.minY) / bounds.range;
 
       let symSide = 0;
       let symSplit = false;

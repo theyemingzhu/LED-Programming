@@ -5,6 +5,7 @@ import { compileWiring, playbackSourceIndices } from './wiringCompiler.js';
 import { applyPreviewMirrors, sideFlippedByRule } from './mirrorFrame.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
+import { flippedPatternCoordinates } from './renderGeometry.js';
 
 export function resolvePreviewPatternId(patternId) {
   if (getPatternById(patternId)) return patternId;
@@ -55,6 +56,7 @@ export function buildPatternPreviewSegments({
   paletteForPattern = () => PALETTE_DEFAULT,
 } = {}) {
   const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, symmetry }) : null);
+  const stripsById = new Map(strips.map(strip => [strip.id, strip]));
   const pixelsByTargetId = new Map();
   const playbackOrderByTarget = new Map();
   // A side compiles to ONE continuous zone of several ranges, one per strip in
@@ -66,7 +68,8 @@ export function buildPatternPreviewSegments({
   // A continuous zone is one pattern run: its index and count span the zone.
   const continuousZoneIds = new Set();
   if (compiled?.ok) {
-    const playbackIndices = previewPlaybackDirection ? playbackSourceIndices(compiled) : null;
+    // The SVG already uses the flipped drawing coordinates.
+    const playbackIndices = previewPlaybackDirection ? playbackSourceIndices(compiled, { includePathFlip: false }) : null;
     for (const zone of compiled.zones || []) {
       const pixels = [];
       const indices = [];
@@ -119,13 +122,15 @@ export function buildPatternPreviewSegments({
         targetId: target.id,
         sourcePatternId,
         patternId,
-        pixels: segmentPixels.map((pixel, index) => ({
-          x: finite(pixel.x, 0),
-          y: finite(pixel.y, 0),
-          index,
-          sourceLed: pixel.sourceLed,
-          stripId: pixel.stripId,
-        })),
+        pixels: segmentPixels.map((pixel, index) => {
+          const strip = stripsById.get(pixel.stripId);
+          const x = finite(pixel.x, 0);
+          const y = finite(pixel.y, 0);
+          return {
+            x, y, index, sourceLed: pixel.sourceLed, stripId: pixel.stripId,
+            ...flippedPatternCoordinates(strip, pixel.sourceLed, { x, y }),
+          };
+        }),
         brightness: finite(look.brightness, 1),
         speed: finite(look.speed, 1),
         // Card hue shift is part of the firmware-faithful visual post-pass.
