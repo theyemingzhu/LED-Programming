@@ -1,3 +1,5 @@
+export const WARM_FADE_PATTERN_ID = 'warm-fade';
+
 export const CORE_CARD_PATTERN_BANK = Object.freeze([
   {
     id: 'aurora',
@@ -19,6 +21,13 @@ export const CORE_CARD_PATTERN_BANK = Object.freeze([
     description: 'Warm flame motion for bright centerpiece pieces.',
     mode: 'procedural',
     preview: 'linear-gradient(0deg,#330000,#cc2200,#ff6600,#ffcc00,#ffffff)',
+  },
+  {
+    id: WARM_FADE_PATTERN_ID,
+    label: 'Warm Fade',
+    description: 'Soft gold, amber, and ember red with a gentle pulse. Eight minutes per loop at 1× speed.',
+    mode: 'procedural',
+    preview: 'linear-gradient(90deg,#e8bf70,#e39a59,#c85e43,#dc854f,#e8bf70)',
   },
   {
     id: 'ocean',
@@ -328,6 +337,14 @@ export const CARD_PATTERN_BANK = Object.freeze([
 export const CARD_PATTERN_BY_ID = new Map(CARD_PATTERN_BANK.map(pattern => [pattern.id, pattern]));
 
 const CARD_PATTERN_FINGERPRINTS = Object.freeze({
+  [WARM_FADE_PATTERN_ID]: {
+    motionLabel: 'Warm color fade',
+    tempoLabel: 'Slow',
+    intensityLabel: 'Soft',
+    cssClass: 'motion-flow',
+    palette: ['#e8bf70', '#e39a59', '#c85e43', '#dc854f'],
+    tags: ['warm', 'fade', 'slow'],
+  },
   aurora: {
     motionLabel: 'Curtain drift',
     tempoLabel: 'Slow',

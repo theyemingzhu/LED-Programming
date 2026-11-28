@@ -29,10 +29,11 @@ import { classifyCardReadiness } from './cardReadiness.js';
 import { assertCardOutputCapacity } from './cardHardwareContract.js';
 import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
-import { runtimeConfigUsesSymmetry } from './cardRuntimeContract.js';
+import { runtimeConfigUsesSymmetry, runtimeConfigUsesWarmFade } from './cardRuntimeContract.js';
 import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from './benchConfig.js';
 import { hasColorJourneyRecipeCapability, runtimeConfigUsesColorJourney } from './colorJourneyNative.js';
 import { assignProductionWiringIdentity, productionWiringDigest } from './productionWiringIdentity.js';
+import { WARM_FADE_UPDATE_MESSAGE } from './cardAction.js';
 
 export function getCardHostname() {
   return readStoredCardHost();
@@ -124,6 +125,13 @@ export function assertCardColorJourneySupport(runtimePackage, evidence) {
     );
   }
   return true;
+}
+
+export function assertCardWarmFadeSupport(runtimePackage, evidence) {
+  if (!runtimeConfigUsesWarmFade(runtimePackage) || Number(evidence?.capabilities?.warmFade) >= 1) return true;
+  const error = new CardPushError('warm-fade-unsupported', WARM_FADE_UPDATE_MESSAGE);
+  error.delivery = 'not-sent';
+  throw error;
 }
 
 function isMixedContentBlocked() {
@@ -677,6 +685,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
     assertCardKaleidoscopeSupport(runtimePackage, options.cardEvidence);
     assertCardColorJourneySupport(runtimePackage, options.cardEvidence);
     assertCardSymmetrySupport(runtimePackage, options.cardEvidence);
+    assertCardWarmFadeSupport(runtimePackage, options.cardEvidence);
     try {
       return await bridgeRequest('config', preparedPayload.config, {
         host,
@@ -717,7 +726,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         );
       }
       if (runtimeConfigUsesKaleidoscope(runtimePackage) || runtimeConfigUsesColorJourney(runtimePackage)
-          || runtimeConfigUsesSymmetry(runtimePackage)) {
+          || runtimeConfigUsesSymmetry(runtimePackage) || runtimeConfigUsesWarmFade(runtimePackage)) {
         const capabilityEvidence = options.cardEvidence || await readCardProjectEvidence({
           host,
           transport: 'direct',
@@ -730,6 +739,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         assertCardKaleidoscopeSupport(runtimePackage, capabilityEvidence);
         assertCardColorJourneySupport(runtimePackage, capabilityEvidence);
         assertCardSymmetrySupport(runtimePackage, capabilityEvidence);
+        assertCardWarmFadeSupport(runtimePackage, capabilityEvidence);
       }
       const status = await readCardStatusEnvelope({
         host,
@@ -762,6 +772,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   assertFreshKaleidoscopeEvidence(runtimePackage, rebootPlan.current, exactIdentity);
   assertCardColorJourneySupport(runtimePackage, rebootPlan.current);
   assertCardSymmetrySupport(runtimePackage, rebootPlan.current);
+  assertCardWarmFadeSupport(runtimePackage, rebootPlan.current);
   if (rebootPlan.projectChanged && options.allowProjectChange !== true
       && !isPromotableDiscoveryBench(rebootPlan.current)) {
     throw projectMismatchError(rebootPlan.current, runtimePackage);
@@ -845,6 +856,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           assertFreshKaleidoscopeEvidence(runtimePackage, retryRebootPlan.current);
           assertCardColorJourneySupport(runtimePackage, retryRebootPlan.current);
           assertCardSymmetrySupport(runtimePackage, retryRebootPlan.current);
+          assertCardWarmFadeSupport(runtimePackage, retryRebootPlan.current);
           if (retryRebootPlan.projectChanged && options.allowProjectChange !== true
               && !isPromotableDiscoveryBench(retryRebootPlan.current)) {
             throw projectMismatchError(retryRebootPlan.current, runtimePackage);

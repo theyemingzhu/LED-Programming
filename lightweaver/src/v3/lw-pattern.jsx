@@ -2618,7 +2618,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         }
         if (error?.reason === 'mixed-content') {
           offerCardHandoff(packageForCard, 'Saved in Studio. The browser blocked direct local-card access, so open the card installer to finish saving it on the card.');
-        } else if (error?.reason === 'layout-mismatch' || error?.reason === 'project-mismatch' || error?.reason === 'config-too-large') {
+        } else if (['layout-mismatch', 'project-mismatch', 'config-too-large', 'warm-fade-unsupported'].includes(error?.reason)) {
           setStatusKind('err');
           setStatus(error.message);
         } else if (Number(error?.status) >= 400) {
