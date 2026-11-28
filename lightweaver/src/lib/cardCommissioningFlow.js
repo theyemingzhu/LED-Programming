@@ -713,7 +713,7 @@ export function commissioningShouldSuppressConnectOverlay(flow) {
 // Finding the card again once it rejoins home Wi-Fi stays automatic — see
 // commissioningAutoReconnectHost above, which is the friction that mattered.
 
-export function resumeInstalledCardAfterInterruption(flow, card = {}, { now = Date.now() } = {}) {
+export function resumeInstalledCardAfterInterruption(flow, card = {}, { now = Date.now(), stationIp = '' } = {}) {
   requireFlow(flow);
   if (flow.source !== 'web-serial' || flow.stage !== 'install-safely' || !flow.installTarget) {
     return { ok: false, reason: 'not-resumable' };
@@ -726,11 +726,15 @@ export function resumeInstalledCardAfterInterruption(flow, card = {}, { now = Da
   if (actual.id !== flow.installTarget.id) return { ok: false, reason: 'wrong-card' };
   if (actual.firmwareVersion !== flow.installTarget.firmwareVersion) return { ok: false, reason: 'wrong-firmware-version' };
   if (actual.buildId !== flow.installTarget.buildId) return { ok: false, reason: 'wrong-firmware-build' };
+  if (flow.installTarget.previousBootId && card.bootId === flow.installTarget.previousBootId) {
+    return { ok: false, reason: 'stale-boot' };
+  }
   return { ok: true, flow: completeCardInstall(flow, {
     operation: flow.operation,
     cardId: actual.id,
     firmwareVersion: actual.firmwareVersion,
     buildId: actual.buildId,
+    postFlashNetwork: stationIp ? { state: 'station', stationIp } : undefined,
   }, { now }) };
 }
 

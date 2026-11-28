@@ -7,6 +7,8 @@ const GOOGLE_TTL_MS = 10 * 60_000;
 const MAX_CODE_ATTEMPTS = 5;
 const GOOGLE_STATE_COOKIE = '__Host-lightweaver_oauth';
 const GOOGLE_CALLBACK = '/api/account/google/callback';
+const MANDALA_PROVIDER = 'https://mandalacodes.com/api/auth/lightweaver/';
+const MANDALA_FLOW = 'mandala'; // Direct Google nonces are random 43-character tokens.
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 const encoder = new TextEncoder();
@@ -24,7 +26,8 @@ function configuredMethods(env) {
     || (provider === 'cloudflare' && /^[a-f0-9]{32}$/i.test(env.STUDIO_EMAIL_ACCOUNT_ID || ''));
   return {
     enabled,
-    google: Boolean(ready && env.STUDIO_GOOGLE_CLIENT_ID && env.STUDIO_GOOGLE_CLIENT_SECRET),
+    google: Boolean(ready && (env.STUDIO_MANDALA_SIGN_IN_ENABLED === 'true'
+      || (env.STUDIO_GOOGLE_CLIENT_ID && env.STUDIO_GOOGLE_CLIENT_SECRET))),
     email: Boolean(ready && emailProviderReady
       && env.STUDIO_EMAIL_API_TOKEN && normalizeSignInEmail(env.STUDIO_EMAIL_FROM)),
   };
@@ -255,7 +258,8 @@ function createPasswordlessAuth(env, options) {
     assertHttps(requestUrl);
     if (!await limit(request, 'google', 20, 10 * 60_000)) return studioReturn(false);
     const state = randomToken();
-    const nonce = randomToken();
+    const useMandala = env.STUDIO_MANDALA_SIGN_IN_ENABLED === 'true';
+    const nonce = useMandala ? MANDALA_FLOW : randomToken();
     const verifier = randomToken();
     const current = now();
     await db.batch([
@@ -269,6 +273,11 @@ function createPasswordlessAuth(env, options) {
         VALUES (?, ?, ?, ?)
       `).bind(await sha256(state), verifier, nonce, current + GOOGLE_TTL_MS),
     ]);
+    if (useMandala) {
+      const authorize = new URL('authorize', MANDALA_PROVIDER);
+      authorize.search = new URLSearchParams({ state, code_challenge: await sha256(verifier) });
+      return redirect(authorize.href, oauthCookie(state, GOOGLE_TTL_MS / 1000));
+    }
     const authorize = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authorize.search = new URLSearchParams({
       client_id: env.STUDIO_GOOGLE_CLIENT_ID,
@@ -284,7 +293,40 @@ function createPasswordlessAuth(env, options) {
     return redirect(authorize.href, oauthCookie(state, GOOGLE_TTL_MS / 1000));
   }
 
-  async function finishGoogle(request, requestUrl) {
+  async function finishMandalaLogin(code, verifier) {
+    const exchanged = await fetchImpl(new URL('exchange', MANDALA_PROVIDER).href, {
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(8_000),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, code_verifier: verifier }),
+    });
+    if (!exchanged.ok) return null;
+    const identity = await exchanged.json();
+    const email = normalizeSignInEmail(identity.email);
+    const subject = identity.subject;
+    const googleSubject = identity.google_subject;
+    const validSubject = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 255;
+    if (identity.email_verified !== true || !email || !validSubject(subject)
+      || (googleSubject !== null && !validSubject(googleSubject))) return null;
+    // Reuse the approved Studio account and bind its stable identity on first
+    // sign-in. The provider cannot assign a role or create an account.
+    const [linked, login] = await db.batch([
+      db.prepare(`
+        UPDATE account_sign_in_emails SET mandala_subject = ?, google_subject = COALESCE(google_subject, ?)
+        WHERE email = ? AND (mandala_subject IS NULL OR mandala_subject = ?)
+          AND (google_subject IS NULL OR google_subject = ?)
+          AND EXISTS (SELECT 1 FROM accounts WHERE id = account_id AND status = 'active')
+        RETURNING account_id
+      `).bind(subject, googleSubject, email, subject, googleSubject),
+      db.prepare(`
+        SELECT a.id AS account_id, a.session_generation AS account_generation
+        FROM account_sign_in_emails AS e JOIN accounts AS a ON a.id = e.account_id
+        WHERE e.email = ? AND e.mandala_subject = ? AND a.status = 'active'
+      `).bind(email, subject),
+    ]);
+    return linked.results.length && login.results.length ? { ...login.results[0], email } : null;
+  }
+
+  async function finishGoogle(request, requestUrl, viaMandala) {
     assertHttps(requestUrl);
     const state = requestUrl.searchParams.get('state');
     const code = requestUrl.searchParams.get('code');
@@ -292,9 +334,11 @@ function createPasswordlessAuth(env, options) {
       || !code || code.length > 4096 || requestUrl.searchParams.has('error')) return null;
     const flow = await db.prepare(`
       DELETE FROM account_google_challenges WHERE state_hash = ? AND expires_at > ?
+        AND (nonce = ?) = ?
       RETURNING code_verifier, nonce
-    `).bind(await sha256(state), now()).first();
+    `).bind(await sha256(state), now(), MANDALA_FLOW, viaMandala ? 1 : 0).first();
     if (!flow) return null;
+    if (viaMandala) return finishMandalaLogin(code, flow.code_verifier);
     const { email, subject } = await verifyGoogleIdentity({
       requestUrl, env, flow, code, fetchImpl, googleJwks: options.googleJwks, current: now(),
     });
@@ -318,7 +362,7 @@ function createPasswordlessAuth(env, options) {
   return { requestEmailCode, consumeEmailCode, startGoogle, finishGoogle };
 }
 
-const PASSWORDLESS_PATHS = new Set(['methods', 'google/start', 'google/callback', 'email/start', 'email/verify']);
+const PASSWORDLESS_PATHS = new Set(['methods', 'google/start', 'google/callback', 'mandala/callback', 'email/start', 'email/verify']);
 
 export async function handleStudioPasswordless({ context, options, segments, readJson, jsonResponse, errorResponse, openSession }) {
   const path = segments.join('/');
@@ -331,12 +375,13 @@ export async function handleStudioPasswordless({ context, options, segments, rea
   }
   const methods = await signInMethods(env);
   if (path === 'methods') return jsonResponse(methods);
-  if (path.startsWith('google/')) {
-    if (!methods.google) return studioReturn(false);
+  const viaMandala = path === 'mandala/callback';
+  if (viaMandala || path.startsWith('google/')) {
+    if (!methods.google || (viaMandala && env.STUDIO_MANDALA_SIGN_IN_ENABLED !== 'true')) return studioReturn(false);
     try {
       const auth = createPasswordlessAuth(env, options);
       if (path === 'google/start') return await auth.startGoogle(request, requestUrl);
-      const result = await auth.finishGoogle(request, requestUrl);
+      const result = await auth.finishGoogle(request, requestUrl, viaMandala);
       if (!result) return studioReturn(false);
       const { cookie } = await openSession(result, result.email);
       return studioReturn(true, cookie);

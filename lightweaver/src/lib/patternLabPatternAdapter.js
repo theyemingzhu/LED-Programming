@@ -98,8 +98,8 @@ function prepareLayerGeometry(strips, layer, declaredBounds) {
     pts: (strip.pts || []).map(point => {
       const normalized = {
         ...point,
-        x: (point.x - bounds.minX) / bounds.range,
-        y: (point.y - bounds.minY) / bounds.range,
+        x: ((point.patternX ?? point.x) - bounds.minX) / bounds.range,
+        y: ((point.patternY ?? point.y) - bounds.minY) / bounds.range,
       };
       coordinates.push({
         ...normalized,
@@ -108,11 +108,11 @@ function prepareLayerGeometry(strips, layer, declaredBounds) {
         targetMatched: layerTargetMatches(layer, strip),
       });
       const changed = applyPatternLabTransform(normalized, transforms);
-      return {
-        ...point,
-        x: bounds.minX + changed.x * bounds.range,
-        y: bounds.minY + changed.y * bounds.range,
-      };
+      const x = bounds.minX + changed.x * bounds.range;
+      const y = bounds.minY + changed.y * bounds.range;
+      return point.patternX === undefined
+        ? { ...point, x, y }
+        : { ...point, patternX: x, patternY: y };
     }),
   }));
   return { strips: transformed, coordinates, bounds };

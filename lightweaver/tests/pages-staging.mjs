@@ -246,6 +246,13 @@ assert.throws(
   error => error instanceof ProductionLibraryConfigurationError && error.names.includes('STUDIO_PASSWORDLESS_AUTH_ENABLED'),
 );
 
+const mandalaConfiguration = readProductionLibraryConfiguration({
+  ...productionConfiguration, ...accessConfiguration,
+  STUDIO_PASSWORDLESS_AUTH_ENABLED: 'true', STUDIO_MANDALA_SIGN_IN_ENABLED: 'true',
+});
+assert.match(productionWranglerToml(mandalaConfiguration), /^STUDIO_MANDALA_SIGN_IN_ENABLED = "true"$/m);
+assert.doesNotMatch(productionWranglerToml(passwordlessConfiguration), /^STUDIO_MANDALA_SIGN_IN_ENABLED/m);
+
 const injectionRoot = mkdtempSync(join(tmpdir(), 'lightweaver-workflow-injection-'));
 try {
   const githubOutput = join(injectionRoot, 'github-output');
