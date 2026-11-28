@@ -306,3 +306,58 @@ test('Google returns to Studio only after matching browser state, PKCE, nonce an
   assert.equal((await f.request(callbackPath, { headers: { cookie }, options: { googleJwks } })).headers.get('location'), '/?lwSignIn=error');
   assert.equal((await attempt({ subject: 'different-google-sub' })).response.headers.get('location'), '/?lwSignIn=error');
 });
+
+test('Mandala returns a Studio session for the same approved identity and role', async t => {
+  const f = await fixture(t);
+  f.env.STUDIO_MANDALA_SIGN_IN_ENABLED = 'true';
+  delete f.env.STUDIO_GOOGLE_CLIENT_SECRET;
+  await f.migrateAndLink('founder@gmail.com');
+  const migration = await readFile(new URL('../../../migrations/0005_mandala_account_link.sql', import.meta.url), 'utf8');
+  for (const statement of migration.split(';').map(value => value.trim()).filter(Boolean)) {
+    await f.db.prepare(statement).run();
+  }
+  assert.equal((await (await f.request('methods')).json()).google, true);
+  const claims = { email: 'founder@gmail.com', email_verified: true, subject: 'mandala-founder', google_subject: 'google-founder' };
+  async function start() {
+    const started = await f.request('google/start');
+    const authorize = new URL(started.headers.get('location'));
+    assert.equal(authorize.origin + authorize.pathname, 'https://mandalacodes.com/api/auth/lightweaver/authorize');
+    const state = authorize.searchParams.get('state');
+    const path = `mandala/callback?code=grant&state=${state}`;
+    const cookie = started.headers.getSetCookie()[0].split(';')[0];
+    const callback = (body = claims, overrides = {}) => f.request(path, {
+      headers: { cookie },
+      options: { async providerFetch(url, options) {
+        assert.equal(url, 'https://mandalacodes.com/api/auth/lightweaver/exchange');
+        assert.equal(options.redirect, 'manual');
+        const payload = JSON.parse(options.body);
+        assert.equal(payload.code, 'grant');
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload.code_verifier));
+        assert.equal(Buffer.from(digest).toString('base64url'), authorize.searchParams.get('code_challenge'));
+        return Response.json(body);
+      } }, ...overrides,
+    });
+    return { callback, path, cookie };
+  }
+
+  const { callback, path, cookie } = await start();
+  assert.equal((await callback(claims, { headers: {} })).headers.get('location'), '/?lwSignIn=error');
+  assert.equal((await f.request(path.replace('mandala/callback', 'google/callback'), { headers: { cookie } })).headers.get('location'), '/?lwSignIn=error');
+  const signedIn = await callback();
+  assert.equal(signedIn.headers.get('location'), '/?lwSignIn=success');
+  const session = await (await f.request('session', { headers: { cookie: cookieFrom(signedIn) } })).json();
+  assert.equal(session.session.role, 'owner');
+  assert.equal((await callback()).headers.get('location'), '/?lwSignIn=error');
+  for (const identity of [
+    { ...claims, subject: 'another-mandala-user' },
+    { ...claims, google_subject: 'another-google-user' },
+    { ...claims, google_subject: null },
+    { ...claims, email: 'unapproved@gmail.com', role: 'owner' },
+    { ...claims, email_verified: false },
+  ]) {
+    assert.equal((await (await start()).callback(identity)).headers.get('location'), '/?lwSignIn=error');
+  }
+  const expired = await start();
+  f.advance(10 * 60_000 + 1);
+  assert.equal((await expired.callback()).headers.get('location'), '/?lwSignIn=error');
+});
