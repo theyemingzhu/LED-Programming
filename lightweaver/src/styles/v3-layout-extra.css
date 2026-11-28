@@ -227,6 +227,26 @@
 .layer-row .la-eye:hover { color: var(--text-hi); }
 .layer-row.hidden { opacity: 0.45; }
 
+.la .la-rename-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  color: var(--text-mid);
+  border-radius: var(--r-sm);
+}
+.la .la-rename-button:hover { color: var(--text-hi); background: var(--bg-elev-2); }
+.la .la-rename-button:focus-visible { outline: 2px solid var(--accent); }
+.la .la-rename-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
 /* sub-path rows under an expanded layer */
 .la-subrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 30px; border-radius: var(--r-sm); font-size: 12px; color: var(--text-mid); cursor: pointer; }
 .la-subrow:hover { background: var(--bg-elev); }
