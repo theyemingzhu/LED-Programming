@@ -1226,6 +1226,7 @@ function Shell({ offlineUpdateController = null }) {
     const session = readFirmwareUpdateSession();
     if (!session) return null;
     if (session.phase === 'rolled-back') return { phase: 'rolled-back' };
+    if (session.phase === 'transfer-interrupted') return { phase: 'blocked', reason: session.phase };
     if (['preflight', 'sending', 'verifying'].includes(session.phase)) return { phase: session.phase };
     return { phase: 'restarting' };
   });
