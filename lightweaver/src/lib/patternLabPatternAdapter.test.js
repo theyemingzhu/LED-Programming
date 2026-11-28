@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { reverseStripPath } from './layoutGeometry.js';
+import { compileWiring, playbackSlotsInStripFrame } from './wiringCompiler.js';
+import { makeDefaultWiring } from './wiringModel.js';
 import { PALETTE_DEFAULT } from '../data.js';
 import { CUSTOM_PATTERNS_KEY } from './customPatterns.js';
 import { blendPatternLabColors } from './patternLabCompositor.js';
@@ -557,5 +560,57 @@ test('Lab rendering carries imported look saturation, hue, Drift and Breathe thr
       const actual = renderPatternLabRecipeFrame(recipe, { strips, t: elapsed * look.speed }).pixels;
       assert.deepEqual(actual, expected, JSON.stringify({ modifiers, elapsed }));
     }
+  }
+});
+
+
+test('flipped Lab strips keep transformed layers and movement before the physical RGB reversal', async () => {
+  const { compactPatternLabWorkerGeometry } = await import('./patternLabWorkerProtocol.js');
+  const line = { id: 'line', reversed: false, pixels: Array.from({ length: 16 }, (_, i) => ({ x: i, y: i % 5 })) };
+  const flipped = reverseStripPath(line);
+  const recipe = recipeFromPattern('plasma');
+  recipe.layers = [{
+    id: 'rotated', enabled: true,
+    generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: defaultParams('fire') },
+    transforms: [{ kind: 'rotate', degrees: 35 }],
+    mask: { kind: 'linear', axis: 'x' },
+    blendMode: 'add', opacity: 0.5,
+  }];
+  const renderOptions = { masterSpeed: 1, masterBrightness: 1, masterSaturation: 1, masterHueShift: 0,
+    motionWeights: { drift: 1, flow: 0, pulse: 0, surge: 0 } };
+  const beforeWorker = compactPatternLabWorkerGeometry({ strips: [line] });
+  const afterWorker = compactPatternLabWorkerGeometry({ strips: [flipped] });
+  assert.deepEqual(afterWorker.coordinates, beforeWorker.coordinates);
+
+  const originalPost = globalThis.postMessage;
+  const originalMessage = globalThis.onmessage;
+  const replies = [];
+  globalThis.postMessage = reply => replies.push(reply);
+  try {
+    await import('../pattern-lab/patternLab.worker.js?path-flip-layer');
+    globalThis.onmessage({ data: {
+      type: 'initialize', requestId: 1, payload: { generation: 1, geometry: afterWorker },
+    } });
+    const wiring = makeDefaultWiring([line]);
+    const slots = playbackSlotsInStripFrame(compileWiring({ wiring, strips: [flipped] }), [flipped]);
+    for (const [index, t] of [3, 19].entries()) {
+      replies.length = 0;
+      globalThis.onmessage({ data: {
+        type: 'render', requestId: index + 2,
+        payload: { generation: 1, mode: 'final', layerCount: 1, time: t, recipe, renderOptions },
+      } });
+      await new Promise(resolve => setImmediate(resolve));
+      const baseline = renderPatternLabRecipeFrame(recipe, { strips: [line], t, ...renderOptions }).pixels;
+      const direct = renderPatternLabRecipeFrame(recipe, { strips: [flipped], t, ...renderOptions }).pixels;
+      const worker = replies.find(reply => reply.type === 'frame');
+      assert.ok(worker, JSON.stringify(replies));
+      assert.deepEqual([...new Uint8Array(worker.payload.colors)], baseline.flatMap(({ r, g, b }) => [r, g, b]));
+      assert.deepEqual(direct, baseline);
+      assert.notDeepEqual(baseline, baseline.toReversed());
+      assert.deepEqual(slots.map(slot => direct[slot]), baseline.toReversed());
+    }
+  } finally {
+    globalThis.postMessage = originalPost;
+    globalThis.onmessage = originalMessage;
   }
 });

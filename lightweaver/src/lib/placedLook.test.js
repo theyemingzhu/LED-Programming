@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { reverseStripPath } from './layoutGeometry.js';
 import { MAX_BAKE_FPS } from './lwseqBake.js';
 import { mirrorSourceIndex } from './mirrorFrame.js';
 import { MAX_STORED_SEQUENCE_BYTES } from './recordedSequenceAsset.js';
@@ -19,6 +20,7 @@ import {
   placedLookColour,
   placedLookFrame,
   placedLookLoop,
+  placedLookPhysicalFrame,
   placedLookOnCentre,
   placedLookStops,
   toPlacedFrame,
@@ -381,4 +383,31 @@ test('placedLookPhysicalFrame is the recording frame as hex, in wired order', as
   }
   assert.deepEqual(live, first);
   assert.deepEqual(placedLookPhysicalFrame(still, strips, null, 0), []);
+});
+
+
+test('flipping a strip reverses a moving placed look in the canvas, live output, and a fresh recording', () => {
+  const first = { ...row('a', [5, 18, 33, 53, 75, 91]), reversed: false };
+  const second = row('b', [30, 50, 88]);
+  const before = [first, second];
+  const after = [reverseStripPath(first), second];
+  const baseline = wired(before);
+  const flipped = wired(after);
+  const placed = look();
+  const frozen = bakePlacedLook(placed, before, baseline, { seconds: 4, fps: 8 });
+  const frozenBytes = frozen.bytes.slice();
+  const updated = bakePlacedLook(placed, after, flipped, { seconds: 4, fps: 8 });
+  const mirror = colors => [...colors.slice(0, first.pixels.length).reverse(), ...colors.slice(first.pixels.length)];
+  const asBytes = colors => colors.flatMap(color => color.match(/../g).map(hex => parseInt(hex, 16)));
+  for (const t of [0, 0.5, 1.25]) {
+    const a = placedLookPhysicalFrame(placed, before, baseline, t);
+    const b = placedLookPhysicalFrame(placed, after, flipped, t);
+    assert.notDeepEqual(a, mirror(a));
+    assert.deepEqual(b, mirror(a));
+    const preview = placedLookFrame(placed, after, t).pixels;
+    assert.deepEqual(frameBytes(frozen, t * frozen.fps), asBytes(a));
+    assert.deepEqual(frameBytes(updated, t * updated.fps), asBytes(b));
+    assert.deepEqual(mirror(preview).flatMap(rgb), asBytes(b));
+  }
+  assert.deepEqual(frozen.bytes, frozenBytes);
 });

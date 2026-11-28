@@ -13,8 +13,7 @@
 // DOM-backed sampler; tests pass a stub).
 
 import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.js';
-import { stripSourceKey } from '../lib/layoutGeometry.js';
-import { reverseStripPath } from '../lib/layoutGeometry.js';
+import { reverseStripPath, stripSourceKey } from '../lib/layoutGeometry.js';
 import { normalizeSectionFamilies } from '../lib/connectedSections.js';
 import { normalizeSymmetry, removeStripsFromSymmetry } from '../lib/pieceSymmetry.js';
 
