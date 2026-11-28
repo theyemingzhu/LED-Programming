@@ -1503,7 +1503,7 @@ test('Save project resumes after Google sign-in and keeps separate editable clou
   const dialog = page.getByRole('dialog', { name: 'Save project' });
   await expect(dialog.getByRole('button', { name: 'Save in browser' })).toBeInViewport();
   await testInfo.attach('Save destinations at 390px', { body: await page.screenshot(), contentType: 'image/png' });
-  await dialog.getByRole('button', { name: 'Sign in to save online' }).click();
+  await dialog.getByRole('button', { name: 'Save online' }).click();
   await dialog.getByRole('button', { name: 'Continue with Google' }).click();
   await expect(dialog.getByLabel('Project title')).toHaveValue('Cloud save test');
   await expect(page).toHaveURL(/\/#screen=layout$/);
@@ -1887,7 +1887,7 @@ for (const width of [320, 390]) {
     expect(saveBox!.x).toBeGreaterThanOrEqual(0);
     expect(saveBox!.x + saveBox!.width).toBeLessThanOrEqual(width);
     const localSave = saveDialog.getByRole('button', { name: 'Save in browser' });
-    const cloudSave = saveDialog.getByRole('button', { name: 'Sign in to save online' });
+    const cloudSave = saveDialog.getByRole('button', { name: 'Save online' });
     await expect(localSave).toBeInViewport();
     await expect(cloudSave).toBeInViewport();
     const localBox = (await localSave.boundingBox())!;

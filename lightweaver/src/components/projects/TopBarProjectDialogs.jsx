@@ -68,7 +68,7 @@ export function ProjectSaveDialog({ projectName, projectId, googleOutcome, skipD
               <div className="set-actions">
                 <button type="button" className="btn" disabled={saving} onClick={onSaveBrowser}>Save in browser</button>
                 {authenticated && onlineProject && <button type="button" className="btn primary" onClick={onSaveOnline}>Save online</button>}
-                {!authenticated && !signingIn && <button type="button" className="btn primary" onClick={() => setSigningIn(true)}>Sign in to save online</button>}
+                {!authenticated && !signingIn && <button type="button" className="btn primary" onClick={() => setSigningIn(true)}>Save online</button>}
               </div>
             </>
           )}
