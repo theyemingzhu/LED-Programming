@@ -1,4 +1,4 @@
-import { CardPushError, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
+import { CardPushError, cardConfigStructuralWiringChangedFromInfo, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
 import { cardZoneRangesMatch, readCardZonesFromCard } from './cardLiveControl.js';
 import { prepareCardDeployment, verifyCardPostSaveState, waitForCardRestart } from './cardDeployment.js';
 import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled } from './cardLink.js';
@@ -174,6 +174,8 @@ export async function ensureCardSectionsForPreview({
   runtimePackage,
   pushConfig = pushConfigToCard,
   readZones = readCardZonesFromCard,
+  verifyInstalledWiring = false,
+  readWiring = readCardStatusEnvelope,
   sleep = delay,
   // Both default false so the normal preview auto-sync (reconciling zones the
   // real design already declares) never silently pushes past the wiring/
@@ -183,6 +185,16 @@ export async function ensureCardSectionsForPreview({
   allowProjectChange = false,
 } = {}) {
   if (!requiredZoneIds.length) return { synced: false, zones: null };
+  const outputs = (runtimePackage?.config || runtimePackage)?.led?.outputs;
+  if (verifyInstalledWiring && outputs?.some(output => output.segments?.length > 1)) {
+    // Zone IDs can survive a direction edit. Compare the applied wiring
+    // before sending either a temporary pattern or a configuration write.
+    const wiring = await readWiring({ host, transport, timeoutMs: 1200 });
+    if (cardConfigStructuralWiringChangedFromInfo(wiring, runtimePackage)) {
+      throw new CardPushError('section-layout-mismatch',
+        'Test & Install the updated strip wiring before previewing this mix on the card.');
+    }
+  }
   const zones = await readZones({ host, transport, timeoutMs: 900 });
   const missing = missingCardZoneIds(zones, requiredZoneIds);
   if (!missing.length) return { synced: false, zones };
