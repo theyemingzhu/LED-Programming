@@ -2463,7 +2463,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     if (installState === 'wifi-setup') return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
-        <header className="install-intro"><InstallHeading>{pendingSetupSave ? 'Save card setup progress' : checkingWifiUsb ? 'Checking card Wi-Fi' : usbSetupBlocked ? (wifiStatus.state === 'configured' ? 'Reconnect your card' : 'Could not verify the card over USB') : 'Connect to Wi-Fi'}</InstallHeading></header>
+        <header className="install-intro">
+          {!checkingWifiUsb && !usbSetupBlocked && <div className="eyebrow">{preservingUsbWifi ? 'Firmware updated' : 'Firmware installed'}</div>}
+          <InstallHeading>{pendingSetupSave ? 'Save card setup progress' : checkingWifiUsb ? 'Checking card Wi-Fi' : usbSetupBlocked ? (wifiStatus.state === 'configured' ? 'Reconnect your card' : 'Could not verify the card over USB') : 'Connect to Wi-Fi'}</InstallHeading>
+        </header>
         {checkingWifiUsb ? <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p> : usbSetupBlocked ? usbSetupRecovery : wifiForm}
       </div></div>
     );
