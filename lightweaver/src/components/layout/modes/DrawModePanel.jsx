@@ -213,6 +213,9 @@ function flowSentence(names) {
 
 export function DrawModePanel({
   state,
+  inspectorView,
+  setInspectorView,
+  wireTraceControl,
   installerSetup = false,
   firstLedPicker,
   firstLedError,
@@ -369,17 +372,35 @@ export function DrawModePanel({
     : [], [patternPicker, strips, patchBoard, wiring, compiledWiring, sectionTargets]);
   const patternTriggerRefs = useRef(new Map());
   const closePatternPicker = (restoreFocus = true) => {
-    const targetId = patternPicker?.targetId;
+    const triggerKey = patternPicker?.groupId || patternPicker?.targetId;
     patternIntent.current += 1;
     setPatternCardStatus('');
     setPatternPicker(null);
-    if (restoreFocus) window.requestAnimationFrame(() => patternTriggerRefs.current.get(targetId)?.focus());
+    if (restoreFocus) window.requestAnimationFrame(() => patternTriggerRefs.current.get(triggerKey)?.focus());
+  };
+  const openPatternPicker = ({ targetId, stripId, groupId }) => {
+    if (patternPicker?.targetId === targetId) {
+      closePatternPicker();
+      return;
+    }
+    if (stripId) selectStrip(stripId);
+    patternIntent.current += 1;
+    setPatternCardStatus('');
+    setPatternPicker({ targetId, stripId, groupId });
+  };
+  const renderPatternGallery = name => {
+    const target = sectionTargets.find(item => item.id === patternPicker?.targetId);
+    return <LayoutPatternGallery stripName={name}
+      currentPatternId={target?.look?.patternId || 'aurora'}
+      previewSegment={patternPreviewSegments[0]}
+      onChoose={choosePattern} onClose={closePatternPicker}
+      cardStatus={patternCardStatus}/>;
   };
   const choosePattern = patternId => {
     const target = sectionTargets.find(item => item.id === patternPicker?.targetId);
     if (target && target.look?.patternId !== patternId) {
       pushLayoutHistory();
-      setPatchBoard(applyLookToPatchBoard({ patchBoard, strips, targetId: target.id,
+      setPatchBoard(applyLookToPatchBoard({ patchBoard, strips, targetId: target.id, groupStripIds: target.groupStripIds,
         look: { ...target.look, patternId } }));
     }
     if (!target) return;
@@ -406,6 +427,7 @@ export function DrawModePanel({
       ...cardConnectionOptionsFor(link, cardHost),
       expectedCardId: link.expectedCard?.id || link.card?.id || '',
       expectedZoneRanges: target.ranges || [],
+      expectedZoneOrder: target.orderedGroup,
       revision: intent,
       timeoutMs: 2200,
     };
@@ -617,6 +639,9 @@ export function DrawModePanel({
     }
     return byStrip;
   }, [sectionTargets, compiledWiring, layoutSymmetry]);
+  const effectGroups = layerGroups.filter(group => group.type === 'strip');
+  const sectionTargetsByZone = new Map(sectionTargets.filter(target => target.kind === 'section')
+    .map(target => [target.zoneId, target]));
   const outputInventory = (output, fallbackCount) => {
     if (!compiledWiring?.ok) return `${fallbackCount} ${fallbackCount === 1 ? 'section' : 'sections'} · Wiring needs review`;
     const compiledOutput = compiledWiring.outputs.find(item => item.id === output.id);
@@ -1079,9 +1104,8 @@ export function DrawModePanel({
                   // ── Group row ──
                   if (item.type === 'group') {
                     const group = layerGroups.find(g => g.groupId === item.id);
-                    if (!group) return null;
+                    if (!group || group.type === 'strip') return null;
                     const isGroupHidden = !!group._hidden;
-                    const isStripGroup = group.type === 'strip';
                     const isDragTarget = layerDragOver === group.groupId;
                     return (
                       <div key={group.groupId}
@@ -1093,20 +1117,12 @@ export function DrawModePanel({
                            }}
                            onDragOver={e => {
                              e.preventDefault();
-                             if (isStripGroup && Array.from(e.dataTransfer.types).includes('application/x-lightweaver-strip')) {
-                               setStripGroupDragOver(group.groupId);
-                             } else if (!isStripGroup && Array.from(e.dataTransfer.types).includes('application/x-lightweaver-path')) {
-                               setLayerDragOver(group.groupId);
-                             } else {
-                               setLayerDragOver(group.groupId);
-                             }
+                             setLayerDragOver(group.groupId);
                            }}
                            onDrop={e => {
                              e.preventDefault();
-                             const draggedStripIds = readDraggedStripIds(e);
                              const draggedPaths = readDraggedPathEntries(e);
-                             if (isStripGroup && draggedStripIds.length) addStripsToGroup(group.groupId, draggedStripIds);
-                             else if (!isStripGroup && draggedPaths.length) addPathsToGroup(group.groupId, draggedPaths);
+                             if (draggedPaths.length) addPathsToGroup(group.groupId, draggedPaths);
                              else if (layerDragging) reorderLayerOrder(layerDragging, group.groupId);
                              setLayerDragging(null);
                              setLayerDragOver(null);
@@ -1115,7 +1131,7 @@ export function DrawModePanel({
                            onDragLeave={() => setStripGroupDragOver(null)}
                            onDragEnd={() => { setLayerDragging(null); setLayerDragOver(null); setStripGroupDragOver(null); }}>
                         <div className="la-group-row"
-                             style={{ background: stripGroupDragOver === group.groupId ? 'color-mix(in oklab, var(--accent) 16%, transparent)' : isDragTarget ? 'var(--accent-soft)' : undefined,
+                             style={{ background: isDragTarget ? 'var(--accent-soft)' : undefined,
                                       opacity: isGroupHidden ? 0.45 : 1 }}>
                           <span data-drag-handle="true" className="la-grip"><DragHandleIcon/></span>
                           <button onClick={e => { e.stopPropagation(); toggleGroupHidden(group.groupId); }}>
@@ -1128,7 +1144,7 @@ export function DrawModePanel({
                           <InlineRename value={group.name} onCommit={n => renameGroup(group.groupId, n)}
                                         className="nm"/>
                           <span className="ct">
-                            {group.members.length}{isStripGroup ? 's' : 'p'}
+                            {group.members.length}p
                           </span>
                           <button title="Ungroup" onClick={e => { e.stopPropagation(); deleteLayerGroup(group.groupId); }}>⊠</button>
                         </div>
@@ -1136,21 +1152,14 @@ export function DrawModePanel({
                           const memberId = m.stripId || m.pathId;
                           const memberHidden = !!hidden[memberId];
                           return (
-                          <div key={memberId} className="la-subrow"
-                               style={{ cursor: isStripGroup ? 'pointer' : 'default' }}
-                               onClick={() => { if (isStripGroup) selectStrip(memberId); }}>
+                          <div key={memberId} className="la-subrow">
                             <span className="n">{mi+1}</span>
                             <button className="la-eye" style={{ opacity: 1 }}
                                     onClick={e => { e.stopPropagation(); setHidden(h => ({ ...h, [memberId]: !h[memberId] })); }}>
                               {memberHidden ? <EyeOffIcon/> : <EyeIcon/>}
                             </button>
-                            {isStripGroup && (
-                              <span className="layer-swatch" style={{ background: m.color || 'var(--accent)' }}/>
-                            )}
                             <span className="nm">{m.name}</span>
-                            {isStripGroup ? (
-                              <span className="len">{(m.pixelCount || 0).toLocaleString()} LEDs</span>
-                            ) : m.svgLength > 0 && (
+                            {m.svgLength > 0 && (
                               <span className="len">{Math.round(m.svgLength / pxPerMm)}mm</span>
                             )}
                             <button className="add" style={{ color: 'var(--text-faint)' }}
@@ -1399,6 +1408,191 @@ export function DrawModePanel({
     ? [stripInspector, artworkInspector]
     : [artworkInspector, !starterLayoutActive && stripInspector];
 
+  const showInspector = view => {
+    if (patternPicker) closePatternPicker(false);
+    cancelSvgWire();
+    setInspectorView(view);
+  };
+  const createEffectGroup = () => {
+    groupSelectedStrips();
+    showInspector('group');
+  };
+  const renderEffectGroupInspector = () => (
+    <section className="la-effect-groups" id="layout-group-pane" role="tabpanel" aria-labelledby="layout-group-tab">
+      <div className="la-effect-picker">
+        <div className="panel-head"><span className="ttl">Select lines</span></div>
+        <div className="la-effect-checks">
+          {orderedStrips.map(strip => (
+            <label key={strip.id} className="la-effect-check" title={strip.name} draggable
+              onDragStart={event => {
+                const ids = selectedStripIds.includes(strip.id) ? selectedStripIds : [strip.id];
+                event.dataTransfer.setData('application/x-lightweaver-strip', JSON.stringify(ids));
+                event.dataTransfer.effectAllowed = 'move';
+              }}>
+              <input type="checkbox" checked={selectedStripIds.includes(strip.id)}
+                onChange={() => toggleStripSel(strip.id)}/>
+              <span>{strip.name}</span>
+            </label>
+          ))}
+        </div>
+        <div className="la-batch-actions la-effect-create">
+          <input type="text" aria-label="Effect group name" placeholder="Group name"
+            value={stripSelectionName} onChange={event => renameLayoutSelection(event.target.value)}
+            disabled={selectedStripIds.length < 2}/>
+          <button type="button" className="btn primary" disabled={selectedStripIds.length < 2}
+            onClick={createEffectGroup}>Create group</button>
+        </div>
+      </div>
+      {effectGroups.map(group => {
+        const members = group.members
+          .map(member => stripById.get(typeof member === 'string' ? member : member.stripId))
+          .filter(Boolean);
+        const groupHidden = members.length > 0 && members.every(strip => hidden[strip.id]);
+        const target = sectionTargetsByZone.get(group.groupId);
+        const groupErrors = (compiledWiring?.errors || []).filter(error => error.zoneId === group.groupId);
+        const currentPatternId = target?.look?.patternId || 'aurora';
+        const patternName = REAL_PATTERNS.find(pattern => pattern.id === currentPatternId)?.label || currentPatternId;
+        const pickerOpen = patternPicker?.groupId === group.groupId;
+        const selectable = selectedStripIds.filter(id => !members.some(member => member.id === id));
+        return (
+          <section key={group.groupId} className="la-effect-group" aria-label={group.name}
+                   data-testid="layout-effect-group" data-group-id={group.groupId}
+                   onDragOver={event => {
+                     if (!Array.from(event.dataTransfer.types).includes('application/x-lightweaver-strip')) return;
+                     event.preventDefault();
+                     setStripGroupDragOver(group.groupId);
+                   }}
+                   onDragLeave={event => {
+                     if (!event.currentTarget.contains(event.relatedTarget)) setStripGroupDragOver(null);
+                   }}
+                   onDrop={event => {
+                     const ids = readDraggedStripIds(event);
+                     if (!ids.length) return;
+                     event.preventDefault();
+                     addStripsToGroup(group.groupId, ids);
+                     setStripGroupDragOver(null);
+                   }}>
+            <div className={`la-effect-group-head${stripGroupDragOver === group.groupId ? ' is-drop-target' : ''}`}>
+              <button type="button" className="btn la-effect-icon"
+                title={groupHidden ? 'Show group' : 'Hide group'}
+                aria-label={`${groupHidden ? 'Show' : 'Hide'} group ${group.name}`}
+                onClick={() => toggleGroupHidden(group.groupId, !groupHidden)}>
+                {groupHidden ? <EyeOffIcon/> : <EyeIcon/>}
+              </button>
+              <span className="la-effect-group-name">
+                <GroupIcon/>
+                <InlineRename value={group.name} showButton
+                  onCommit={name => { pushLayoutHistory(); renameGroup(group.groupId, name); }}
+                  className="nm"/>
+              </span>
+              {target && <button type="button" className="la-section-pattern-action"
+                aria-label={`Change pattern for group ${group.name}`} aria-haspopup="dialog"
+                aria-expanded={pickerOpen} data-target-id={target.id}
+                ref={element => {
+                  if (element) patternTriggerRefs.current.set(group.groupId, element);
+                  else patternTriggerRefs.current.delete(group.groupId);
+                }}
+                onClick={() => openPatternPicker({ targetId: target.id, groupId: group.groupId })}>
+                {patternName} <span aria-hidden="true">→</span>
+              </button>}
+              <button type="button" className="btn la-effect-icon"
+                title="Ungroup strips" aria-label={`Ungroup ${group.name}`}
+                onClick={() => {
+                  if (pickerOpen) closePatternPicker(false);
+                  pushLayoutHistory();
+                  deleteLayerGroup(group.groupId);
+                }}>×</button>
+            </div>
+            {groupErrors.map(error => <p key={`${error.code}:${error.stripId || ''}`} role="alert" className="la-gpio-error">
+              {error.code === 'zone-range-limit'
+                ? `This group exceeds the card's ${CARD_HARDWARE_CAPABILITIES.maxRangesPerZone}-run limit. Remove some lines or split the effect into two groups.`
+                : error.message}
+            </p>)}
+            {pickerOpen && renderPatternGallery(group.name)}
+            <ul className="la-effect-members">
+              {members.map((strip, index) => {
+                const dropKey = `${group.groupId}:${strip.id}`;
+                const stripHidden = Boolean(hidden[strip.id]);
+                const moveTo = nextIndex => {
+                  const anchor = members[nextIndex];
+                  if (anchor && anchor.id !== strip.id) {
+                    addStripsToGroup(group.groupId, [strip.id], { anchorId: anchor.id, after: nextIndex > index });
+                  }
+                };
+                return <li key={strip.id} data-testid="layout-effect-member" data-strip-id={strip.id}
+                  className={`${stripGroupDragOver === dropKey ? 'is-drop-target' : ''}${stripHidden ? ' is-hidden' : ''}`}
+                  onDragOver={event => {
+                    if (!Array.from(event.dataTransfer.types).includes('application/x-lightweaver-strip')) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setStripGroupDragOver(dropKey);
+                  }}
+                  onDrop={event => {
+                    const ids = readDraggedStripIds(event);
+                    if (!ids.length) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    const after = event.clientY > bounds.top + bounds.height / 2;
+                    addStripsToGroup(group.groupId, ids, { anchorId: strip.id, after });
+                    setStripGroupDragOver(null);
+                  }}>
+                  <button type="button" className="btn la-effect-icon"
+                    title={stripHidden ? 'Show line' : 'Hide line'}
+                    aria-label={`${stripHidden ? 'Show' : 'Hide'} ${strip.name} in ${group.name}`}
+                    onClick={() => setHidden(current => ({ ...current, [strip.id]: !current[strip.id] }))}>
+                    {stripHidden ? <EyeOffIcon/> : <EyeIcon/>}
+                  </button>
+                  <button type="button" className="la-effect-member" draggable
+                    aria-label={`Reorder ${strip.name}`} title="Drag or use the arrow keys to reorder"
+                    onDragStart={event => {
+                      event.dataTransfer.setData('application/x-lightweaver-strip', JSON.stringify([strip.id]));
+                      event.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => setStripGroupDragOver(null)}
+                    onKeyDown={event => {
+                      if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? members.length - 1
+                        : index + (event.key === 'ArrowDown' ? 1 : -1);
+                      moveTo(nextIndex);
+                    }}
+                    onClick={() => {
+                      if (patternPicker) closePatternPicker(false);
+                      selectStrip(strip.id);
+                    }}><DragHandleIcon/><span>{strip.name}</span></button>
+                  {selStripId === strip.id && members.length > 1 && <>
+                    <button type="button" className="btn la-effect-icon" disabled={index === 0}
+                      aria-label={`Move ${strip.name} up in ${group.name}`}
+                      onClick={() => moveTo(index - 1)}>↑</button>
+                    <button type="button" className="btn la-effect-icon" disabled={index === members.length - 1}
+                      aria-label={`Move ${strip.name} down in ${group.name}`}
+                      onClick={() => moveTo(index + 1)}>↓</button>
+                  </>}
+                  <button type="button" className="btn la-effect-icon"
+                    title="Remove from group" aria-label={`Remove ${strip.name} from ${group.name}`}
+                    onClick={() => {
+                      pushLayoutHistory();
+                      if (members.length === 1) {
+                        if (pickerOpen) closePatternPicker(false);
+                        deleteLayerGroup(group.groupId);
+                      } else setLayerGroups(current => current.map(item => item.groupId === group.groupId
+                        ? { ...item, members: item.members.filter(member => (typeof member === 'string' ? member : member.stripId) !== strip.id) }
+                        : item));
+                    }}>×</button>
+                </li>;
+              })}
+            </ul>
+            {selectable.length > 0 && <button type="button" className="btn la-effect-add-selection"
+              aria-label={`Add selected lines to ${group.name}`}
+              onClick={() => addStripsToGroup(group.groupId, selectable)}>Add selected</button>}
+          </section>
+        );
+      })}
+    </section>
+  );
+
   return (
     <>
 
@@ -1587,7 +1781,29 @@ export function DrawModePanel({
         )}
 
         {/* ── Add strip + strips list ── */}
-        {arrangeInspector(
+        {!installerSetup && strips.length > 0 && <div className="la-inspector-tabs" role="tablist" aria-label="Layout tasks"
+          onKeyDown={event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const view = event.key === 'Home' ? 'wire' : event.key === 'End' ? 'group'
+              : inspectorView === 'wire' ? 'group' : 'wire';
+            showInspector(view);
+            event.currentTarget.querySelector(`#layout-${view}-tab`)?.focus();
+          }}>
+          <button type="button" className="btn" role="tab" id="layout-wire-tab" aria-controls="layout-wire-pane"
+            aria-selected={inspectorView === 'wire'} tabIndex={inspectorView === 'wire' ? 0 : -1}
+            onClick={() => showInspector('wire')}>Wire</button>
+          <button type="button" className="btn" role="tab" id="layout-group-tab" aria-controls="layout-group-pane"
+            aria-selected={inspectorView === 'group'} tabIndex={inspectorView === 'group' ? 0 : -1}
+            onClick={() => showInspector('group')}>Group</button>
+        </div>}
+        {!installerSetup && strips.length > 0 && inspectorView === 'group'
+          ? renderEffectGroupInspector()
+          : <div id="layout-wire-pane" className="la-wire-pane"
+              role={!installerSetup && strips.length > 0 ? 'tabpanel' : undefined}
+              aria-labelledby={!installerSetup && strips.length > 0 ? 'layout-wire-tab' : undefined}>
+          {wireTraceControl}
+          {arrangeInspector(
           <Fragment key="strip-inspector">
             {!stripsFirst && <div className="panel-divider"/>}
             {!compactSingleWire && <div className="panel-head la-led-strips-heading">
@@ -1645,7 +1861,7 @@ export function DrawModePanel({
                     onChange={e => renameLayoutSelection(e.target.value)}
                     placeholder="Group or merged strip name..."
                   />
-                  <button className="btn" title="Organize selected strips as one expandable group (G)" onClick={groupSelectedStrips}>
+                  <button className="btn" title="Give selected strips one shared effect (G)" onClick={createEffectGroup}>
                     <GroupIcon/> Group
                   </button>
                   <button className="btn primary" title="Combine selected strips into one composite strip (M)" onClick={mergeSelectedStrips}>
@@ -1665,6 +1881,10 @@ export function DrawModePanel({
                 if (group.kind === 'own' && !groupedStrips.length && !sideDragActive) return null;
                 const groupLeds = groupedStrips.reduce((sum, strip) => sum + (Number(strip.pixelCount) || 0), 0);
                 const svgLayerCount = new Set([...groupedStrips, ...linkedStrips].map(svgLayerStripId).filter(Boolean)).size;
+                const svgColors = new Set([...groupedStrips, ...linkedStrips].map(strip => strip.svgColor));
+                const svgColor = svgColors.size === 1 ? svgColors.values().next().value : null;
+                const sourceLayers = new Set([...groupedStrips, ...linkedStrips].map(strip => strip.sourceLayerId));
+                const sourceLayer = sourceLayers.size === 1 && layers.find(layer => sourceLayers.has(layer.layerId) && !layer.svgLoose);
                 const dropSideId = group.kind === 'side' ? group.side.id : null;
                 const acceptsStrips = event => Array.from(event.dataTransfer.types).includes('application/x-lightweaver-strip');
                 return (
@@ -1691,7 +1911,12 @@ export function DrawModePanel({
                          } : undefined}>
                   {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips)
                     && !(installerSetup && groupedStrips.length === 1 && linkedStrips.length === 0) && <div className="la-gpio-group-head">
-                    <span title={pinPlace(output.pin)} data-tooltip={pinPlace(output.pin)}>GPIO {output.pin}</span>
+                    <span className="la-gpio-heading" title={pinPlace(output.pin)} data-tooltip={pinPlace(output.pin)}>
+                      GPIO {output.pin}
+                      {sourceLayer && <span className="la-gpio-source-layer" title={sourceLayer.name}>{sourceLayer.name}</span>}
+                      {svgColor && <span className="layer-swatch" style={{ background: svgColor }}
+                        role="img" aria-label={`SVG color ${svgColor}`} title={`SVG color ${svgColor}`}/>}
+                    </span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>}
                   {sideView && <div className="la-side-head">
@@ -1717,7 +1942,7 @@ export function DrawModePanel({
                   {group.kind === 'side' && !groupedStrips.length && <p className="la-side-empty">No strips yet. Drag one here.</p>}
                   {group.kind === 'own' && !groupedStrips.length && <p className="la-side-empty">Drop here to play on its own.</p>}
                   {!sideView && svgLayerCount > 1 && <p className="la-gpio-error" role="status">
-                    {formatGpio(output.pin)} is shared by {svgLayerCount} SVG layers.
+                    {formatGpio(output.pin)} is shared by {svgLayerCount} SVG wiring groups.
                   </p>}
                   {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => displayStripName(strip, sectionFamilies)).join(', ')}</div>}
                   {groupedStrips.map(s => {
@@ -1960,7 +2185,7 @@ export function DrawModePanel({
                       <span className={installerSetup ? 'la-installer-strip-actions' : 'la-strip-pin-action'}>
                         <button type="button" className="la-strip-pin-button"
                                 aria-label={`Change pin for ${partName}`}
-                                title={layerSharesPin ? 'Change output for this SVG layer' : `Change pin for ${partName}`}
+                                title={layerSharesPin ? `Change output for this SVG ${svgLayerId.startsWith('svg-color:') ? 'color' : 'layer'}` : `Change pin for ${partName}`}
                                 data-testid={sideView ? `strip-wire-${s.id}` : undefined}
                                 onClick={event => {
                                   event.stopPropagation();
@@ -1992,14 +2217,7 @@ export function DrawModePanel({
                                        aria-expanded={patternPicker?.targetId === target.id}
                                        onClick={event => {
                                          event.stopPropagation();
-                                         if (patternPicker?.targetId === target.id) {
-                                           closePatternPicker();
-                                           return;
-                                         }
-                                         selectStrip(s.id);
-                                         patternIntent.current += 1;
-                                         setPatternCardStatus('');
-                                         setPatternPicker({ targetId: target.id, stripId: s.id });
+                                         openPatternPicker({ targetId: target.id, stripId: s.id });
                                        }}>
                           {/* A side's pattern: the side heading already says whose. */}
                           {sideTarget ? ''
@@ -2034,14 +2252,7 @@ export function DrawModePanel({
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
                       </button>}
                     </div>
-                    {patternPicker?.stripId === s.id && (() => {
-                      const target = sectionTargets.find(item => item.id === patternPicker.targetId);
-                      return <LayoutPatternGallery stripName={partName}
-                        currentPatternId={target?.look?.patternId || 'aurora'}
-                        previewSegment={patternPreviewSegments[0]}
-                        onChoose={choosePattern} onClose={closePatternPicker}
-                        cardStatus={patternCardStatus}/>;
-                    })()}
+                    {patternPicker?.stripId === s.id && renderPatternGallery(partName)}
                     {isOpen && (
                       <div className={`la-strip-detail la-strip-inspector${connectedFamily ? ' lw-connected-editor-shell' : ''}`}
                            data-testid={connectedFamily ? 'connected-section-editor' : undefined}
@@ -2087,7 +2298,7 @@ export function DrawModePanel({
                             </label>
                           </div>}
                           <label className="la-strip-pin-field">
-                            <span>{layerSharesPin ? 'Layer output' : isSplit ? 'First run pin' : 'Change pin'}</span>
+                            <span>{layerSharesPin ? (svgLayerId.startsWith('svg-color:') ? 'Color output' : 'Layer output') : isSplit ? 'First run pin' : 'Change pin'}</span>
                             <span className="la-gpio-wrap">
                               <select ref={pinEditor} className="la-gpio-select"
                                       aria-label={connectedFamily ? `${partName} GPIO override` : 'GPIO output'}
@@ -2620,6 +2831,7 @@ export function DrawModePanel({
             )}
           </Fragment>
         )}
+        </div>}
 
         {/* ── Empty state ── */}
         {!svgText && !error && !starterLayoutActive && strips.length === 0 && (

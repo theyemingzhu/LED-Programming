@@ -1,4 +1,4 @@
-import { pixelsInPlaybackOrder } from '../lib/wiringCompiler.js';
+import { compileWiring, pixelsInPlaybackOrder } from '../lib/wiringCompiler.js';
 /* Light Weaver v3 — Patterns & Mixes (faithful to v3, cleaned + recolored) */
 /* Exact mockup file, converted from window-global script to ES module.
    The visual body (helpers + JSX structure + class names) is the mockup's own.
@@ -43,10 +43,12 @@ import {
   copyLookToAllSections,
   deriveSectionTargets,
   deleteSavedLookFromController,
+  effectGroupStripIds,
   findSavedSectionLook,
   normalizeSavedLooks,
   normalizeSectionVisualLook,
   saveCurrentLookToController,
+  setEffectGroupPattern,
   targetLabel,
 } from '../lib/sectionLookModel.js';
 import {
@@ -91,7 +93,7 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, cardZoneRangesMatch, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, cardZoneTopologyMatches, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
 import { freshJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { useCardJourneyEvidence } from '../hooks/useSetupJourney.js';
 import { cardSectionSummary } from '../lib/cardSectionSync.js';
@@ -155,8 +157,8 @@ import '../styles/project-stacks.css';
 // Opening a saved look writes its section looks onto the patch board. A side is
 // not a patch, so its look is written through the symmetry, the way the look
 // itself plays its sides (mirrored unless the look says otherwise).
-function applySavedLookWithSides({ patchBoard, strips, savedLook, symmetry = null }) {
-  let next = applySavedLookToPatchBoard({ patchBoard, strips, savedLook });
+function applySavedLookWithSides({ patchBoard, strips, savedLook, sectionTargets, symmetry = null }) {
+  let next = applySavedLookToPatchBoard({ patchBoard, strips, savedLook, sectionTargets });
   const sides = Array.isArray(symmetry?.sides) ? symmetry.sides : [];
   if (!savedLook || !sides.length) return next;
   for (const [targetId, sectionLook] of Object.entries(savedLook.sectionLooks || {})) {
@@ -508,6 +510,9 @@ function writeSectionDisplayOrder(projectId, ids) {
       patchBoard,
       wiring,
       compiledWiring,
+      layoutLayerGroups,
+      setLayoutLayerGroups,
+      pushLayoutHistory,
       layoutSymmetry,
       sidesMirrored,
       setSidesMirrored,
@@ -526,6 +531,8 @@ function writeSectionDisplayOrder(projectId, ids) {
       patternParams,
       activePatternId,
       setActivePatternId,
+      masterSpeed,
+      setMasterSpeed,
       gammaEnabled,
       gammaValue,
       serializeProject,
@@ -1246,6 +1253,14 @@ function writeSectionDisplayOrder(projectId, ids) {
       [customPatterns],
     );
     const ALL = useMemo(() => [...customPatterns, ...REAL_PATTERNS], [customPatterns]);
+    const effectGroups = useMemo(() => layoutLayerGroups.filter(group => group.effectTarget), [layoutLayerGroups]);
+    const sectionByStrip = useMemo(() => new Map(sectionTargets
+      .filter(target => target.kind === 'section' && !target.groupStripIds)
+      .map(target => [target.stripId, target])), [sectionTargets]);
+    const nestedEffectTargetIds = useMemo(() => new Set(effectGroups.flatMap(group =>
+      (group.patternOverrideStripIds || []).map(stripId => sectionByStrip.get(stripId)?.id).filter(Boolean))),
+    [effectGroups, sectionByStrip]);
+    const [effectGroupError, setEffectGroupError] = useState('');
     // Map an adapted mix-card id back to its real saved look (adaptSavedLook
     // sets the card id to look.id when present, else `mix-${patternId}`).
     const findSavedLook = useCallback(
@@ -1305,7 +1320,8 @@ function writeSectionDisplayOrder(projectId, ids) {
       setSectionDisplayOrder({ projectId, ids: readSectionDisplayOrder(projectId) });
     }, [projectId]);
     const displayedSectionRows = useMemo(() => {
-      const rows = presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id));
+      const rows = presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID ||
+        (previewTargetIds.includes(row.id) && !nestedEffectTargetIds.has(row.id)));
       const savedOrder = sectionDisplayOrder.projectId === projectId ? sectionDisplayOrder.ids : readSectionDisplayOrder(projectId);
       const positions = new Map(savedOrder.map((id, index) => [id, index]));
       const natural = new Map(rows.map((row, index) => [row.id, index]));
@@ -1315,7 +1331,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         return (positions.get(a.id) ?? (savedOrder.length + natural.get(a.id)))
           - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
       });
-    }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
+    }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId, nestedEffectTargetIds]);
     const sectionListRef = useRef(null);
     const sectionDragRef = useRef(null);
     const [sectionDropTarget, setSectionDropTarget] = useState('');
@@ -1577,7 +1593,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           const previewOptions = {
             host: cardHost,
             timeoutMs: 2200,
-            ...(target?.kind === 'section' ? { expectedZoneRanges: target.ranges || [] } : {}),
+            ...(target?.kind === 'section' ? { expectedZoneRanges: target.ranges || [], expectedZoneOrder: target.orderedGroup } : {}),
             preferBridge,
             revision: sequence,
             ...(expectedControlPatch ? { expectedControlPatch } : {}),
@@ -1786,7 +1802,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       } else if (requestedLookId) {
         const returnedLook = savedLooks.find(savedLook => String(savedLook.id || '').toLowerCase() === requestedLookId);
         if (returnedLook) {
-          setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: returnedLook, symmetry: layoutSymmetry }));
+          setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: returnedLook, sectionTargets, symmetry: layoutSymmetry }));
           setStandaloneController(previous => ({
             ...(previous || {}),
             defaultLook: returnedLook.defaultLook,
@@ -1810,7 +1826,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       params.delete('editLook');
       const search = params.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`);
-    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, layoutSymmetry, savedLooks, setPatchBoard, setStandaloneController, strips]);
+    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, layoutSymmetry, savedLooks, sectionTargets, setPatchBoard, setStandaloneController, strips]);
 
     // "Use on every section": the selected section's look becomes every
     // section's draft and the piece's default in one tap, and the whole piece
@@ -2005,7 +2021,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (patternAccessRef.current !== 'ready' || flashInFlightRef.current) return;
       const heldZones = Array.isArray(cardZonesPayload?.zones) ? cardZonesPayload.zones : null;
       if (!heldZones || heldZones.length < 2 || sectionTargets.filter(item => item.kind === 'section')
-        .some(item => !cardZoneRangesMatch(item.ranges, heldZones.find(zone => zone.id === item.zoneId)?.ranges))) return;
+        .some(item => !cardZoneTopologyMatches(item.ranges, heldZones.find(zone => zone.id === item.zoneId), item.orderedGroup))) return;
       flashInFlightRef.current = true;
       const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
       flashSectionOnCard({
@@ -2139,7 +2155,8 @@ function writeSectionDisplayOrder(projectId, ids) {
       }
       for (const target of sectionTargets) {
         if (target.kind !== 'section' || !normalizedDraftLooks[target.id]) continue;
-        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id], symmetry: layoutSymmetry, sidesMirrored });
+        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, groupStripIds: target.groupStripIds,
+          look: normalizedDraftLooks[target.id], symmetry: layoutSymmetry, sidesMirrored });
       }
       const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, symmetry: layoutSymmetry, sidesMirrored, defaultLook: nextDefaultLook });
       let nextController = { ...(standaloneController || {}), defaultLook: nextDefaultLook };
@@ -2581,7 +2598,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           if (currentPatternCardAccess() === 'ready') {
             await pushLivePreviewToCard(
               { ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' },
-              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) },
+              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [], expectedZoneOrder: selectedTarget.orderedGroup } : {}) },
             ).catch(() => null);
           }
         }
@@ -2742,7 +2759,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         const next = duplicateProjectStack(standaloneController, savedLook.id);
         setStandaloneController(next);
         setExpandedStackId(next.activeLookId);
-        setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: next.looks.find(item => item.id === next.activeLookId), symmetry: layoutSymmetry }));
+        setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: next.looks.find(item => item.id === next.activeLookId), sectionTargets, symmetry: layoutSymmetry }));
         setLookSaveState('Saving…');
         setPendingLookSave(saveReceipt(next, `Duplicated in ${projectName || 'this project'}.`, { clearDraftIds: [next.activeLookId], resetActiveDraft: false }));
       } catch (error) { setLookSaveState(error.message || 'Could not duplicate stack.'); }
@@ -2761,7 +2778,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         const repaired = repairProjectStack(savedLook, targets);
         const updateWorkingLook = repaired.id === activeLookId && !editingProjectOnly;
         const nextBoard = updateWorkingLook
-          ? applySavedLookWithSides({ patchBoard: board, strips, savedLook: repaired, symmetry: layoutSymmetry })
+          ? applySavedLookWithSides({ patchBoard: board, strips, savedLook: repaired, sectionTargets, symmetry: layoutSymmetry })
           : null;
         const nextController = {
           ...standaloneController,
@@ -2908,7 +2925,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             invalidatePendingPreview();
             return;
           }
-          const nextBoard = applySavedLookWithSides({ patchBoard: board, strips, savedLook: realLook, symmetry: layoutSymmetry });
+          const nextBoard = applySavedLookWithSides({ patchBoard: board, strips, savedLook: realLook, sectionTargets, symmetry: layoutSymmetry });
           setPatchBoard(nextBoard);
           setStandaloneController(prev => ({
             ...(prev || {}),
@@ -2947,6 +2964,82 @@ function writeSectionDisplayOrder(projectId, ids) {
       bankOriginRef.current = null;
       selectTarget(target, { preview: false });
       selectCard(pattern, { target });
+    };
+
+    const effectGroupLook = (group, target) => target
+      ? resolveDraftTargetLook(target)
+      : normalizeSectionVisualLook(group.patternFallbackLook || savedGlobalLook);
+
+    const assignEffectGroupPattern = (group, patternId, stripId) => {
+      const groupTarget = sectionTargets.find(target => target.id === group.groupId);
+      const lineTarget = stripId && sectionByStrip.get(stripId);
+      const result = setEffectGroupPattern({
+        groups: layoutLayerGroups, groupId: group.groupId, stripId, patternId, strips, patchBoard: board,
+        groupLook: effectGroupLook(group, groupTarget),
+        lineLook: lineTarget ? resolveDraftTargetLook(lineTarget) : null,
+      });
+      if (!result) return;
+      const nextWiring = compileWiring({ wiring, strips, groups: result.groups, symmetry: layoutSymmetry });
+      if (!nextWiring.ok) {
+        setEffectGroupError(nextWiring.errors[0].message);
+        return;
+      }
+      const nextTargets = deriveSectionTargets({
+        strips, patchBoard: result.patchBoard, compiledWiring: nextWiring,
+        symmetry: layoutSymmetry, sidesMirrored, defaultLook: savedGlobalLook,
+      });
+      const changedTarget = nextTargets.find(target => stripId && patternId
+        ? target.zoneId === stripId : target.id === group.groupId);
+      pushLayoutHistory();
+      setLayoutLayerGroups(result.groups);
+      setPatchBoard(result.patchBoard);
+      setDraftLooks(previous => {
+        const next = { ...previous };
+        if (lineTarget) delete next[lineTarget.id];
+        if (changedTarget) next[changedTarget.id] = changedTarget.look;
+        return next;
+      });
+      if (changedTarget) selectTarget(changedTarget, { preview: false });
+      setEffectGroupError('');
+      setLookSaveState('');
+    };
+
+    const renderEffectGroupPatterns = (group, target) => {
+      const groupLabel = group.name || 'Effect group';
+      const groupPattern = effectGroupLook(group, target).patternId;
+      const patterns = (currentId) => <>
+        {currentId && !ALL.some(pattern => pattern.id === currentId) &&
+          <option value={currentId}>{patternNameFor(currentId)}</option>}
+        {ALL.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.name || pattern.label || pattern.id}</option>)}
+      </>;
+      return <div className="pm-effect-patterns" role="group" aria-label={`${groupLabel} patterns`}>
+        <label>
+          <span>{target ? 'Group pattern' : groupLabel}</span>
+          <select aria-label={`Pattern for ${groupLabel}`} value={groupPattern}
+                  disabled={editingColorJourney}
+                  onChange={event => assignEffectGroupPattern(group, event.target.value)}>
+            {patterns(groupPattern)}
+          </select>
+        </label>
+        <div className="pm-effect-members">
+          {effectGroupStripIds(group).map(stripId => {
+            const strip = strips.find(item => item.id === stripId);
+            if (!strip) return null;
+            const lineTarget = sectionByStrip.get(stripId);
+            const patternId = group.patternOverrideStripIds?.includes(stripId) && lineTarget
+              ? resolveDraftTargetLook(lineTarget).patternId : '';
+            return <label key={stripId}>
+              <span>{strip.name || strip.id}</span>
+              <select aria-label={`Pattern for ${strip.name || strip.id} in ${groupLabel}`} value={patternId}
+                      disabled={editingColorJourney}
+                      onChange={event => assignEffectGroupPattern(group, event.target.value, stripId)}>
+                <option value="">Use group pattern</option>
+                {patterns(patternId)}
+              </select>
+            </label>;
+          })}
+        </div>
+      </div>;
     };
 
     const copyConfig = async () => {
@@ -3118,7 +3211,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         setDraftLooks({});
         if (!response.rebooting && currentPatternCardAccess() === 'ready') {
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
-          await pushLivePreviewToCard({ ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) }).catch(() => null);
+          await pushLivePreviewToCard({ ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [], expectedZoneOrder: selectedTarget.orderedGroup } : {}) }).catch(() => null);
         }
         setStatusKind('');
         setStatus('');
@@ -3631,6 +3724,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                       onClick={() => stepPatternPreviewTarget(1)}
                     ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button>
                     </div>
+                    <label className="pm-preview-speed">
+                      <span>Preview speed</span>
+                      <input type="range" min="0.1" max="3" step="0.01" aria-label="Preview speed"
+                             value={masterSpeed} onChange={event => setMasterSpeed(Number(event.target.value))} />
+                      <output>{masterSpeed.toFixed(2)}×</output>
+                    </label>
                   </div>
                   <div
                     className="pm-project-preview"
@@ -3670,7 +3769,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                           params={patternParams?.[visiblePatternPreviewSegments[0].patternId] || {}}
                           patternParamsById={patternParams}
                           bpm={bpm}
-                          masterSpeed={1}
+                          masterSpeed={masterSpeed}
                           masterBrightness={1}
                           masterSaturation={1}
                           masterHueShift={0}
@@ -3720,8 +3819,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
                        const palette = REAL_PATTERN_BY_ID.get(row.patternId)?.pal || customPatternById.get(row.patternId)?.pal;
                        const paletteFill = palette?.length > 1 ? `linear-gradient(90deg, ${palette.join(', ')})` : palette?.[0];
-                       return <div
-                         key={row.id}
+                       const effectGroup = effectGroups.find(group => group.groupId === row.id);
+                       return <React.Fragment key={row.id}><div
                          className={`pm-section-entry${selected ? ' on' : ''}${patternDropTargetId === row.id ? ' is-pattern-drop-target' : ''}`}
                          data-section-order-id={canReorder ? row.id : undefined}
                          data-drop-target={sectionDropTarget === row.id || undefined}
@@ -3776,9 +3875,14 @@ function writeSectionDisplayOrder(projectId, ids) {
                          >
                            <span aria-hidden="true">{index + (displayedSectionRows[0]?.id === ALL_SECTIONS_TARGET_ID ? 0 : 1)}</span>
                          </button>
-                       )}</div>;
+                       )}</div>
+                       {effectGroup && renderEffectGroupPatterns(effectGroup, target)}
+                       </React.Fragment>;
                      })}
+                     {effectGroups.filter(group => !displayedSectionRows.some(row => row.id === group.groupId))
+                       .map(group => <React.Fragment key={group.groupId}>{renderEffectGroupPatterns(group, null)}</React.Fragment>)}
                    </div>
+                  {effectGroupError && <p className="pm-section-help" role="alert">{effectGroupError}</p>}
                   {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
                     <p className="pm-section-help" data-testid="section-spans-gpios">
                       This section spans {sectionGpioLabels.get(selectedTarget.id)}; these GPIOs share this section&apos;s pattern.{' '}

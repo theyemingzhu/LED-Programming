@@ -1033,15 +1033,21 @@ function needsZoneResolution(look, options = {}) {
   return Boolean(look?.zone && (options.expectedZoneRanges !== undefined || options.fallbackMissingZoneToAll));
 }
 
-export function cardZoneRangesMatch(expected, actual) {
+export function cardZoneRangesMatch(expected, actual, ordered = false) {
   const key = ranges => {
     if (!Array.isArray(ranges) || !ranges.length) return null;
     if (ranges.some(range => !Number.isInteger(range?.start) || range.start < 0
       || !Number.isInteger(range?.count) || range.count < 1)) return null;
-    return JSON.stringify(ranges.map(({ start, count }) => [start, count]).sort((a, b) => a[0] - b[0]));
+    const keys = ranges.map(({ start, count }) => [start, count]);
+    return JSON.stringify(ordered ? keys : keys.sort((a, b) => a[0] - b[0]));
   };
   const expectedKey = key(expected);
   return expectedKey !== null && expectedKey === key(actual);
+}
+
+export function cardZoneTopologyMatches(expectedRanges, zone, ordered = false) {
+  return (!ordered || zone?.continuous === true)
+    && cardZoneRangesMatch(expectedRanges, zone?.ranges, ordered);
 }
 
 async function resolveZoneForPreview(host, look, options = {}) {
@@ -1049,7 +1055,7 @@ async function resolveZoneForPreview(host, look, options = {}) {
     const zonesPayload = await readCardZones(host, { ...options, timeoutMs: Math.min(options.timeoutMs || 2500, 1200) });
     if (options.expectedZoneRanges !== undefined) {
       const zone = zonesPayload?.zones?.find(item => String(item.id) === String(look.zone));
-      if (!cardZoneRangesMatch(options.expectedZoneRanges, zone?.ranges)) {
+      if (!cardZoneTopologyMatches(options.expectedZoneRanges, zone, options.expectedZoneOrder)) {
         throw new CardPushError('section-layout-mismatch',
           'The card still has a different section layout. Open Layout → Test & Install to send these sections, then try this pattern again. The lights were not changed.');
       }
@@ -1508,7 +1514,7 @@ export async function readBackLivePreview(look = {}, options = {}) {
   // read-back must ask the same question the write answered, or it can never
   // confirm exactly the writes that used the fallback.
   if (zoneId && options.expectedZoneRanges !== undefined
-    && (targets.length !== 1 || !cardZoneRangesMatch(options.expectedZoneRanges, targets[0]?.ranges))) return null;
+    && (targets.length !== 1 || !cardZoneTopologyMatches(options.expectedZoneRanges, targets[0], options.expectedZoneOrder))) return null;
   if (zoneId && !targets.length && options.fallbackMissingZoneToAll === true) targets = zones;
   if (!targets.length) return null;
   const confirmed = targets.every(zone => zoneConfirmsLivePreviewIntent(controlPayload, zone));

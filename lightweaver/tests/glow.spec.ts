@@ -24,7 +24,6 @@ test('glow has no dark lines — pixel score < 5%', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.setInputFiles('input[accept=".svg"]', fixture);
-  await page.getByRole('button', { name: /\+ All \(1\)/ }).click();
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await page.getByRole('button', { name: /Aurora/, exact: false }).first().click();
   await expect(page.getByTestId('pattern-piece-preview').locator('canvas')).toBeVisible({ timeout: 10_000 });

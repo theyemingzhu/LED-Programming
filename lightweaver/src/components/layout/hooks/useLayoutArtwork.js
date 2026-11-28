@@ -108,53 +108,65 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
 
   // ── Add-as-strip flows ─────────────────────────────────────────────────────
 
-  function createSvgStrips(entries, { replace = false } = {}) {
+  function createSvgStrips(entries, { replace = false, artwork } = {}) {
     const nextStrips = replace ? [] : [...strips];
     // Retired IDs cannot attach their saved looks to an unrelated SVG shape.
     const idPool = [...strips];
-    const groups = [];
+    const groups = new Map();
     const created = [];
-    for (const { layer, paths, counts, useWholeLayer } of entries) {
-      const existingStripIds = replace ? [] : nextStrips
-        .filter(strip => strip.sourceLayerId === layer.layerId || svgLayerStripId(strip) === layer.layerId)
-        .map(strip => strip.id);
-      const layerStrips = paths.map((path, index) => {
-        const sourcePathId = useWholeLayer ? null : path.pathId;
-        const existing = !replace && nextStrips.find(strip =>
-          strip.sourceLayerId === layer.layerId && strip.sourcePathId === sourcePathId);
-        if (existing) return existing;
-        const id = nextStripId(idPool);
-        const definition = {
-          ...layer,
-          name: path.stripName || (sourcePathId ? `${layer.name} · ${path.name}` : layer.name),
-          pathData: path.pathData,
-          svgLength: path.svgLength,
-        };
-        const strip = {
-          ...makeStrip(definition, counts[index], id, nextStrips),
-          sourcePathId,
-          svgLayerWired: true,
-        };
-        idPool.push(strip);
-        nextStrips.push(strip);
-        created.push(strip);
-        return strip;
-      });
-      if (layerStrips.some(strip => created.includes(strip))) groups.push({ layer, strips: layerStrips, existingStripIds });
+    const inputs = entries.flatMap(({ layer, paths, counts, useWholeLayer }) =>
+      paths.map((path, index) => ({ layer, path, count: counts[index], useWholeLayer })));
+    if (replace && inputs.every(({ path }) => Number.isInteger(path.svgOrder))) {
+      inputs.sort((first, second) => first.path.svgOrder - second.path.svgOrder);
     }
-    if (!groups.length) return [];
-    const result = addSvgLayerWiring(replace ? null : wiring, groups, {
+    for (const { layer, path, count, useWholeLayer } of inputs) {
+      const singleSourcePath = layer.subPaths?.length === 1 && layer.subPaths[0].pathId === path.pathId;
+      const sourcePathId = useWholeLayer || singleSourcePath ? null : path.pathId;
+      if (!replace && nextStrips.some(strip =>
+        strip.sourceLayerId === layer.layerId && strip.sourcePathId === sourcePathId)) continue;
+
+      const svgColor = path.svgColor ?? layer.subPaths?.find(item => item.pathId === path.pathId)?.svgColor;
+      const colorGroup = layer.svgLoose ? svgColor : null;
+      const groupId = colorGroup ? `svg-color:${colorGroup}` : layer.layerId;
+      const id = nextStripId(idPool);
+      const definition = {
+        ...layer,
+        name: path.stripName || (sourcePathId ? `${layer.name} · ${path.name}` : layer.name),
+        pathData: path.pathData,
+        svgLength: path.svgLength,
+      };
+      const strip = {
+        ...makeStrip(definition, count, id, nextStrips),
+        sourcePathId,
+        svgLayerWired: true,
+        ...(svgColor ? { svgColor } : {}),
+        ...(colorGroup ? { svgWiringLayerId: groupId } : {}),
+      };
+      idPool.push(strip);
+      nextStrips.push(strip);
+      created.push(strip);
+
+      if (!groups.has(groupId)) {
+        const existingStripIds = replace ? [] : strips
+          .filter(strip => svgLayerStripId(strip) === groupId ||
+            (!colorGroup && !strip.svgWiringLayerId && strip.sourceLayerId === layer.layerId))
+          .map(strip => strip.id);
+        groups.set(groupId, { svgColor: colorGroup, layers: new Set(), strips: [], existingStripIds });
+      }
+      const group = groups.get(groupId);
+      group.layers.add(layer);
+      group.strips.push(strip);
+    }
+    if (!groups.size) return { created: [] };
+    const result = addSvgLayerWiring(replace ? null : wiring, [...groups.values()], {
       availablePins: wiringCard.availablePins,
       maxOutputs: wiringCard.maxOutputs,
       controls: standaloneController?.controls,
     });
-    if (!result.ok) {
-      setSvgWiringIssue(result.error);
-      return [];
-    }
+    if (!result.ok) return { created: [], error: result.error };
     setSvgWiringIssue(result.warning);
-    mapArtworkStrips(nextStrips, result.wiring, { replace });
-    return created;
+    mapArtworkStrips(nextStrips, result.wiring, { replace, artwork });
+    return { created };
   }
 
   function finishCreatedStrips(created) {
@@ -163,23 +175,39 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     scrollToStrip(created[0].id);
   }
 
-  function entryForLayer(layer) {
+  function entryForLayer(layer, artworkScale) {
     const measured = layer.subPaths?.length ? layer.subPaths : measureSubPaths(layer.pathData, layer.layerId);
     const paths = measured.filter(path => path.svgLength > 0);
     if (!paths.length) return null;
-    const count = getLedCount(layer);
+    const count = artworkScale === undefined
+      ? getLedCount(layer)
+      : Math.max(1, Math.round((layer.svgLength / artworkScale) * density / 1000));
     const allocation = allocateLedCountsByLength(paths, Math.max(count, paths.length));
-    if (!allocation.ok) {
-      setSvgWiringIssue(allocation.error);
-      return null;
-    }
+    if (!allocation.ok) return { error: allocation.error };
     return { layer, paths, counts: allocation.counts, useWholeLayer: paths.length === 1 };
+  }
+
+  function mapLayers(layers, options) {
+    const entries = layers.map(layer => entryForLayer(layer, options?.artwork?.pxPerMm)).filter(Boolean);
+    const error = entries.find(entry => entry.error)?.error;
+    if (error || !entries.length) return { created: [], error: error || 'The SVG has no measurable lines.' };
+    return createSvgStrips(entries, options);
+  }
+
+  function mapImportedArtwork(artwork) {
+    const result = mapLayers(artwork.layers, { replace: true, artwork });
+    finishCreatedStrips(result.created);
+    return result;
+  }
+
+  function finishManualMapping({ created, error }) {
+    if (error) setSvgWiringIssue(error);
+    finishCreatedStrips(created);
   }
 
   const addStrip = () => {
     if (!selLayer) return;
-    const entry = entryForLayer(selLayer);
-    if (entry) finishCreatedStrips(createSvgStrips([entry]));
+    finishManualMapping(mapLayers([selLayer]));
   };
 
   const addSubPathStrip = (path, layer) => {
@@ -189,7 +217,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
       return;
     }
     const count = Math.max(1, Math.round((path.svgLength / pxPerMm) * density / 1000));
-    finishCreatedStrips(createSvgStrips([{ layer, paths: [path], counts: [count] }]));
+    finishManualMapping(createSvgStrips([{ layer, paths: [path], counts: [count] }]));
   };
 
   const addSelectedPathsAsStrips = (mode = 'merged') => {
@@ -231,7 +259,8 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
       entry.paths.push({ ...path, stripName: path.name });
       entry.counts.push(Math.max(1, Math.round((path.svgLength / pxPerMm) * density / 1000)));
     }
-    const created = createSvgStrips([...entries.values()]);
+    const { created, error } = createSvgStrips([...entries.values()]);
+    if (error) setSvgWiringIssue(error);
     if (!created.length) return;
     selectStrips(created.map(s => s.id));
 
@@ -254,13 +283,10 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
   };
 
   const addAllStrips = () => {
-    const drawableLayers = layers.filter(layer => layer.pathData);
-    const entries = drawableLayers.map(entryForLayer);
-    if (entries.some(entry => !entry)) return;
     const hasArtworkStrips = strips.length > 0;
     if (hasArtworkStrips && typeof window !== 'undefined' &&
         !window.confirm('Replace the current LED strips with separate runs from every artwork layer? Review the data wiring and affected looks before installing again.')) return;
-    finishCreatedStrips(createSvgStrips(entries, { replace: true }));
+    finishManualMapping(mapLayers(layers, { replace: true }));
   };
 
   // ── Rename helpers ─────────────────────────────────────────────────────────
@@ -404,14 +430,17 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
   const toggleGroupExpanded = (groupId) =>
     setLayerGroups(prev => prev.map(g => g.groupId === groupId ? { ...g, _expanded: !g._expanded } : g));
 
-  const toggleGroupHidden = useCallback((groupId) => {
+  const toggleGroupHidden = useCallback((groupId, hiddenOverride) => {
     const group = layerGroups.find(g => g.groupId === groupId);
     if (!group) return;
-    const nextHidden = !group._hidden;
+    const nextHidden = hiddenOverride ?? !group._hidden;
     setLayerGroups(prev => prev.map(g => g.groupId === groupId ? { ...g, _hidden: nextHidden } : g));
     setHidden(prev => {
       const next = { ...prev };
-      group.members.forEach(m => { next[m.stripId || m.pathId] = nextHidden; });
+      group.members.forEach(member => {
+        const id = typeof member === 'string' ? member : member.stripId || member.pathId;
+        next[id] = nextHidden;
+      });
       return next;
     });
   }, [layerGroups]);
@@ -445,7 +474,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     addStrip,
     addSubPathStrip,
     addSelectedPathsAsStrips,
-    addAllStrips, svgWiringIssue,
+    addAllStrips, mapImportedArtwork, svgWiringIssue,
     renameLayer,
     renameSubPath,
     renameGroup,

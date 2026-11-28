@@ -17,28 +17,27 @@ export function addSvgLayerWiring(wiring, groups, { availablePins, maxOutputs, c
   const controlPins = new Set(activeBoardGpios([], controls).map(({ pin }) => pin));
   const pins = [...new Set([...CARD_CONNECTOR_PINS, ...availablePins])]
     .filter(pin => availablePins.includes(pin) && !controlPins.has(pin));
-  const namedPins = new Set(groups.map(({ layer }) => namedPin(layer)).filter(pin => pins.includes(pin)));
-  const existingIds = new Set(next.runs.map(run => run.source?.stripId));
+  const routes = groups.map(group => ({
+    ...group,
+    requestedPins: [...new Set([...group.layers].map(namedPin).filter(pin => pin !== null))],
+  }));
+  const namedPins = new Set(routes.flatMap(({ requestedPins }) => requestedPins.filter(pin => pins.includes(pin))));
   const warnings = [];
 
-  for (const { layer, strips, existingStripIds = [] } of groups) {
-    const named = namedPin(layer);
+  for (const { svgColor, layers, strips, existingStripIds, requestedPins } of routes) {
+    const label = svgColor ? `SVG color ${svgColor}` : [...layers][0].name;
     const existingRuns = next.runs.filter(run => existingStripIds.includes(run.source?.stripId));
     let output = next.outputs.find(item => existingRuns.some(run => item.runIds.includes(run.id)));
-    const newRuns = makeDefaultWiring(strips.filter(strip => !existingIds.has(strip.id))).runs;
-    for (const strip of strips) {
-      const siblings = next.runs.filter(run => run.source?.stripId === strip.id);
-      if (siblings.length === 1) siblings[0].source.to = strip.pixelCount - 1;
-    }
     if (!output) {
       const used = new Set(next.outputs.filter(item => item.runIds.length).map(item => item.pin));
-      const preferred = named !== null && pins.includes(named) ? named : undefined;
+      const preferred = requestedPins.find(pin => pins.includes(pin) && !used.has(pin));
       const pin = preferred ?? pins.find(pin => !used.has(pin) && !namedPins.has(pin))
         ?? pins.find(pin => !used.has(pin));
       output = next.outputs.find(item => item.pin === pin);
       if (!output && pin !== undefined) {
-        if (next.outputs.length === 1 && !next.outputs[0].runIds.length) {
-          output = next.outputs[0];
+        const emptyOutput = next.outputs.find(item => !item.runIds.length);
+        if (emptyOutput) {
+          output = emptyOutput;
           output.pin = pin;
         } else if (next.outputs.length < maxOutputs) {
           let index = 1;
@@ -47,10 +46,10 @@ export function addSvgLayerWiring(wiring, groups, { availablePins, maxOutputs, c
           next.outputs.push(output);
         }
       }
-      output ??= next.outputs.findLast(item => pins.includes(item.pin));
-      if (!output) return { ok: false, error: 'No LED output is available for the SVG layers.' };
-      if (named !== null && named !== output.pin) warnings.push(`${layer.name} uses ${output.name} on pin ${output.pin}. Review the output assignment.`);
+      if (!output) return { ok: false, error: `No separate GPIO output is available for ${label}.` };
     }
+    if (requestedPins.some(pin => pin !== output.pin)) warnings.push(`${label} uses GPIO ${output.pin}. Review the output assignment.`);
+    const newRuns = makeDefaultWiring(strips).runs;
     next.runs.push(...newRuns);
     output.runIds.push(...newRuns.map(run => run.id));
   }

@@ -55,7 +55,6 @@ const readDraft = (page: Page) => page.evaluate(() => JSON.parse(localStorage.ge
 async function makeDraft(page: Page, name: string, save: boolean) {
   await page.goto('/#screen=layout');
   await page.setInputFiles('input[accept=".svg"]', { name: 'return.svg', mimeType: 'image/svg+xml', buffer: artwork });
-  await page.getByRole('button', { name: '+ All (1)' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
   await page.getByTestId('project-name-edit').click();
   await page.getByTestId('project-name-input').fill(name);

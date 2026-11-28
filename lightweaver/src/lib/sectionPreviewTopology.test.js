@@ -41,3 +41,27 @@ assert.equal(classifyCardActionFailure({ reason: 'section-layout-mismatch' }).ac
 
 const { zonesFromZonesEnvelope } = await import('./cardJourneyEvidence.js');
 assert.deepEqual(zonesFromZonesEnvelope({ zones })[0].ranges, [{ start: 0, count: 11 }]);
+
+const { cardSectionDifference } = await import('./cardSectionSync.js');
+const flow = [{ start: 11, count: 10 }, { start: 0, count: 11 }];
+const groupLook = { patternId: 'fire', zone: 'effect-group', syncZones: false };
+const groupOptions = { ...options, expectedZoneRanges: flow, expectedZoneOrder: true };
+const groupTargets = [{ kind: 'section', zoneId: groupLook.zone, ranges: flow, orderedGroup: true }];
+for (const topology of [
+  { ranges: [...flow].reverse(), continuous: true },
+  { ranges: flow, continuous: false },
+]) {
+  zones = [{ ...controls, ...topology, id: groupLook.zone, patternId: 'fire' }];
+  const writesBefore = requests.filter(request => request.method === 'POST').length;
+  await assert.rejects(pushLivePreviewToCard(groupLook, groupOptions),
+    error => error.reason === 'section-layout-mismatch');
+  assert.equal(requests.filter(request => request.method === 'POST').length, writesBefore);
+  assert.equal(await readBackLivePreview(groupLook, groupOptions), null);
+  assert.equal(cardSectionDifference(groupTargets, { zones: zonesFromZonesEnvelope({ zones }) }).missing.length, 1);
+}
+zones[0].continuous = true;
+assert.ok(await pushLivePreviewToCard(groupLook, groupOptions));
+assert.ok(await readBackLivePreview(groupLook, groupOptions));
+assert.deepEqual(cardSectionDifference(groupTargets, { zones: zonesFromZonesEnvelope({ zones }) }).missing, []);
+zones[0].ranges = [...flow].reverse();
+assert.ok(await readBackLivePreview(groupLook, { ...groupOptions, expectedZoneOrder: false }));

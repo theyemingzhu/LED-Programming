@@ -401,6 +401,10 @@ export function migrateStripIdNamespace(project) {
   if (Array.isArray(layout.layerGroups)) {
     for (const group of layout.layerGroups) {
       if (!Array.isArray(group?.members)) continue;
+      if (oldToNew.has(group.patternAnchorStripId)) group.patternAnchorStripId = oldToNew.get(group.patternAnchorStripId);
+      if (Array.isArray(group.patternOverrideStripIds)) {
+        group.patternOverrideStripIds = group.patternOverrideStripIds.map(id => oldToNew.get(id) || id);
+      }
       for (const member of group.members) {
         if (member && oldToNew.has(member.stripId)) {
           member.stripId = oldToNew.get(member.stripId);

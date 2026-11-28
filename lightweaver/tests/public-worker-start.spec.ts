@@ -95,7 +95,6 @@ test('a worker can import artwork, count and split it, choose a pattern, save, a
     mimeType: 'image/svg+xml',
     buffer: Buffer.from(WORKER_ARTWORK),
   });
-  await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 
   const total = page.getByTestId('layout-total-led-count');

@@ -7,6 +7,7 @@ import {
   CHASE_MAX_CHANNEL,
   buildWiringChaseFrame,
   buildWiringChaseSteps,
+  buildWiringTraceFrames,
   createWiringChaseSession,
   createWiringChaseState,
   wiringChaseReducer,
@@ -50,6 +51,39 @@ test('chase steps preserve cable jumps and reserved-unlit rows in compiler order
   assert.deepEqual(steps.map(step => `${step.kind}:${step.runId || ''}`), [
     'output:', 'run:run-a', 'cable:jump-a', 'inactive:reserved-a', 'run:run-b',
   ]);
+});
+
+test('trace visits physical addresses in output order and leaves gaps dark', () => {
+  const traced = {
+    totalPixels: 8,
+    outputs: [{ id: 'out1' }, { id: 'out2' }],
+    pixels: [
+      { index: 0, outputId: 'out1', sourceLed: 3 },
+      { index: 1, outputId: 'out1', sourceLed: 2 },
+      { index: 2, outputId: 'out1', inactive: true },
+      { index: 3, outputId: 'out1', sourceLed: 0 },
+      { index: 4, outputId: 'out2', sourceLed: 2 },
+      { index: 5, outputId: 'out2', sourceLed: 1 },
+      { index: 6, outputId: 'out2', sourceLed: 0 },
+      { index: 7, outputId: 'out2', inactive: true },
+    ],
+  };
+  const frames = [...buildWiringTraceFrames(traced)];
+  assert.ok(frames.every(frame => frame.length === 8 && frame.filter(pixel => pixel === '001A00').length === 1));
+  assert.deepEqual(frames.map(frame => frame.indexOf('001A00')), [0, 1, 3, 4, 5, 6]);
+});
+
+test('dense traces cover every LED without putting two outputs in a frame', () => {
+  const traced = {
+    totalPixels: 131,
+    outputs: [{ id: 'out1' }, { id: 'out2' }],
+    pixels: Array.from({ length: 131 }, (_, index) => ({ index, outputId: index < 101 ? 'out1' : 'out2' })),
+  };
+  const frames = [...buildWiringTraceFrames(traced)];
+  assert.ok(frames.length <= CHASE_FPS * 12 + 1);
+  const lit = frames.map(frame => frame.flatMap((color, index) => color === '001A00' ? [index] : []));
+  assert.ok(lit.every(indices => indices.every(index => (index < 101) === (indices[0] < 101))));
+  assert.deepEqual(lit.flat(), traced.pixels.map(pixel => pixel.index));
 });
 
 test('completion requires explicit confirmation of cable and reserved-unlit rows', () => {
@@ -99,7 +133,7 @@ test('a single-pixel chase marker is magenta because it is both first and last',
   assert.deepEqual(frame, ['000000', '1A001A', '000000']);
 });
 
-test('reverse-mapped run keeps logical markers fixed so firmware swaps physical endpoints once', () => {
+test('reverse-mapped run keeps the same physical endpoint markers', () => {
   const forward = buildWiringChaseFrame({ totalPixels: 6, step: { kind: 'run', start: 1, count: 4, physicalDirection: 'source-forward' } });
   const reverse = buildWiringChaseFrame({ totalPixels: 6, step: { kind: 'run', start: 1, count: 4, physicalDirection: 'source-reverse' } });
   const output = buildWiringChaseFrame({ totalPixels: 6, step: { kind: 'output', start: 1, count: 4, physicalDirection: 'source-reverse' } });
@@ -404,6 +438,24 @@ test('session treats wsOpen false as undelivered even when a relay claims delive
   health({ ok: true, delivered: true, wsOpen: false, consecutiveFailures: 0 });
   await assert.rejects(result, /closed/i);
   assert.deepEqual(order, ['cancelStream', 'restore']);
+});
+
+test('bounded tracing requests raw physical frames and rejects a truncated delivery', async () => {
+  let health;
+  const canSendFrame = () => true;
+  const session = createWiringChaseSession({
+    canSendFrame,
+    requireFullFrame: true,
+    createStream: options => {
+      assert.equal(options.physicalOrder, true);
+      assert.equal(options.canSendFrame, canSendFrame);
+      health = options.onHealth;
+      return { start() {}, push() {}, async stop() {} };
+    },
+  });
+  const shown = session.show(['001A00']);
+  health({ delivered: true, truncated: true });
+  await assert.rejects(shown, /could not deliver the complete LED trace frame/i);
 });
 
 test('session fails a pending physical check clearly when another tab takes frame ownership', async () => {

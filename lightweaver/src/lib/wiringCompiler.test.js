@@ -173,6 +173,53 @@ test('compiler groups discontinuous strip runs into one multi-range zone', () =>
   assert.deepEqual(result.zones, [{ id: 'rings', label: 'Rings', ranges: [{ start: 0, count: 4 }, { start: 7, count: 2 }] }]);
 });
 
+test('ordered effect groups control flow across GPIOs independently of the wiring', () => {
+  const piece = [...strips, { id: 'c', name: 'C', pixelCount: 2, pixels: [{ x: 20 }, { x: 21 }] }];
+  const model = wiring({
+    outputs: [
+      { id: 'o1', pin: 16, runIds: ['a-head', 'a-tail', 'c'] },
+      { id: 'o2', pin: 17, runIds: ['b'] },
+    ],
+    runs: [
+      { id: 'a-head', type: 'strip', source: { stripId: 'a', from: 0, to: 1 } },
+      { id: 'a-tail', type: 'strip', source: { stripId: 'a', from: 2, to: 3 } },
+      { id: 'c', type: 'strip', source: { stripId: 'c', from: 0, to: 1 } },
+      { ...wiring().runs[3], physicalDirection: 'source-reverse' },
+    ],
+  });
+  const group = { groupId: 'rings', name: 'Rings', members: [{ stripId: 'b' }, { stripId: 'a' }] };
+  const legacy = compileWiring({ wiring: model, strips: piece, groups: [group], capabilities });
+  const ordered = compileWiring({
+    wiring: model, strips: piece, groups: [{ ...group, ordered: true }], capabilities,
+  });
+
+  assert.equal(ordered.ok, true);
+  assert.deepEqual(ordered.outputs, legacy.outputs);
+  assert.deepEqual(ordered.runs, legacy.runs);
+  assert.deepEqual(ordered.pixels, legacy.pixels);
+  assert.deepEqual(legacy.zones[0], {
+    id: 'rings', label: 'Rings', ranges: [{ start: 0, count: 4 }, { start: 6, count: 2 }],
+  });
+  assert.deepEqual(ordered.zones, [
+    { id: 'rings', label: 'Rings', continuous: true, ranges: [{ start: 6, count: 2 }, { start: 0, count: 4 }] },
+    { id: 'c', label: 'C', ranges: [{ start: 4, count: 2 }] },
+  ]);
+
+  const overLimit = compileWiring({
+    wiring: model, strips: piece, groups: [{ ...group, ordered: true }],
+    capabilities: { ...capabilities, maxRangesPerZone: 1 },
+  });
+  assert.equal(overLimit.ok, false);
+  assert.ok(overLimit.errors.some(error => error.code === 'zone-range-limit' && error.zoneId === 'rings'));
+
+  const withReflection = compileWiring({
+    wiring: model, capabilities, groups: [{ ...group, ordered: true }],
+    strips: [{ ...piece[0], kaleidoscope: { enabled: true, pointCount: 4, startLed: 0, offsets: [0, 0, 0, 0] } }, ...piece.slice(1)],
+  });
+  assert.equal(withReflection.ok, false);
+  assert.ok(withReflection.errors.some(error => error.code === 'effect-group-kaleidoscope' && error.stripId === 'a'));
+});
+
 test('compiler preserves a zone boundary across a zero-length cable jump', () => {
   const model = wiring({
     outputs: [{ id: 'o', pin: 16, runIds: ['a-head', 'jump', 'a-tail'] }],

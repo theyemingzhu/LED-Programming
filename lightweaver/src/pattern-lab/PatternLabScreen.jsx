@@ -1887,6 +1887,7 @@ export default function PatternLabScreen({
         patchBoard: current,
         strips: project.strips,
         savedLook: result.look,
+        sectionTargets: project.sectionTargets,
       }));
     }
     if (result.kind === 'sequence') {

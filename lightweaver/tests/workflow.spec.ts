@@ -187,7 +187,6 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   await page.setInputFiles('input[accept=".svg"]', fixture);
   await expect(page.locator('.layer-row')).toHaveCount(3);
 
-  await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   await page.getByTestId('topbar-projects').click();
@@ -257,7 +256,6 @@ test('groups selected strips and merges them into one composite strip', async ({
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.setInputFiles('input[accept=".svg"]', fixture);
-  await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   await page.locator('.la-strip-row').nth(0).locator('.layer-name').click();
@@ -266,8 +264,9 @@ test('groups selected strips and merges them into one composite strip', async ({
   await expect(page.getByText('3 strips selected')).toBeVisible();
 
   await page.locator('.la-batch-actions input').fill('Heart outline');
-  await page.getByRole('button', { name: 'Group' }).click();
+  await page.locator('.la-batch-actions').getByRole('button', { name: 'Group', exact: true }).click();
   await expect(page.getByText('Heart outline', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Wire', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   // Click each strip name to select it within the group.
@@ -338,7 +337,6 @@ test('clicked vector path can be deleted from the canvas with the keyboard', asy
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.setInputFiles('input[accept=".svg"]', fixture);
-  await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.layer-row')).toHaveCount(3);
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 

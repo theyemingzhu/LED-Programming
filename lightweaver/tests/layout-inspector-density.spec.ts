@@ -2,7 +2,11 @@ import { test, expect } from '@playwright/test';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const artwork = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500">${Array.from({ length: 8 }, (_, i) => `<g id="r${i}" data-name="Ribbon ${i + 1}"><path d="M 30 ${30 + i * 55} L 550 ${30 + i * 55}" stroke="white" fill="none"/></g>`).join('')}</svg>`;
+const ribbonPaths = Array.from({ length: 8 }, (_, i) =>
+  `<path d="M 30 ${30 + i * 55} L 550 ${30 + i * 55}" stroke="white" fill="none"/>`);
+const ribbonSvg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500">${body}</svg>`;
+const artwork = ribbonSvg(ribbonPaths.map((path, i) =>
+  `<g id="r${i}" data-name="Ribbon ${i + 1}">${path}</g>`).join(''));
 
 test('eight strips retain a compact overview and keyboard-accessible secondary actions', async ({ page }, testInfo) => {
   const evidenceDir = process.env.INSPECTOR_EVIDENCE_DIR || testInfo.outputPath('density');
@@ -11,15 +15,17 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   await page.goto('/#screen=layout');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await page.setInputFiles('input[accept=".svg"]', { name: 'ribbons.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork) });
-  await page.getByTestId('artwork-create-all-strips').click();
+  await page.setInputFiles('input[accept=".svg"]', {
+    name: 'ribbons.svg', mimeType: 'image/svg+xml',
+    buffer: Buffer.from(ribbonSvg(`<g id="ribbons" data-name="Ribbons">${ribbonPaths.join('')}</g>`)),
+  });
   await expect(page.locator('.la-strip-row')).toHaveCount(8);
   await page.locator('.la-strip-row .layer-name').first().click();
   await expect(page.getByText('Color tag', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Strip brightness', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Strip added · update', { exact: false })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ribbons · Path 1 layout settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Ribbons · Path 1 LED count', exact: true })).toBeVisible();
   await expect(page.getByTestId('layout-total-led-control')).toContainText('Project LEDs');
   const evidence: any[] = [];
   for (const width of [1440, 390]) {
@@ -83,7 +89,6 @@ test('locked imported strip divides into four connected sections without card wr
   await page.reload();
   await page.setInputFiles('input[accept=".svg"]', { name: 'ribbon.svg', mimeType: 'image/svg+xml',
     buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 100"><g id="ribbon" data-name="Ribbon"><path d="M 30 50 L 550 50" stroke="white" fill="none"/></g></svg>') });
-  await page.getByTestId('artwork-create-all-strips').click();
   await page.locator('.la-strip-row .layer-name').click();
   await page.getByRole('spinbutton', { name: 'Ribbon LED count', exact: true }).fill('41');
   await page.getByRole('spinbutton', { name: 'Ribbon LED count', exact: true }).blur();
@@ -141,26 +146,16 @@ test('locked imported strip divides into four connected sections without card wr
 });
 
 
-test('artwork creates a named strip and mapped layers open only their own layout settings', async ({ page }) => {
+test('imported artwork layers open only their own strip settings', async ({ page }) => {
   await page.goto('/#screen=layout');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.setInputFiles('input[accept=".svg"]', { name: 'ribbons.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork) });
-  await page.locator('.layer-row').first().click();
-  const create = page.getByRole('region', { name: 'Add selected artwork as strip' });
-  await expect(create).toContainText('Ribbon 1');
-  await page.getByLabel('Layer LED count', { exact: true }).fill('41');
-  await page.getByRole('button', { name: 'Create strip from Ribbon 1', exact: true }).click();
-  await expect(page.locator('.la-strip-row')).toHaveCount(1);
-  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toHaveValue('41');
-  await expect(create).toHaveCount(0);
+  await expect(page.locator('.la-strip-row')).toHaveCount(8);
   await page.locator('.layer-row').nth(1).click();
-  await expect(create).toContainText('Ribbon 2');
-  await page.getByRole('button', { name: 'Create strip from Ribbon 2', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Ribbon 2 layout settings', exact: true })).toBeVisible();
   await page.locator('.layer-row').first().click();
   await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Ribbon 2 layout settings', exact: true })).toHaveCount(0);
-  await expect(create).toHaveCount(0);
-  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toHaveValue('41');
+  await expect(page.getByRole('region', { name: 'Add selected artwork as strip' })).toHaveCount(0);
 });

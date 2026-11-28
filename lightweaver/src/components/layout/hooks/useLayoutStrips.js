@@ -41,6 +41,7 @@ import { derivePxPerMmFromCounts } from '../../../lib/layoutLedCounts.js';
 import { moveStripToSide, sideOfStrip } from '../../../lib/pieceSymmetry.js';
 import { LED_COUNT_MAX } from '../../../lib/controlScale.js';
 import { svgLayerStripId } from '../../../lib/svgLayerWiring.js';
+import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
 
 // scaleStrip clamps: never shrink a strip's path below this length (px)…
 const MIN_STRIP_SVG_LENGTH = 20;
@@ -77,7 +78,7 @@ export function useLayoutStrips(ctx) {
   } = ctx;
   // Splitting rewrites the physical chain as well as the strip list, so this
   // one action reaches wiring directly (same route useLayoutWire takes).
-  const { wiring, updateWiring, projectName, applyRunSectionConversion, layoutSymmetry, setLayoutSymmetry } = useProject();
+  const { wiring, updateWiring, projectName, applyRunSectionConversion, layoutSymmetry, setLayoutSymmetry, sectionTargets } = useProject();
   // A strip cut into pieces keeps its place in its symmetry side: the pieces
   // take its place in order, so the pattern still flows through the same LEDs
   // (inside the same undo step as the cut). Call after the strips are set.
@@ -805,17 +806,25 @@ export function useLayoutStrips(ctx) {
       .filter(g => g.members.length > 0 && g.members.every(m => pickedIds.has(m.stripId || m.pathId)))
       .map(g => g.groupId));
     const groupId = `strip-grp-${Date.now()}`;
-    const name = nameOverride.trim() || stripSelectionName.trim() || `Strip Group ${layerGroups.length + 1}`;
+    const name = nameOverride.trim() || stripSelectionName.trim() || `Effect group ${layerGroups.length + 1}`;
     const newGroup = {
       groupId,
       type: 'strip',
       name,
+      ordered: true,
+      effectTarget: true,
+      patternAnchorStripId: picked[0].id,
       _hidden: false,
       _expanded: true,
       members: picked.map(stripGroupMember),
     };
 
     pushLayoutHistory();
+    const inheritedLook = sectionTargets.find(target => target.kind === 'section' &&
+      (target.stripId === picked[0].id || target.groupStripIds?.includes(picked[0].id)))?.look;
+    if (inheritedLook) setPatchBoard(current => applyLookToPatchBoard({
+      patchBoard: current, strips, targetId: groupId, groupStripIds: picked.map(strip => strip.id), look: inheritedLook,
+    }));
     setLayerGroups(prev => [
       ...prev
         .map(g => ({ ...g, members: g.members.filter(m => !pickedIds.has(m.stripId || m.pathId)) }))
@@ -824,31 +833,42 @@ export function useLayoutStrips(ctx) {
     ]);
     setLayerOrder(prev => [{ type: 'group', id: groupId }, ...prev.filter(item => item.id !== groupId && !emptiedGroupIds.has(item.id))]);
     selectStrips(picked.map(s => s.id));
-  }, [strips, layerGroups, stripSelectionName, layers, editCounts, hidden, svgText, viewBox, density, pushLayoutHistory, selectStrips]);
+  }, [strips, layerGroups, stripSelectionName, sectionTargets, setPatchBoard, pushLayoutHistory, selectStrips]);
 
-  const addStripsToGroup = useCallback((groupId, stripIds) => {
+  const addStripsToGroup = useCallback((groupId, stripIds, { anchorId, after = false } = {}) => {
     const group = layerGroups.find(g => g.groupId === groupId);
     if (!group || group.type !== 'strip') return;
-    const ids = [...new Set(stripIds)].filter(Boolean);
-    const picked = strips.filter(s => ids.includes(s.id));
-    if (!picked.length) return;
+    const memberId = member => typeof member === 'string' ? member : member.stripId;
+    const stripsById = new Map(strips.map(strip => [strip.id, strip]));
+    const picked = [...new Set(stripIds)].map(id => stripsById.get(id)).filter(Boolean);
     const pickedIds = new Set(picked.map(s => s.id));
+    if (!picked.length || pickedIds.has(anchorId)) return;
+    const existing = group.members.filter(member => !pickedIds.has(memberId(member)));
+    const anchorIndex = existing.findIndex(member => memberId(member) === anchorId);
+    const insertIndex = anchorIndex < 0 ? existing.length : anchorIndex + Number(after);
+    const members = [...existing.slice(0, insertIndex), ...picked.map(stripGroupMember), ...existing.slice(insertIndex)];
+    if (group.ordered && members.length === group.members.length &&
+        members.every((member, index) => memberId(member) === memberId(group.members[index]))) return;
 
+    // Keep the legacy patch identity when authoring the first flow order for a
+    // saved group whose pattern was attached to its first physical member.
+    const currentMembers = new Set(group.members.map(memberId));
+    const wiredAnchor = wiring.outputs.flatMap(output => output.runIds)
+      .map(id => wiring.runs.find(run => run.id === id)?.source?.stripId)
+      .find(id => currentMembers.has(id));
     pushLayoutHistory();
+    const addedStripIds = picked.filter(strip => !currentMembers.has(strip.id)).map(strip => strip.id);
+    const groupLook = group.effectTarget && sectionTargets.find(target => target.id === groupId)?.look;
+    if (groupLook && addedStripIds.length > 0) setPatchBoard(current => applyLookToPatchBoard({
+      patchBoard: current, strips, targetId: groupId, groupStripIds: addedStripIds, look: groupLook,
+    }));
     setLayerGroups(prev => prev
-      .map(g => {
-        const existing = g.members.filter(m => !pickedIds.has(m.stripId || m.pathId));
-        if (g.groupId !== groupId) return { ...g, members: existing };
-        return {
-          ...g,
-          type: 'strip',
-          _expanded: true,
-          members: [...existing, ...picked.map(stripGroupMember)],
-        };
-      })
+      .map(g => g.groupId === groupId
+        ? { ...g, ordered: true, patternAnchorStripId: g.patternAnchorStripId || wiredAnchor || memberId(members[0]), members }
+        : { ...g, members: g.members.filter(member => !pickedIds.has(memberId(member) || member.pathId)) })
       .filter(g => g.members.length > 0));
     selectStrips(picked.map(s => s.id));
-  }, [layerGroups, strips, layers, editCounts, hidden, svgText, viewBox, density, pushLayoutHistory, selectStrips]);
+  }, [layerGroups, strips, wiring, sectionTargets, setPatchBoard, pushLayoutHistory, selectStrips]);
 
   const groupSelectedStrips = useCallback(() => {
     createStripGroupFromIds(selectedStripIds);

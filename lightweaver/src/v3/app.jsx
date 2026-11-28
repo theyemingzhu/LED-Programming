@@ -1616,6 +1616,7 @@ function Shell({ offlineUpdateController = null }) {
             strips: snapshot.layout?.strips || [],
             patchBoard: snapshot.layout?.patchBoard,
             wiring: snapshot.layout?.wiring,
+            layerGroups: snapshot.layout?.layerGroups,
             standaloneController: snapshot.devices?.standaloneController,
           },
         });
@@ -1683,6 +1684,7 @@ function Shell({ offlineUpdateController = null }) {
           strips: snapshot.layout?.strips || [],
           patchBoard: snapshot.layout?.patchBoard,
           wiring: snapshot.layout?.wiring,
+          layerGroups: snapshot.layout?.layerGroups,
           symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
           standaloneController: snapshot.devices?.standaloneController,
         });
@@ -2019,6 +2021,7 @@ function Shell({ offlineUpdateController = null }) {
         strips: snapshot.layout?.strips || [],
         patchBoard: snapshot.layout?.patchBoard,
         wiring: snapshot.layout?.wiring,
+        layerGroups: snapshot.layout?.layerGroups,
         symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
         standaloneController: snapshot.devices?.standaloneController,
       }).config;

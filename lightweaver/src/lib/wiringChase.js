@@ -32,13 +32,32 @@ export function buildWiringChaseFrame({ totalPixels = 0, step } = {}) {
   for (let index = start; index < end; index += 1) frame[index] = '001A00';
   if (end - start === 1) frame[start] = '1A001A';
   else if (start < end) {
-    // Runtime output direction is applied once by firmware when the logical
-    // frame is copied to the physical output. Keeping logical endpoints fixed
-    // here prevents reverse candidates from swapping blue/red twice.
+    // A wiring check marks raw physical addresses. Drawing direction does
+    // not move the blue and red markers on the installed chain.
     frame[start] = '00001A';
     frame[end - 1] = '1A0000';
   }
   return frame;
+}
+
+export function* buildWiringTraceFrames(compiled) {
+  const byOutput = new Map(compiled.outputs.map(output => [output.id, []]));
+  let activeCount = 0;
+  for (const pixel of compiled.pixels) {
+    if (pixel.inactive) continue;
+    byOutput.get(pixel.outputId).push(pixel.index);
+    activeCount += 1;
+  }
+  // At a four-frame-per-second delivery rate, use adjacent batches on denser
+  // installations to cover each address within the 30-second marker check.
+  const width = Math.max(1, Math.ceil(activeCount / (CHASE_FPS * 12)));
+  for (const addresses of byOutput.values()) {
+    for (let offset = 0; offset < addresses.length; offset += width) {
+      const frame = Array(compiled.totalPixels).fill('000000');
+      for (const address of addresses.slice(offset, offset + width)) frame[address] = '001A00';
+      yield frame;
+    }
+  }
 }
 
 export function planAdjacentStripBoundary(wiring = {}, stripCounts = {}, { outputId, runId, delta } = {}) {
@@ -160,6 +179,8 @@ export function createWiringChaseSession({
   host,
   priorLook = null,
   restoreLook = null,
+  canSendFrame,
+  requireFullFrame = false,
   setTimeoutImpl = setTimeout,
   clearTimeoutImpl = clearTimeout,
   setIntervalImpl = setInterval,
@@ -192,9 +213,13 @@ export function createWiringChaseSession({
   const stream = createStream({
     host,
     fps: CHASE_FPS,
+    physicalOrder: true,
+    canSendFrame,
     onHealth(health) {
       if (!pending || ended) return;
-      if (health?.wsOpen === false || Number(health?.consecutiveFailures || 0) > 0) {
+      if (health?.truncated && requireFullFrame) {
+        void fail(new Error('The connection could not deliver the complete LED trace frame.'));
+      } else if (health?.wsOpen === false || Number(health?.consecutiveFailures || 0) > 0) {
         const reason = health.reason === 'stream-reclaimed'
           ? 'Recover lights stopped this physical check and reclaimed the card from browser frame streams.'
           : health.reason === 'stream-superseded'

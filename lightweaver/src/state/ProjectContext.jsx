@@ -207,6 +207,16 @@ function layoutRootReducer(state, action) {
         }, state.nextStripSeq),
         patchBoard: action.replace ? createDefaultPatchBoard(action.strips) : state.patchBoard,
         ...(action.replace ? { layerGroups: state.layerGroups.filter(group => group.type !== 'strip'), sectionFamilies: [], symmetry: null } : {}),
+        ...(action.artwork ? {
+          ...action.artwork,
+          hidden: {},
+          editCounts: {},
+          stripCountOverrides: {},
+          stripDensities: {},
+          projectWarnings: [],
+          layerGroups: [],
+          selection: { kind: 'none', ids: [], entries: [], name: '' },
+        } : {}),
         starterPending: false,
       };
       return {
@@ -544,8 +554,8 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       }, 1),
     });
   }, []);
-  const mapArtworkStrips = useCallback((strips, wiring, { replace = false } = {}) => {
-    dispatchLayout({ type: 'layout/mapArtworkStrips', strips, wiring, replace });
+  const mapArtworkStrips = useCallback((strips, wiring, { replace = false, artwork } = {}) => {
+    dispatchLayout({ type: 'layout/mapArtworkStrips', strips, wiring, replace, artwork });
   }, []);
   const compiledWiring = useMemo(() => compileWiring({ wiring, strips, groups: layoutLayerGroups, symmetry: layoutSymmetry }), [wiring, strips, layoutLayerGroups, layoutSymmetry]);
 

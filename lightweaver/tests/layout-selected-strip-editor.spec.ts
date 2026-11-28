@@ -7,7 +7,6 @@ async function fourSections(page: any) {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.setInputFiles('input[accept=".svg"]', { name: 'ribbon.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork) });
-  await page.getByTestId('artwork-create-all-strips').click();
   await page.locator('.la-strip-row').click({ position: { x: 8, y: 8 } });
   await page.getByRole('spinbutton', { name: 'Ribbon LED count' }).fill('41');
   await page.getByRole('spinbutton', { name: 'Ribbon LED count' }).blur();

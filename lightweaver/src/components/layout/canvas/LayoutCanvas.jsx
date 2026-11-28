@@ -27,6 +27,7 @@ import { placedLookFrame } from '../../../lib/placedLook.js';
 import { PlacedLookFrame, PlacedLookPicture, usePlacedLookClock } from './PlacedLookOverlay.jsx';
 import { LookDesignerTouch, useLookDesignerClock } from './LookDesignerTouch.jsx';
 import { SvgJumperLines, SvgWirePorts } from './SvgLayerWiringOverlay.jsx';
+import { WireTracer } from './WireTracer.jsx';
 import { useLookDesigner } from './lookDesignerStore.js';
 import { frameByStrip } from '../../../lib/lookEngine/index.js';
 import './symmetry-offer.css';
@@ -156,6 +157,7 @@ export function LayoutCanvas({
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     svgWireGeometry, svgWireSource, svgWireMessage, activateSvgWirePort, cancelSvgWire,
+    grouping, trace, onTraceComplete,
     wiring, compiledWiring, selectedWiringRunId, onSeamMove,
     firstLedPicker, onFirstLedPick,
     kaleidoscopeEditor, onKaleidoscopeLedPick, onKaleidoscopeSelectPoint,
@@ -186,13 +188,13 @@ export function LayoutCanvas({
     }
   }
   const { mode, drawMode, waypoints, ghostPt, ghostD } = draw;
-  const showSvgWiring = mode === 'draw' && !drawMode && !litActive && !firstLedPicker && !kaleidoscopeEditor;
+  const showSvgWiring = !grouping && mode === 'draw' && !drawMode && !litActive && !firstLedPicker && !kaleidoscopeEditor;
   const selectedSvgPort = svgWireGeometry?.ports.get(selStripId);
   const selectedHasSvgPorts = showSvgWiring && selectedSvgPort && [...svgWireGeometry.ports.values()].some(port =>
     port.stripId !== selStripId && port.layerId === selectedSvgPort.layerId && port.outputId === selectedSvgPort.outputId);
   const canDragStrip = mode === 'draw' && !drawMode && !firstLedPicker && !kaleidoscopeEditor && wireOverlayMode !== 'chop';
   // The offer is worked out only while it could be shown.
-  const offerPossible = mode === 'draw' && !drawMode && !symmetry && !layoutSymmetryOfferDismissed
+  const offerPossible = !grouping && !trace && mode === 'draw' && !drawMode && !symmetry && !layoutSymmetryOfferDismissed
     && typeof setLayoutSymmetry === 'function' && strips.length >= 2;
   const offer = useMemo(() => {
     if (!offerPossible) return null;
@@ -1134,7 +1136,7 @@ export function LayoutCanvas({
               );
             })}
 
-            {mode === 'draw' && !drawMode && selectedSeamPoint && !hidden[selectedPhysicalStrip.id] && (() => {
+            {(!grouping || firstLedPicker) && mode === 'draw' && !drawMode && selectedSeamPoint && !hidden[selectedPhysicalStrip.id] && (() => {
               const { x, y } = selectedSeamPoint;
               const halfWidth = dataAngle == null ? 20 : 30;
               const left = (labelBounds.x - x) / annotationScale + halfWidth + 2;
@@ -1222,6 +1224,7 @@ export function LayoutCanvas({
             {showSvgWiring && !isEditingGesture && !focusActive && svgWireGeometry?.ports.size > 0 &&
               <SvgWirePorts ports={svgWireGeometry.ports} selected={selStripId} source={svgWireSource}
                             scale={annotationScale} bounds={labelBounds} onPort={activateSvgWirePort}/>}
+            {trace && <WireTracer pixels={trace} scale={annotationScale} onComplete={onTraceComplete}/>}
 
             {/* ── Draw mode ghost ── */}
             {drawMode && ghostD && (

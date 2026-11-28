@@ -22,6 +22,7 @@ export function buildSavedLookPlaylistPreviewTargets({
     patchBoard,
     strips,
     savedLook,
+    sectionTargets: deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring }),
   });
 
   return deriveSectionTargets({

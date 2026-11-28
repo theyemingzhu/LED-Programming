@@ -21,7 +21,6 @@ async function importLine(page: any) {
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.setInputFiles('input[accept=".svg"]', writeFixture(tmp));
-  await page.getByRole('button', { name: /\+ All \(1\)/ }).click();
   return tmp;
 }
 

@@ -111,6 +111,37 @@ test('explicit autoplay keeps its authored first global pattern and timed order'
   assert.deepEqual(config.playlist.entries.map(entry => entry.patternId), ['aurora']);
 });
 
+test('a persisted layout exports the ordered effect group without a precompiled layout', () => {
+  const project = createDefaultProject();
+  const strips = [
+    { id: 'strip-1', name: 'First', pixelCount: 8 },
+    { id: 'strip-2', name: 'Second', pixelCount: 5 },
+  ];
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = [
+    { id: 'out1', pin: 16, runIds: ['run-strip-1'] },
+    { id: 'out2', pin: 17, runIds: ['run-strip-2'] },
+  ];
+  Object.assign(project.layout, {
+    strips,
+    wiring,
+    patchBoard: createDefaultPatchBoard(strips),
+    layerGroups: [{
+      groupId: 'wave', name: 'Wave', type: 'strip', ordered: true, effectTarget: true,
+      patternAnchorStripId: 'strip-1', members: [{ stripId: 'strip-2' }, { stripId: 'strip-1' }],
+    }],
+    starterPending: false,
+  });
+  const restored = migrateProject(JSON.parse(JSON.stringify(project)));
+  const runtime = buildCardRuntimePackageFromProject(restored.layout);
+  const stored = JSON.parse(prepareCardStoragePayload(runtime).json);
+
+  assert.deepEqual(stored.led.outputs.map(({ pin, pixels }) => [pin, pixels]), [[16, 8], [17, 5]]);
+  assert.deepEqual(stored.zones.map(({ id, label, continuous, ranges }) => ({ id, label, continuous, ranges })), [
+    { id: 'wave', label: 'Wave', continuous: true, ranges: [{ start: 8, count: 5 }, { start: 0, count: 8 }] },
+  ]);
+});
+
 test('three unequal compiled GPIO runs keep their section patterns through compact card storage', () => {
   const counts = [7, 11, 19];
   const pins = [16, 17, 18];

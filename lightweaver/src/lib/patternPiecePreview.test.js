@@ -109,6 +109,33 @@ test('preview segments follow compiled wiring zones when Patterns uses those tar
   assert.equal(segments[0].pixels.length, ledStrips[0].pixels.length);
 });
 
+test('an ordered effect across GPIOs previews the card’s local run reversal', () => {
+  const ledStrips = strips.slice(0, 2);
+  const wiring = makeDefaultWiring(ledStrips);
+  const [petals, center] = wiring.runs;
+  petals.physicalDirection = 'source-reverse';
+  wiring.outputs[0].runIds = [petals.id];
+  wiring.outputs.push({ id: 'out2', pin: 17, runIds: [center.id] });
+  const group = { groupId: 'flow', name: 'Flow', ordered: true, members: [ledStrips[1].id, ledStrips[0].id] };
+  const compiledWiring = compileWiring({ wiring, strips: ledStrips, groups: [group] });
+  assert.equal(compiledWiring.ok, true);
+  assert.deepEqual(compiledWiring.outputs.map(output => [output.pin, output.segments[0].direction]), [
+    [16, 'reverse'],
+    [17, 'forward'],
+  ]);
+  const segments = buildPatternPreviewSegments({
+    strips: ledStrips, compiledWiring, previewPlaybackDirection: true,
+    targets: [{ kind: 'section', id: group.groupId, look: {} }],
+  });
+  assert.deepEqual(segments[0].run, { before: 0, length: 6 });
+  assert.deepEqual(segments[0].pixels.map(pixel => pixel.x), [300, 310, 100, 110, 120, 130]);
+  const frame = segments[0].pixels.map((pixel, index) => ({ ...pixel, r: index, g: 0, b: 0 }));
+  applyPatternPreviewSegmentLooks(frame, segments);
+  assert.deepEqual(frame.map(pixel => [pixel.x, pixel.r]), [
+    [300, 0], [310, 1], [100, 5], [110, 4], [120, 3], [130, 2],
+  ]);
+});
+
 test('preview segments preserve each target assignment and an unsaved draft override', () => {
   const targets = deriveSectionTargets({ strips, patchBoard, defaultLook: { patternId: 'aurora' } });
   const draftTarget = targets.find(target => target.id.includes('2-3'));
