@@ -11,7 +11,7 @@ import { test, expect } from './studioTest';
 import type { Page } from '@playwright/test';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
-import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
+import { DEFAULT_CARD_PATTERN_BANK } from '../src/lib/cardRuntimeContract.js';
 import { CARD_PLAYLIST_ENTRY_LIMIT } from '../src/lib/cardPlaylist.js';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
 
@@ -23,7 +23,8 @@ function makeTimedPlaylistProject({ count = 2 } = {}) {
   // ceiling; keep this playlist fixture on that exact physical setup.
   project.devices.standaloneController.led.type = 'WS2812B';
   project.devices.standaloneController.led.maxMilliamps = 2000;
-  const patterns = CARD_PATTERN_BANK.slice(0, count);
+  // This fixture models a card on older firmware without optional patterns.
+  const patterns = DEFAULT_CARD_PATTERN_BANK.slice(0, count);
   project.devices.standaloneController.playlist = patterns.map((pattern, order) => ({
     id: pattern.id,
     label: pattern.label,
@@ -59,7 +60,7 @@ function stateFromProject(project, overrides: Record<string, unknown> = {}) {
   });
   const config = prepared.runtimePackage.config;
   const outputs = config.led?.outputs || [];
-  const patterns = CARD_PATTERN_BANK.map(pattern => ({ id: pattern.id, label: pattern.label }));
+  const patterns = DEFAULT_CARD_PATTERN_BANK.map(pattern => ({ id: pattern.id, label: pattern.label }));
   const currentId = config.startupPatternId;
   const currentIndex = patterns.findIndex(pattern => pattern.id === currentId);
   return {

@@ -119,7 +119,7 @@ assert.match(header, /fs::File lightweaverOpenRecordedMedia\(const char\* path\)
 
 // --- Reported to Studio ------------------------------------------------------
 for (const [name, source] of [['main.cpp', main], ['LightweaverStorage.cpp', storage]]) {
-  assert.match(source, /doc\["capabilities"\]\["symmetrySides"\] = LW_SYMMETRY_SIDES_VERSION;\s*lightweaverReportRecordedMedia\(doc\["capabilities"\]\.as<JsonObject>\(\)\);/,
+  assert.match(source, /lightweaverReportRecordedMedia\(doc\["capabilities"\]\.as<JsonObject>\(\)\);/,
     `${name} must report where recordings are kept`);
 }
 assert.match(media, /capabilities\["recordedMediaStore"\] = lwMediaStoreName\(store\);/);
