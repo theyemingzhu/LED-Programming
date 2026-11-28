@@ -1783,8 +1783,9 @@ export function DrawModePanel({
                         <summary aria-label="More strip actions" title="More strip actions">More actions <ChevronDownIcon/></summary>
                         <div className="la-strip-menu-popover" role="group" aria-label={`More actions for ${s.name}`}>
                             <button className="btn" aria-label="Flip path direction"
-                                    data-caption="Flip the drawing path so LED 1 swaps ends"
+                                    data-caption="Swap the first LED and reverse playback. Save to apply on the card."
                                     title="Flip the drawing path so pixel 0 swaps ends"
+                                    aria-pressed={s.reversed === true}
                                     disabled={!!connectedFamily}
                                     onClick={() => reverseStrip(s.id)}>
                               Flip path

@@ -1,4 +1,4 @@
-import { OUTPUT_PLAYBACK_ORDER } from './wiringCompiler.js';
+import { hasPlaybackReversal, OUTPUT_PLAYBACK_ORDER } from './wiringCompiler.js';
 import { buildPatternPreviewSegments, applyPatternPreviewSegmentLooks } from './patternPiecePreview.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
@@ -59,7 +59,7 @@ function sourceSnapshot(input, legacyLogicalPlayback) {
   // hash, so a compile with no symmetry is snapshotted in its old shape (a real
   // symmetry is part of the snapshot and changes the hash on purpose).
   const { symmetry: appliedSymmetry, ...compiledWithoutSymmetry } = input.compiledWiring;
-  const playbackOrderChanged = input.compiledWiring.runs?.some(run => run.reversed && run.count > 1);
+  const playbackOrderChanged = hasPlaybackReversal(input.compiledWiring);
   const layout = structuredClone({
     ...(!legacyLogicalPlayback && playbackOrderChanged ? { playbackOrder: OUTPUT_PLAYBACK_ORDER } : {}),
     strips: input.strips, patchBoard: input.patchBoard ?? null,

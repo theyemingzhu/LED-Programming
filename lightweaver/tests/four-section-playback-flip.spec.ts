@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-const IDENTITIES = ['meteor', 'scanner', 'chase', 'plasma'];
+const IDENTITIES = ['scanner', 'plasma', 'chase', 'meteor'];
 const evidenceDir = process.env.LW_FLIP_EVIDENCE;
 
 test('four sections keep independent effects while Draw flips only the chosen run', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#screen=layout');
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
@@ -46,9 +47,20 @@ test('four sections keep independent effects while Draw flips only the chosen ru
     await page.getByRole('button', { name: `Flip playback direction of Part ${index + 1}`, exact: true }).click();
   };
   await page.goto('/#screen=layout');
+  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  const ledColors = (id: string) => page.locator(`[data-testid^="strip-led-${id}-"] > circle:first-child`)
+    .evaluateAll(dots => dots.map(dot => dot.getAttribute('fill')));
+  await expect.poll(async () => new Set(await ledColors(ids[1])).size).toBeGreaterThan(1);
+  const beforeColors = await Promise.all(ids.map(ledColors));
+  expect(beforeColors[1]).not.toEqual([...beforeColors[1]].reverse());
   await flipPart(1);
+  await expect.poll(() => ledColors(ids[1])).toEqual([...beforeColors[1]].reverse());
+  for (const index of [0, 2, 3]) expect(await ledColors(ids[index])).toEqual(beforeColors[index]);
   await expect.poll(directions).toEqual(['source-forward', 'source-reverse', 'source-forward', 'source-forward']);
   if (evidenceDir) await page.screenshot({ path: `${evidenceDir}/part-2-flipped-desktop.png` });
+  await page.getByTestId('layout-preview-play').click();
+  await expect(page.getByTestId('layout-preview-play')).toHaveText('Pause');
+  await expect.poll(() => ledColors(ids[1])).not.toEqual([...beforeColors[1]].reverse());
   await page.reload();
   await rows.nth(1).locator('.layer-name').click();
   await expect(page.getByRole('button', { name: 'Flip playback direction of Part 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -83,4 +95,52 @@ test('four sections keep independent effects while Draw flips only the chosen ru
   const lockedFlip = page.getByRole('button', { name: 'Flip playback direction of Part 2', exact: true });
   await expect(lockedFlip).toBeDisabled();
   await expect(lockedFlip).toHaveAttribute('title', 'Unlock wiring in Test & Install');
+});
+
+
+test('Flip path reverses the rendered light on the same geometry and persists through save and divide', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/#screen=layout');
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  const read = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  await expect.poll(async () => (await read()).layout?.strips?.length).toBe(1);
+  const id = (await read()).layout.strips[0].id as string;
+  await page.goto('/#screen=pattern');
+  await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
+  await page.goto('/#screen=layout');
+  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  const dots = page.locator(`[data-testid^="strip-led-${id}-"] > circle:first-child`);
+  const colors = () => dots.evaluateAll(dots => dots.map(dot => ({
+    x: Number(dot.getAttribute('cx')), color: dot.getAttribute('fill'),
+  })).sort((a, b) => a.x - b.x).map(dot => dot.color));
+  await expect.poll(async () => new Set(await colors()).size).toBeGreaterThan(1);
+  const initial = await colors();
+  const flipped = [...initial].reverse();
+  expect(initial).not.toEqual(flipped);
+
+  const toggle = async () => {
+    const menu = page.getByLabel('More strip actions', { exact: true });
+    if (!await page.getByRole('button', { name: 'Flip path direction', exact: true }).isVisible()) await menu.click();
+    await page.getByRole('button', { name: 'Flip path direction', exact: true }).click();
+  };
+  if (!await page.getByLabel('More strip actions', { exact: true }).isVisible()) await page.locator('.la-strip-row .layer-name').click();
+  await toggle();
+  await expect(page.getByRole('button', { name: 'Flip path direction', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(colors).toEqual(flipped);
+  await expect.poll(async () => (await read()).layout.strips[0].pathPlaybackFlipped).toBe(true);
+  await toggle();
+  await expect.poll(colors).toEqual(initial);
+  await expect.poll(async () => (await read()).layout.strips[0].pathPlaybackFlipped).toBeUndefined();
+
+  await toggle();
+  await expect.poll(async () => (await read()).layout.strips[0].pathPlaybackFlipped).toBe(true);
+  await page.reload();
+  await expect.poll(async () => (await read()).layout.strips[0].pathPlaybackFlipped).toBe(true);
+  if (!await page.locator('[data-testid^="divide-toggle-"]').isVisible()) await page.locator('.la-strip-row .layer-name').click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect.poll(async () => (await read()).layout.strips.map((strip: { pathPlaybackFlipped?: boolean }) => strip.pathPlaybackFlipped))
+    .toEqual([true, true, true, true]);
 });

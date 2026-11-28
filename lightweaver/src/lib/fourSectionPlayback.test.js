@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applyPatternPreviewSegmentLooks, buildPatternPreviewSegments } from './patternPiecePreview.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
+import { compilePattern, renderPixelFrame } from './frameEngine.js';
+import { normalizeProjectRenderStrips } from './renderGeometry.js';
+import { reverseStripPath } from './layoutGeometry.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
 import { mapSceneExpressionPreviewFrame } from './sceneExpressionFrame.js';
 import { compileWiring, playbackSlotsInStripFrame } from './wiringCompiler.js';
@@ -103,4 +106,62 @@ test('a zone with two physical runs retains both ranges and reverses inside the 
   assert.deepEqual(slots.slice(26, 36), [31, 32, 33, 34, 35, 36, 37, 38, 39, 40]);
   assert.deepEqual(slots.slice(36, 41), [30, 29, 28, 27, 26]);
   assert.deepEqual(slots.slice(41), [41, 42, 43, 44, 45]);
+});
+
+
+test('the drawing path flip reverses installed and physical-frame playback exactly once', () => {
+  const line = { ...strips[0], reversed: false };
+  const other = { ...strips[4], reversed: false };
+  const { wiring } = fixture();
+  wiring.runs = [wiring.runs[0], wiring.runs[4]];
+  wiring.outputs[0].runIds = [wiring.runs[0].id];
+  const runtime = strip => {
+    const strips = [strip, other];
+    const compiledWiring = compileWiring({ strips, wiring });
+    assert.equal(compiledWiring.sendReady, true);
+    const config = buildCardRuntimePackageFromProject({
+      strips, wiring, compiledWiring, patchBoard: createDefaultPatchBoard(strips),
+    }).config;
+    const segments = buildPatternPreviewSegments({ strips, compiledWiring, targets, previewPlaybackDirection: true });
+    return { compiledWiring, config, segments };
+  };
+  const before = runtime(line);
+  const turned = reverseStripPath(line);
+  const after = runtime(turned);
+  const firstSlots = Array.from({ length: line.pixelCount }, (_, index) => index);
+  const tailSlots = Array.from({ length: other.pixelCount }, (_, index) => line.pixelCount + index);
+  assert.deepEqual(after.config.zones, before.config.zones);
+  assert.deepEqual(after.config.led.outputs[1], before.config.led.outputs[1]);
+  assert.equal(after.config.led.outputs[0].segments[0].direction, 'reverse');
+  assert.deepEqual(playbackSlotsInStripFrame(after.compiledWiring, [turned, other]), [...firstSlots.toReversed(), ...tailSlots]);
+  assert.equal(after.segments[0].playbackOrder, undefined, 'Studio already displays the reversed drawing positions');
+  assert.deepEqual(after.segments[0].pixels.map(point => point.x), before.segments[0].pixels.map(point => point.x).reverse());
+  assert.deepEqual(runtime(reverseStripPath(turned)).config, before.config);
+  // Compare finished colors at fixed artwork locations and card addresses.
+  // Plasma travels in x/y. Chase travels by LED index.
+  for (const patternId of ['plasma', 'chase']) {
+    const framesAt = (state, t) => {
+      const segments = [state.segments[0]];
+      const frame = renderPixelFrame({
+        t, patternId, activeFn: compilePattern(patternId),
+        strips: normalizeProjectRenderStrips(segments.map(segment => ({ ...segment, patternId }))),
+      });
+      const rgbHex = rgb => [rgb.r, rgb.g, rgb.b].map(value => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+      const displayed = frame.stripFrames[0].leds.toSorted((a, b) => a.x - b.x).map(rgbHex);
+      const slots = playbackSlotsInStripFrame(state.compiledWiring, [line, other]).slice(0, line.pixelCount);
+      const physical = slots.map(index => rgbHex(frame.pixels[index]));
+      assert.deepEqual(displayed, physical);
+      return displayed;
+    };
+    const instants = [0.2, 1.3, 2.4];
+    const baseline = instants.map(t => framesAt(before, t));
+    assert.notDeepEqual(baseline[0], baseline[2], `${patternId} is moving`);
+    assert.deepEqual(instants.map(t => framesAt(after, t)), baseline.map(frame => frame.toReversed()));
+  }
+
+  wiring.runs[0].physicalDirection = 'source-reverse';
+  const both = runtime(turned);
+  assert.equal(both.config.led.outputs[0].segments[0].direction, 'forward');
+  assert.deepEqual(playbackSlotsInStripFrame(both.compiledWiring, [turned, other]), [...firstSlots, ...tailSlots]);
+  assert.deepEqual(both.segments[0].playbackOrder, firstSlots.toReversed());
 });
