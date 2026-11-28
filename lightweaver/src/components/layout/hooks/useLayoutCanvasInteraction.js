@@ -110,7 +110,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   const {
     wireOverlayMode, selectedWireCut,
     setWireOverlayMode, setSelectedWireCut,
-    deleteSelectedWireCut,
+    deleteSelectedWireCut, cancelSvgWire,
   } = wireApi;
 
   // ── Preview toggles ────────────────────────────────────────────────────────
@@ -582,7 +582,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       if (e.key === 'Escape') {
         if (drawMode) { cancelActiveTool(); }
         else if (pendingDraw) { cancelDraw(); }
-        else { clearLayoutSelection(); }
+        else if (!cancelSvgWire()) { clearLayoutSelection(); }
         return;
       }
 
@@ -682,7 +682,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [mode, drawMode, waypoints, completeDraw, pendingDraw, selection, selectedWireCut, deleteSelectedWireCut, removeStrip, removeSelectedStrips, deleteSelectedVectorPaths, deleteLayer, groupSelectedStrips, mergeSelectedStrips, createLayerGroup, clearLayoutSelection, doUndo, doRedo, layers, addAllStrips, strips, setStripOffset, setHidden, cancelActiveTool, setMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawMode, waypoints, completeDraw, pendingDraw, selection, selectedWireCut, deleteSelectedWireCut, removeStrip, removeSelectedStrips, deleteSelectedVectorPaths, deleteLayer, groupSelectedStrips, mergeSelectedStrips, createLayerGroup, clearLayoutSelection, doUndo, doRedo, layers, addAllStrips, strips, setStripOffset, setHidden, cancelActiveTool, cancelSvgWire, setMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Memoised visualisation data ────────────────────────────────────────────
   const isEditingGesture = movingStripIds.length > 0 || !!rubberBand;

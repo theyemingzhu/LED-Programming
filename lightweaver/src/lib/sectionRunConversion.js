@@ -2,6 +2,7 @@ import { normalizePatchBoard } from './patchBoard.js';
 import { createSectionFamily } from './connectedSections.js';
 import { nextSplitNames, planSectionsAtRunBoundaries } from './stripSplit.js';
 import { compileWiring } from './wiringCompiler.js';
+import { svgLayerStripId } from './svgLayerWiring.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -42,6 +43,7 @@ export function convertExistingRunsToSections({ strips = [], wiring, patchBoard,
     return id;
   })];
   const names = nextSplitNames(source.name, ids.length, strips.map(strip => strip.name));
+  const svgWiringLayerId = svgLayerStripId(source);
   const pieces = plan.runs.map((run, index) => {
     const { from, to } = run.source;
     return {
@@ -53,6 +55,7 @@ export function convertExistingRunsToSections({ strips = [], wiring, patchBoard,
       pixels: (source.pixels || []).slice(from, to + 1).map((pixel, localIndex) => ({ ...clone(pixel), index: localIndex })),
       // The family retains the complete original source metadata and geometry.
       sourceLayerId: null, sourcePathId: null, kaleidoscope: undefined, mergedFrom: undefined,
+      ...(svgWiringLayerId ? { svgWiringLayerId } : {}),
     };
   });
   const nextStrips = strips.flatMap(strip => strip.id === stripId ? pieces : [strip]);

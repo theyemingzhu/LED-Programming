@@ -1,0 +1,57 @@
+.la-svg-jumper {
+  stroke: var(--text-muted, var(--text-hi));
+  stroke-width: .8px;
+  opacity: .23;
+}
+.la-svg-jumper.is-selected { opacity: .4; }
+.la-svg-wire-port {
+  color: var(--text-dim, var(--text-hi));
+  cursor: pointer;
+  pointer-events: bounding-box;
+}
+.la-svg-wire-port:is(.is-ready, :hover, :focus-visible) { color: var(--accent-hi); }
+.la-svg-wire-port:focus-visible { outline: none; }
+.la-svg-wire-chip, .la-svg-wire-tip { fill: var(--bg-canvas); stroke: currentColor; stroke-width: 1; }
+.la-svg-wire-port:focus-visible .la-svg-wire-chip { stroke-width: 2; }
+.la-svg-wire-stem { stroke: currentColor; opacity: .55; fill: none; }
+.la-svg-wire-port text {
+  fill: currentColor;
+  font: 600 10px var(--font-ui, sans-serif);
+  letter-spacing: .02em;
+}
+.la-svg-wire-feedback {
+  position: absolute;
+  inset: auto auto 12px 12px;
+  max-width: min(50%, 36ch);
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--text-hi);
+  font-size: 12px;
+  background: var(--bg-canvas);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.la-strip-row .la-svg-strip-flip {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  min-width: 32px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim, var(--text-hi));
+  cursor: pointer;
+}
+.la-strip-row .la-svg-strip-flip:is(:hover, :focus-visible, [aria-pressed=true]) {
+  color: var(--accent-hi);
+}
+.la-svg-strip-flip svg { width: 17px; height: 17px; fill: none; stroke: currentColor; }
+.la-svg-strip-flip:disabled { opacity: .35; cursor: default; }
+@media (max-width: 600px) {
+  .la-svg-port-alternate { display: none; }
+}
+@media (pointer: coarse) {
+  .la-strip-row .la-svg-strip-flip { min-width: 42px; }
+}

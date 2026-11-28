@@ -5,6 +5,7 @@
 import { samplePath as libSamplePath } from './mapper.js';
 import { reverseKaleidoscope } from './kaleidoscope.js';
 import { LED_COUNT_MAX } from './controlScale.js';
+import { applyMatrixToPathData, IDENTITY_MATRIX } from './svgFlatten.js';
 
 export function reverseStripPath(strip) {
   // Older projects can have end-first drawing coordinates without a card
@@ -301,7 +302,8 @@ export function pathIntersectsRect(pathData, minX, minY, maxX, maxY) {
 
 export function measureLayers(doc) {
   const srcSvg = doc.querySelector('svg');
-  const SHAPES = 'path, rect, circle, ellipse, line, polyline, polygon';
+  const shapeTags = ['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon'];
+  const shapeSelector = shapeTags.join(', ');
 
   // A `<g>` the artist drew, as opposed to a copy that `<use>` expansion
   // produced (svgFlatten.js marks those `data-lw-instance`). The
@@ -310,52 +312,53 @@ export function measureLayers(doc) {
   // that a wrapper group contains sub-layers. Both mistakes lose artwork.
   const isGroup = el => el.tagName === 'g';
   const isInstance = el => el.hasAttribute('data-lw-instance');
+  const isDeclaredLayer = el => el.getAttribute('inkscape:groupmode') === 'layer'
+    || [el.getAttribute('data-name'), el.getAttribute('inkscape:label'), el.id]
+      .some(value => /\bgpio[\s_:-]*\d+\b/i.test(value || ''));
 
   const topGroups = Array.from(srcSvg.children).filter(isGroup);
   // Named layers win when the file has any — but an instanced copy sitting
   // beside them still carries geometry and must come along, or a mandala
   // whose repeats live next to a named layer imports incomplete.
-  let groups = topGroups.some(el => el.hasAttribute('data-name'))
-    ? topGroups.filter(el => el.hasAttribute('data-name') || isInstance(el))
+  const isNamed = el => el.hasAttribute('data-name') || isDeclaredLayer(el);
+  let groups = topGroups.some(isNamed)
+    ? topGroups.filter(el => isNamed(el) || isInstance(el))
     : topGroups;
-  if (groups.length === 1) {
-    // "One wrapper group holding several sub-layers" gets unwrapped, so an
-    // export that nests everything under a single container still shows its
-    // real layers. Only groups the artist drew count as sub-layers; six
-    // instanced copies of one motif are one layer repeated, not six layers.
-    const inner = Array.from(groups[0].children).filter(isGroup);
-    if (inner.filter(el => !isInstance(el)).length > 1) groups = inner;
+  if (groups.length === 1 && !isDeclaredLayer(groups[0])) {
+    const [parent] = groups;
+    const children = Array.from(parent.children);
+    const nested = children.filter(isGroup);
+    const authored = nested.filter(el => !isInstance(el));
+    const parentNamed = isNamed(parent) || parent.hasAttribute('inkscape:label');
+    const hasDirectArtwork = children.some(el => shapeTags.includes(el.tagName));
+    // A named layer can contain ordinary shape groups. Promote children
+    // only when the parent acts as a wrapper and all its children carry the
+    // layer names, or when a bare wrapper uses the original group convention.
+    if (authored.length > 1 && !hasDirectArtwork && (!parentNamed || authored.every(isNamed))) groups = nested;
   }
 
-  if (!groups.length) {
-    const shapes = Array.from(srcSvg.querySelectorAll(SHAPES));
-    if (!shapes.length) return [];
-    const pathData = shapes.map(el => shapeToD(el)).filter(Boolean).join(' ');
-    return [{ layerId: 'all-shapes', name: 'Layer 1', pathData,
-              svgLength: measurePathLen(pathData), subPaths: [] }];
-  }
-
-  return groups.map((g, i) => {
-    const shapes   = Array.from(g.querySelectorAll(SHAPES));
-    const pathData = shapes.map(el => shapeToD(el)).filter(Boolean).join(' ');
-    const svgLength = measurePathLen(pathData);
-    const name = g.getAttribute('data-name') || g.getAttribute('inkscape:label') || g.id || `Layer ${i + 1}`;
-    const layerId = g.id || `layer-${i}`;
-
-    let spIdx = 0;
-    const subPaths = shapes.flatMap(el => {
-      const pd = shapeToD(el);
-      if (!pd) return [];
-      return splitCompoundPath(pd).map(seg => ({
-        pathId: `${layerId}-p${spIdx++}`,
-        name: `Path ${spIdx}`,
-        pathData: seg,
-        svgLength: measurePathLen(seg),
-      }));
-    });
-
-    return { layerId, name, pathData, svgLength, subPaths };
+  return (groups.length ? groups : [srcSvg]).flatMap((group, index) => {
+    const hasGroups = groups.length > 0;
+    const name = (hasGroups && (group.getAttribute('data-name') || group.getAttribute('inkscape:label') || group.id)) || `Layer ${index + 1}`;
+    const layerId = hasGroups ? group.id || `layer-${index}` : 'all-shapes';
+    const pathData = Array.from(group.querySelectorAll(shapeSelector)).map(shapeToD).filter(Boolean)
+      .map(path => path.includes('m') ? applyMatrixToPathData(path, IDENTITY_MATRIX) || path : path).join(' ');
+    const subPaths = measureSubPaths(pathData, layerId);
+    if (!subPaths.length) return [];
+    return [{ layerId, name, pathData, svgLength: subPaths.reduce((sum, path) => sum + path.svgLength, 0), subPaths }];
   });
+}
+
+// Also used for saved artwork imported before ungrouped SVGs recorded subpaths.
+export function measureSubPaths(pathData, layerId) {
+  const subPaths = [];
+  const absolute = pathData?.includes('m') ? applyMatrixToPathData(pathData, IDENTITY_MATRIX) : pathData;
+  for (const path of splitCompoundPath(absolute || pathData || '')) {
+    if (!path.trim()) continue;
+    const index = subPaths.length;
+    subPaths.push({ pathId: `${layerId}-p${index}`, name: `Path ${index + 1}`, pathData: path, svgLength: measurePathLen(path) });
+  }
+  return subPaths;
 }
 
 export function getPxPerMm(srcSvg) {

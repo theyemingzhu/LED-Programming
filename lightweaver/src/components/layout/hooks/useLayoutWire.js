@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { svgPt } from '../../../lib/layoutGeometry.js';
+import { svgLayerWireGeometry } from '../../../lib/svgLayerWiring.js';
+import { prepareWiringForPhysicalEdit } from '../../../lib/wiringModel.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 
 function uniqueRunId(runs, base) {
@@ -11,10 +13,68 @@ function uniqueRunId(runs, base) {
 }
 
 export function useLayoutWire(ctx) {
-  const { strips, selectStrip, svgRef } = ctx;
-  const { wiring, updateWiring } = useProject();
+  const { strips, hidden, selectStrip, svgRef } = ctx;
+  const { wiring, compiledWiring, updateWiring } = useProject();
   const [wireOverlayMode, setWireOverlayMode] = useState('idle');
   const [selectedWireCut, setSelectedWireCut] = useState(null);
+  const [svgWireSource, setSvgWireSource] = useState(null);
+  const [svgWireMessage, setSvgWireMessage] = useState('');
+  const svgWireGeometry = useMemo(() => svgLayerWireGeometry(compiledWiring, strips, hidden),
+    [compiledWiring, strips, hidden]);
+
+  const cancelSvgWire = useCallback(() => {
+    setSvgWireSource(null);
+    setSvgWireMessage('');
+    return Boolean(svgWireSource);
+  }, [svgWireSource]);
+
+  const activateSvgWirePort = (stripId, port) => {
+    const target = svgWireGeometry.ports.get(stripId);
+    if (!target) return;
+    if (port === 'out') {
+      if (svgWireSource === stripId) {
+        cancelSvgWire();
+        return;
+      }
+      selectStrip(stripId);
+      setSvgWireSource(stripId);
+      setSvgWireMessage(`Choose an IN on the same layer as ${target.name}.`);
+      return;
+    }
+    const source = svgWireGeometry.ports.get(svgWireSource);
+    if (!source) {
+      selectStrip(stripId);
+      setSvgWireMessage('Choose an OUT first.');
+      return;
+    }
+    if (source.stripId === stripId || source.layerId !== target.layerId || source.outputId !== target.outputId) {
+      setSvgWireMessage('Choose another strip on the same SVG layer and output.');
+      return;
+    }
+    const output = wiring.outputs.find(item => item.id === source.outputId);
+    if (!output) return;
+    if (output.runIds[output.runIds.indexOf(source.runId) + 1] === target.runId) {
+      setSvgWireSource(null);
+      setSvgWireMessage(`${source.name} already connects to ${target.name}.`);
+      return;
+    }
+    const result = updateWiring(draft => {
+      const output = draft.outputs.find(item => item.id === source.outputId);
+      if (!output?.runIds.includes(source.runId) || !output.runIds.includes(target.runId)) {
+        throw new Error('Both strips must use the same output.');
+      }
+      output.runIds = output.runIds.filter(id => id !== target.runId);
+      output.runIds.splice(output.runIds.indexOf(source.runId) + 1, 0, target.runId);
+      if (draft.locked) Object.assign(draft, prepareWiringForPhysicalEdit(draft, { kind: 'route' }).wiring);
+    }, { changeKind: 'route' });
+    if (!result.ok) {
+      setSvgWireMessage(result.errors?.[0]?.message || 'The connection could not be changed.');
+      return;
+    }
+    selectStrip(stripId);
+    setSvgWireSource(null);
+    setSvgWireMessage(`Connected ${source.name} to ${target.name}.`);
+  };
 
   const nearestLedIndex = useCallback((event, strip) => {
     if (!svgRef.current || !strip?.pixels?.length) return null;
@@ -90,5 +150,6 @@ export function useLayoutWire(ctx) {
     selectedWireCut, setSelectedWireCut,
     nearestLedIndex, chopStripAtEvent,
     nudgeSelectedWireCut, deleteSelectedWireCut,
+    svgWireGeometry, svgWireSource, svgWireMessage, cancelSvgWire, activateSvgWirePort,
   };
 }
