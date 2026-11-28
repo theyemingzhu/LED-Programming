@@ -240,7 +240,15 @@ function identityMessage(reason, expected = {}, actual = {}) {
   if (reason === 'wrong-card') return `Studio expected ${expected.id}, but ${actual.id || 'another card'} answered. Reconnect the installed card.`;
   if (reason === 'wrong-firmware-version') return `Studio expected firmware ${expected.firmwareVersion}, but the card reports ${actual.firmwareVersion || 'no version'}.`;
   if (reason === 'wrong-firmware-build') return 'The card firmware build does not match the build verified during installation.';
+  if (reason === 'stale-boot') return 'The card is still reporting the boot from before installation. Wait for it to restart, then reconnect.';
   return 'Reconnect the installed card so Studio can verify its identity and firmware.';
+}
+
+function interruptedStationIp(wifi) {
+  return wifi?.transport === 'station'
+    && (wifi.transition === 'station' && wifi.transitionPending === false || wifi.transition === 'handoff-ready')
+    && wifi.networkBindingsPending !== true && wifi.joinFailed !== true
+    ? usableCardStationIp(wifi.stationIp) : '';
 }
 
 export function CardCommissioningPanel({
@@ -471,7 +479,9 @@ export function CardCommissioningPanel({
       && Boolean(link?.validatedBootId);
     if (!flow || flow.stage !== 'install-safely' || flow.source !== 'web-serial' || !link?.card?.id
       || (!isCardLinkConnected(link) && !verifiedBlankCard)) return null;
-    return resumeInstalledCardAfterInterruption(flow, link.card);
+    return resumeInstalledCardAfterInterruption(flow, { ...link.card, bootId: link.validatedBootId }, {
+      stationIp: interruptedStationIp(link.readiness?.wifi),
+    });
   }, [flow, link]);
 
   const restorePreflight = useMemo(() => {
@@ -644,6 +654,47 @@ export function CardCommissioningPanel({
       setFlow(interruptedInstallEvidence.flow);
     } catch (error) { setFailure(`Card setup could not be saved: ${error?.message || String(error)}`); } })();
   }, [interruptedInstallEvidence]);
+
+  // A browser can find the installed runtime before a pairing exists. Read
+  // its status for this commissioning flow without giving it command access.
+  const discoveredInstallId = Boolean(interruptedUsbRecovery) && flow?.stage === 'install-safely'
+    && link?.reason === 'found-unpaired' ? link.discoveredCard?.id : '';
+  useEffect(() => {
+    if (!discoveredInstallId || !flow?.installTarget || !link.host) return undefined;
+    const { host, transport, bridgeLifecycle } = link;
+    let active = true;
+    void (async () => {
+      try {
+        const status = await readCardStatusEnvelope({ host, transport, timeoutMs: 4000 });
+        const current = getCardLinkState();
+        const currentFlow = readCardCommissioning({ flowId: flow.flowId });
+        if (!active || current.discoveredCard?.id !== discoveredInstallId
+          || current.host !== host || current.transport !== transport
+          || current.bridgeLifecycle !== bridgeLifecycle || currentFlow?.stage !== 'install-safely') return;
+        const observed = classifyCardReadiness(status, { expectedCard: flow.installTarget });
+        const stationIp = interruptedStationIp(status.wifi);
+        const resumed = resumeInstalledCardAfterInterruption(currentFlow, status, { stationIp });
+        if (!resumed.ok) {
+          setFailure(identityMessage(resumed.reason, currentFlow.installTarget, { id: status.cardId, ...status }));
+          return;
+        }
+        if (!stationIp || !observed.bootId || !(observed.connected || observed.state === 'blank')
+          || (currentFlow.installTarget.buildNumber != null
+            && Number(status.buildNumber) !== currentFlow.installTarget.buildNumber)) {
+          setFailure('Studio found the card page but could not verify the installed build on Wi-Fi. Check this computer’s network and reconnect.');
+          return;
+        }
+        if (!await writeCardCommissioning(resumed.flow)) throw new Error('setup progress could not be saved');
+        if (active) {
+          setFailure('');
+          setFlow(resumed.flow);
+        }
+      } catch {
+        if (active) setFailure('Studio could not verify the card on Wi-Fi. Confirm this computer is on the card’s network, then reconnect.');
+      }
+    })();
+    return () => { active = false; };
+  }, [discoveredInstallId, flow, link.host, link.transport, link.bridgeLifecycle]);
 
   useEffect(() => {
     if (!cardAcknowledgement?.ok || flow?.cardAcknowledgedAt) return;
@@ -1191,6 +1242,13 @@ export function CardCommissioningPanel({
     setFailure('');
     onReconnect?.(ip);
   };
+  const reconnectByIpForm = (
+    <form className="card-commissioning-network" onSubmit={reconnectAtKnownIp}>
+      <label htmlFor="commissioning-card-ip">If the card tab says its address cannot be found, enter the card’s current IP address.</label>
+      <input id="commissioning-card-ip" aria-label="Card IP address" type="text" inputMode="decimal" autoComplete="off" spellCheck="false" value={knownCardIp} onChange={event => setKnownCardIp(event.target.value)} placeholder="192.168.1.50" />
+      <button type="submit" className="btn" disabled={reconnecting}>Connect at this IP</button>
+    </form>
+  );
   const retryAfterGalleryReturn = () => {
     if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
     setManualReconnectState('trying');
@@ -1461,9 +1519,13 @@ export function CardCommissioningPanel({
             {interruptedUsbRecovery.error && <p role="alert">{interruptedUsbRecovery.error}</p>}
             <div className="card-commissioning-recovery-alternative">
               <h4>Already on Wi-Fi?</h4>
-              <p>Reopen the card page for a fresh check. Opening it alone does not confirm the connection.</p>
+              <p>Connect this computer to the same Wi-Fi as the card, then reconnect.</p>
               <button type="button" className="btn" onClick={reconnectInstalledCard}>Reconnect over Wi-Fi</button>
+              {interruptedUsbRecovery.error && reconnectByIpForm}
             </div>
+            {interruptedUsbRecovery.onFactoryReset && (
+              <button type="button" className="btn" onClick={interruptedUsbRecovery.onFactoryReset}>Factory reset and reinstall</button>
+            )}
             {interruptedInstallEvidence && !interruptedInstallEvidence.ok && link?.card?.id && <p className="card-connection-failure" role="alert">{identityMessage(interruptedInstallEvidence.reason, flow.installTarget, link.card)} Nothing was changed.</p>}
           </section>
         ) : (
@@ -1493,7 +1555,7 @@ export function CardCommissioningPanel({
           )}
           {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && stationDetected && (
             <div className="card-commissioning-network" data-post-flash="station">
-              <p><strong>This card joined Wi-Fi.</strong> Studio verified its network address over USB: <strong>{flow.stationHost}</strong>. Keep this computer on that network and open the card page so Studio can verify the local connection. The card’s setup hotspot may remain available until that check completes.</p>
+              <p><strong>This card joined Wi-Fi at {flow.stationHost}.</strong> Connect this computer to the same Wi-Fi as the card, then open the card page to continue.</p>
               <button type="button" className="btn primary" onClick={openStationCard}>Open the card at {flow.stationHost}</button>
               {setupReach.state === 'checking' && <p role="status">Checking whether the card answers at {flow.stationHost}…</p>}
               {setupReach.state === 'unreachable' && (
@@ -1589,11 +1651,7 @@ export function CardCommissioningPanel({
               {!postFlashInconclusive && flow.networkState !== 'setup-joined' && setupReach.state !== 'unreachable' && (
                 <button type="button" className="btn" onClick={reconnectInstalledCard} disabled={reconnecting}>{reconnecting ? 'Reconnecting…' : 'Reconnect installed card'}</button>
               )}
-              <form className="card-commissioning-network" onSubmit={reconnectAtKnownIp}>
-                <label htmlFor="commissioning-card-ip">If the card tab says its address cannot be found, enter the card’s current IP address.</label>
-                <input id="commissioning-card-ip" aria-label="Card IP address" type="text" inputMode="decimal" autoComplete="off" spellCheck="false" value={knownCardIp} onChange={event => setKnownCardIp(event.target.value)} placeholder="192.168.1.50" />
-                <button type="submit" className="btn" disabled={reconnecting}>Connect at this IP</button>
-              </form>
+              {reconnectByIpForm}
             </>
           ) : flow.operation === 'inspect-card' ? (
             <div>
