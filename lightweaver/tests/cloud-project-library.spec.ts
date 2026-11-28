@@ -856,8 +856,10 @@ class LibraryFixture {
         return;
       }
       if (segments[0] === 'projects' && project && segments[2] === 'revisions' && segments[4] === 'restore' && method === 'POST') {
-        if (this.role === 'customer') {
-          await json(route, { error: { code: 'forbidden', message: 'Customers cannot restore project revisions.' } }, 403);
+        if (currentAccount?.role === 'customer'
+          && (project.draftOwnerAccountId !== currentAccount.id
+            || !this.assignments.get(currentAccount.id)?.has(project.draftOfProjectId || ''))) {
+          await json(route, { error: { code: 'not_found', message: 'Project not found.' } }, 404);
           return;
         }
         const source = project.revisions.find(item => item.revision === Number(segments[3]));
@@ -1104,6 +1106,7 @@ test('saved starter project stays visibly unplaced through New and Load until it
 
   await expect(page.getByTestId('layout-primitive-picker')).toBeVisible();
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
@@ -1202,6 +1205,7 @@ test('save-block banner offers Retry that re-establishes a safe destination and 
   await expect(banner).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect(page.getByTestId('workspace-notice')).not.toContainText('Saving is blocked');
   await expect.poll(() => page.evaluate(() => (
     (JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records || []).length
@@ -1244,6 +1248,7 @@ test('claimed browser records remain available to signed-out Save, New, and Load
 
   await page.getByLabel('Project name').fill('Claimed browser piece revised');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (
     JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records?.[0]?.name
   ))).toBe('Claimed browser piece revised');
@@ -1418,6 +1423,7 @@ test('late browser association cannot attach to a superseding New workspace', as
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_project_active_record_v1'))).toBeNull();
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect(page.getByTestId('workspace-notice')).not.toContainText('Saving is blocked');
 });
 
@@ -1461,7 +1467,7 @@ test('first authenticated top-bar Save prompts for a title and creates an associ
   await sessionResponse;
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Save project online' });
+  const dialog = page.getByRole('dialog', { name: 'Save project' });
   await expect(dialog).toBeVisible();
   expect(fixture.projects.size).toBe(0);
   await dialog.getByLabel('Project title').fill('Top-bar Gallery');
@@ -1473,6 +1479,83 @@ test('first authenticated top-bar Save prompts for a title and creates an associ
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_cloud_active_project_v1') || 'null')?.revision)).toBe(1);
 });
 
+test('Save project resumes after Google sign-in and keeps separate editable cloud revisions', async ({ page }, testInfo) => {
+  const fixture = new LibraryFixture(null);
+  const document = portable('Cloud save test');
+  document.pattern.masterBrightness = 0.73;
+  document.show.duration = 420;
+  await fixture.install(page);
+  await page.route('**/api/account/methods', route => json(route, { enabled: true, google: true, email: true }));
+  await page.route('**/api/account/google/start', route => {
+    fixture.username = 'worker';
+    fixture.role = 'worker';
+    return route.fulfill({ status: 302, headers: { location: '/?lwSignIn=success' } });
+  });
+  await page.addInitScript(initial => {
+    if (!localStorage.getItem('lw_autosave_v3')) {
+      localStorage.setItem('lw_autosave_v3', JSON.stringify(initial));
+    }
+  }, document);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#screen=layout');
+  await expect(page.getByTestId('project-name-edit')).toHaveText('Cloud save test');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Save project' });
+  await expect(dialog.getByRole('button', { name: 'Save in browser' })).toBeInViewport();
+  await testInfo.attach('Save destinations at 390px', { body: await page.screenshot(), contentType: 'image/png' });
+  await dialog.getByRole('button', { name: 'Save online' }).click();
+  await dialog.getByRole('button', { name: 'Continue with Google' }).click();
+  await expect(dialog.getByLabel('Project title')).toHaveValue('Cloud save test');
+  await expect(page).toHaveURL(/\/#screen=layout$/);
+  expect(fixture.projects.size).toBe(0);
+  await dialog.getByRole('button', { name: 'Save online', exact: true }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => fixture.projects.size).toBe(1);
+  const [saved] = [...fixture.projects.values()];
+  expect(saved.document).toMatchObject({
+    id: document.id,
+    layout: { strips: document.layout.strips },
+    pattern: { masterBrightness: 0.73 },
+    show: { duration: 420 },
+  });
+
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill('Second cloud revision');
+  await page.getByTestId('project-name-input').press('Enter');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Save online', exact: true }).click();
+  await expect.poll(() => saved.revisions.map(revision => revision.document.name))
+    .toEqual(['Cloud save test', 'Second cloud revision']);
+  expect(fixture.projects.size).toBe(1);
+  await page.getByTestId('topbar-projects').click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(page.getByTestId('history-revision-1')).toBeVisible();
+  await expect(page.getByTestId('history-revision-2')).toBeVisible();
+});
+
+test('Save waits for a remembered cloud project before offering to create a project', async ({ page }) => {
+  const fixture = new LibraryFixture('worker');
+  const remote = fixture.seed('Remembered Cloud Project');
+  fixture.holdRead(remote.id);
+  await fixture.install(page);
+  await page.addInitScript(project => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project.document));
+    localStorage.setItem('lw_cloud_active_project_v1', JSON.stringify({ id: project.id, revision: project.revision }));
+  }, remote);
+
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await fixture.delayedReadStarted;
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Save project' });
+  await expect(dialog.getByRole('status')).toHaveText('Checking the existing online project…');
+  await expect(dialog.getByRole('button', { name: 'Save online', exact: true })).toHaveCount(0);
+  fixture.releaseRead();
+  await dialog.getByRole('button', { name: 'Save online', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(fixture.projects.size).toBe(1);
+});
+
 test('first online Save explains a session change while keeping the dialog usable', async ({ page }) => {
   const fixture = new LibraryFixture('worker');
   await fixture.install(page);
@@ -1482,7 +1565,7 @@ test('first online Save explains a session change while keeping the dialog usabl
 
   fixture.holdNextCreate();
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Save project online' });
+  const dialog = page.getByRole('dialog', { name: 'Save project' });
   await dialog.getByLabel('Project title').fill('Stale Session Project');
   await dialog.getByRole('button', { name: 'Save online' }).click();
   await fixture.delayedCreateStarted;
@@ -1494,9 +1577,9 @@ test('first online Save explains a session change while keeping the dialog usabl
   await expect.poll(() => fixture.role).toBeNull();
   fixture.releaseCreate();
 
-  await expect(dialog.getByRole('alert')).toHaveText('Your session changed. Sign in again from Projects.');
-  await expect(dialog.getByLabel('Project title')).toBeEnabled();
-  await expect(dialog.getByRole('button', { name: 'Save online' })).toBeEnabled();
+  await expect(dialog.getByRole('alert')).toHaveText('Your session changed. Sign in again to save online.');
+  await expect(dialog.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Save in browser' })).toBeEnabled();
 });
 
 test('top-bar Save writes an associated authenticated project through the online revision path', async ({ page }) => {
@@ -1509,8 +1592,9 @@ test('top-bar Save writes an associated authenticated project through the online
   await page.getByLabel('Preferences').first().click();
   await page.getByLabel('Project name').fill('Associated Project Revised');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
 
-  await expect(page.getByRole('dialog', { name: 'Save project online' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Save project' })).toHaveCount(0);
   await expect.poll(() => fixture.updateCount).toBe(1);
   await expect.poll(() => fixture.projects.get(remote.id)?.revision).toBe(2);
   expect(fixture.projects.get(remote.id)?.document.name).toBe('Associated Project Revised');
@@ -1528,12 +1612,14 @@ test('associated Save error dismissal and recovery do not reveal a stale workspa
   fixture.updateFailures.push(400);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   const notice = page.getByTestId('workspace-notice');
   await expect(notice).toContainText('Online save needs attention.');
   await notice.getByRole('button', { name: 'Dismiss notice' }).click();
   await expect(notice).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   await expect.poll(() => fixture.projects.get(remote.id)?.revision).toBe(2);
   await expect(notice).toContainText('Saved online');
   await expect(notice).not.toContainText('Online save failed');
@@ -1552,6 +1638,7 @@ test('associated Save reports a queued transient failure until its automatic ret
   fixture.updateFailures.push(503);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   const notice = page.getByTestId('workspace-notice');
   await expect(notice).toContainText('Save queued — waiting to retry online.');
   await expect(notice.getByRole('button', { name: 'Review' })).toBeVisible();
@@ -1572,6 +1659,7 @@ test('associated Save authentication rejection reports a persistent sign-in erro
   fixture.updateFailures.push(401);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   const notice = page.getByTestId('workspace-notice');
   await expect(notice).toContainText('Your session changed. Sign in again from Projects.');
   await expect(notice.getByRole('button', { name: 'Review' })).toBeVisible();
@@ -1589,9 +1677,10 @@ test('signed-out top-bar Save uses the browser library without leaving the activ
   await sessionResponse;
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
 
   await expect(page).toHaveURL(/#screen=layout/);
-  await expect(page.getByRole('dialog', { name: 'Save project online' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Save project' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records?.length || 0)).toBe(1);
 });
 
@@ -1603,6 +1692,7 @@ test('reloaded browser project keeps its exact save association instead of creat
   await sessionResponse;
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records?.length || 0)).toBe(1);
 
   sessionResponse = page.waitForResponse('**/api/account/session');
@@ -1622,6 +1712,7 @@ test('reloaded browser project keeps its exact save association instead of creat
   await page.getByLabel('Preferences').first().click();
   await page.getByLabel('Project name').fill('Reloaded browser project');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
 
   await expect.poll(() => page.evaluate(() => {
     const records = JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records || [];
@@ -1641,7 +1732,8 @@ test('customer top-bar Save keeps unassociated work in browser and saves only an
   await sessionResponse;
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Save project online' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Save project' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records?.length || 0)).toBe(1);
   expect(fixture.projects.size).toBe(projectCount);
   expect(official.revision).toBe(officialRevision);
@@ -1652,6 +1744,7 @@ test('customer top-bar Save keeps unassociated work in browser and saves only an
   await page.getByLabel('Preferences').first().click();
   await page.getByLabel('Project name').fill('Customer Draft Revision');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
 
   await expect.poll(() => draft.revision).toBe(2);
   expect(draft.document.name).toBe('Customer Draft Revision');
@@ -1670,12 +1763,14 @@ test('workspace notice shows explicit browser-save success, supports dismissal, 
   await expect(page.locator('.savechip')).toHaveCount(0);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   const notice = page.getByTestId('workspace-notice');
   await expect(notice).toContainText('saved in browser library');
   await notice.getByRole('button', { name: 'Dismiss notice' }).click();
   await expect(notice).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser', exact: true }).click();
   await expect(notice).toBeVisible();
   await expect(notice).toHaveCount(0, { timeout: 3500 });
 });
@@ -1708,6 +1803,7 @@ test('conflict notice persists until dismissed and offers Preferences review', a
   fixture.forceNextConflict = true;
   await page.getByLabel('Project name').fill('Conflicting local revision');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
 
   const notice = page.getByTestId('workspace-notice');
   await expect(notice).toContainText('Online conflict');
@@ -1743,6 +1839,7 @@ test('offline and error notices persist, remember dismissal, and reappear after 
   fixture.updateFailures.push(400);
   await page.getByLabel('Project name').fill('Save error notice');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   await expect(notice).toContainText('Online save needs attention');
   await page.waitForTimeout(2400);
   await expect(notice).toBeVisible();
@@ -1784,6 +1881,21 @@ for (const width of [320, 390]) {
     await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    const saveDialog = page.getByRole('dialog', { name: 'Save project' });
+    const saveBox = await saveDialog.boundingBox();
+    expect(saveBox).not.toBeNull();
+    expect(saveBox!.x).toBeGreaterThanOrEqual(0);
+    expect(saveBox!.x + saveBox!.width).toBeLessThanOrEqual(width);
+    const localSave = saveDialog.getByRole('button', { name: 'Save in browser' });
+    const cloudSave = saveDialog.getByRole('button', { name: 'Save online' });
+    await expect(localSave).toBeInViewport();
+    await expect(cloudSave).toBeInViewport();
+    const localBox = (await localSave.boundingBox())!;
+    const cloudBox = (await cloudSave.boundingBox())!;
+    expect(localBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    expect(cloudBox.height).toBeGreaterThanOrEqual(MIN_TAP);
+    if (width === 390) expect(localBox.y).toBe(cloudBox.y);
+    await localSave.click();
     const noticeBox = await page.getByTestId('workspace-notice').boundingBox();
     const railBox = await page.locator('.rail').boundingBox();
     expect(noticeBox).not.toBeNull();
@@ -2300,7 +2412,7 @@ test('owner assigns and unassigns official projects while workers have no accoun
   expect(statuses).toEqual([403, 403]);
 });
 
-test('customer sees only assigned drafts, autosaves them, and cannot use shared-library controls', async ({ page }) => {
+test('customer saves and restores their assigned draft without access to shared-library controls', async ({ page }) => {
   const fixture = new LibraryFixture('customer', 'client@example.test');
   const assigned = fixture.seed('Assigned sculpture');
   fixture.seed('Other sculpture');
@@ -2321,6 +2433,8 @@ test('customer sees only assigned drafts, autosaves them, and cannot use shared-
   await page.getByRole('button', { name: 'Open' }).click();
   await expect(page.getByTestId('cloud-sync-status')).toHaveText('Saved online');
   await page.getByLabel('Project name').fill('Customer draft edit');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   await expect.poll(() => fixture.projects.get(draft.id)?.revision).toBe(2);
   const denied = await page.evaluate(async ({ officialId, draftId }) => Promise.all([
     fetch('/api/library/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(response => response.status),
@@ -2330,8 +2444,19 @@ test('customer sees only assigned drafts, autosaves them, and cannot use shared-
     fetch(`/api/library/projects/${draftId}/duplicate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(response => response.status),
   ]), { officialId: assigned.id, draftId: draft.id });
   expect(denied).toEqual([403, 403, 403, 404, 403]);
-  await page.getByRole('button', { name: 'History', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Project history' }).getByRole('button', { name: 'Restore' })).toHaveCount(0);
+  const historyButton = page.getByRole('button', { name: 'History', exact: true });
+  const historyDialog = page.getByRole('dialog', { name: 'Project history' });
+  await historyButton.click();
+  await expect(historyDialog.getByTestId('history-revision-2').getByRole('button', { name: 'Current' })).toBeDisabled();
+  await historyDialog.getByTestId('history-revision-1').getByRole('button', { name: 'Restore' }).click();
+  await expect(historyDialog).toHaveCount(0);
+  await expect(page.getByLabel('Project name')).toHaveValue('Assigned sculpture');
+  expect(draft.revisions.map(revision => revision.document.name)).toEqual([
+    'Assigned sculpture', 'Customer draft edit', 'Assigned sculpture',
+  ]);
+  expect(assigned.revision).toBe(1);
+  await historyButton.click();
+  await expect(historyDialog.getByTestId('history-revision-3').getByRole('button', { name: 'Current' })).toBeDisabled();
   await expect(page.locator('body')).not.toContainText('owner@example.test');
 });
 
@@ -2813,6 +2938,7 @@ test('creates a named online project and reports only acknowledged revisions as 
   await page.getByLabel('Project name').fill('Gallery Bloom manual save');
   await expect(page.getByTestId('cloud-sync-status')).toContainText('Waiting to save online');
   await page.getByRole('button', { name: 'Save project' }).click();
+  await page.getByRole('button', { name: 'Save online', exact: true }).click();
   await expect(page.getByTestId('cloud-sync-status')).toHaveText('Saving online');
   fixture.releaseUpdate();
   await expect(page.getByTestId('cloud-sync-status')).toHaveText('Saved online');

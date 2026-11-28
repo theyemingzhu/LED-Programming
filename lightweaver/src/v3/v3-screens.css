@@ -1200,6 +1200,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .topbar-project-signed-out p { color: var(--text-lo); font-size: 11.5px; line-height: 1.5; }
 .topbar-project-title { display: grid; gap: 6px; margin-top: 14px; color: var(--text-lo); font-size: 11.5px; }
 .topbar-project-title + .set-actions { margin-top: 14px; }
+.topbar-project-dialog .set-actions > .btn { min-height: var(--lw-tap, 44px); }
 
 /* ── The one Projects panel (top bar → Projects) ──────────────────────────
    A NON-modal sheet: the workspace stays interactive beside it (the top bar

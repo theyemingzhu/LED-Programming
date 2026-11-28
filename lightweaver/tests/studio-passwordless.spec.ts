@@ -60,6 +60,7 @@ test('local save is available before email verification opens the private librar
   await page.goto('/#screen=layout');
   await renameDraft(page, 'Local canvas');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   const saved = page.getByTestId('workspace-notice');
   await expect(saved).toContainText('Local canvas saved in browser library');
   await saved.getByRole('button', { name: 'Dismiss notice' }).click();

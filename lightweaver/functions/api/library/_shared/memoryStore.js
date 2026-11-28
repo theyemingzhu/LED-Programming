@@ -353,7 +353,6 @@ export function createMemoryLibraryStore(seed = {}) {
   }
 
   async function restoreRevision({ id, revision, baseRevision, actor, idempotencyKey }) {
-    requireSharedRole(actor);
     requireUnusedKey(idempotencyKey);
     const record = requireVisibleProject(id, actor, 'update');
     requireHead(record, baseRevision);
@@ -369,7 +368,7 @@ export function createMemoryLibraryStore(seed = {}) {
     record.updatedAt = next.createdAt;
     record.lastEditor = editor(actor);
     acceptKey(idempotencyKey);
-    return publicMetadata(record);
+    return publicMetadata(record, { redactAudit: role(actor) === 'customer' });
   }
 
   async function readAsset({ kind, identity }) {

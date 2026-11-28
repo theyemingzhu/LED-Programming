@@ -4,7 +4,7 @@ import {
   beginStudioGoogleSignIn, requestStudioEmailCode, verifyStudioEmailCode,
 } from '../../lib/studioPasswordlessClient.js';
 
-export function PasswordlessSignIn({ methods, googleOutcome, onSignedIn }) {
+export function PasswordlessSignIn({ methods, googleOutcome, onSignedIn, saveProjectId }) {
   const { flushProjectAutosave } = useProject();
   const [email, setEmail] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -19,7 +19,7 @@ export function PasswordlessSignIn({ methods, googleOutcome, onSignedIn }) {
   }, [recipient]);
 
   function startGoogle() {
-    if (!beginStudioGoogleSignIn(flushProjectAutosave)) {
+    if (!beginStudioGoogleSignIn(flushProjectAutosave, saveProjectId)) {
       setNotice('Download a backup of your project before signing in. This browser couldn’t save your draft.');
     }
   }

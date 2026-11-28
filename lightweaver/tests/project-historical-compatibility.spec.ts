@@ -40,6 +40,7 @@ for (const [path, version] of [[legacy(1), 1], [legacy(2), 2], [archived, 3]] as
     await expect(page.locator('.la-strip-row')).toHaveCount(version === 3 ? 5 : 1);
     await rename(page, `Historical project v${version}`);
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    await page.getByRole('button', { name: 'Save in browser' }).click();
     await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
     const saved = await download(page, info, 'historical.lw.json');
     expect(saved.document.version).toBe(3);
@@ -106,6 +107,7 @@ test('rejects corrupt and future files without touching the current draft or its
   await page.goto('/#screen=layout');
   await rename(page, 'Saved compatibility project');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   await rename(page, 'Unsaved work to protect');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').name)).toBe('Unsaved work to protect');

@@ -207,6 +207,7 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
   await expect(page.getByTestId('stack-arrange-playlist')).toBeVisible();
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   await expect.poll(() => page.evaluate(({ lookId }) => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
