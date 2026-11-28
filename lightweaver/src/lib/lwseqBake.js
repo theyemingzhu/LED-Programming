@@ -219,6 +219,7 @@ function sourceStrips(strips, hidden = {}) {
     if (!strip?.id || !pixels.length) throw new TypeError(`Pattern Lab source strip ${stripIndex + 1} is incomplete`);
     return {
       id: String(strip.id),
+      ...(strip.pathPlaybackFlipped === true ? { pathPlaybackFlipped: true } : {}),
       speed: safeCoordinate(strip.speed ?? 1, `Strip ${strip.id} speed`),
       brightness: hidden?.[strip.id] ? 0 : safeCoordinate(strip.brightness ?? 1, `Strip ${strip.id} brightness`),
       hueShift: safeCoordinate(strip.hueShift ?? 0, `Strip ${strip.id} hue shift`),
@@ -401,8 +402,9 @@ function prepareBake(input = {}, { legacyLogicalPlayback = false } = {}) {
   // side 1's colours). The look's own choice travels with it.
   const symmetry = input.symmetry ? clonePlainData(input.symmetry) : null;
   const sidesMirrored = input.sidesMirrored !== false;
-  const playbackOrderChanged = input.wiring.runs.some(run => run.type === 'strip'
-    && run.physicalDirection === 'source-reverse' && run.source.to > run.source.from);
+  const pathFlippedIds = new Set(input.strips.filter(strip => strip.pathPlaybackFlipped === true).map(strip => strip.id));
+  const playbackOrderChanged = input.wiring.runs.some(run => run.type === 'strip' && run.source.to > run.source.from
+    && (run.physicalDirection === 'source-reverse') !== pathFlippedIds.has(run.source.stripId));
   const layoutProjection = physicalHashProjection({
     symmetry,
     sidesMirrored,

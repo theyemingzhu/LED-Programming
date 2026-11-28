@@ -28,6 +28,7 @@
 
 import { playbackSlotsInStripFrame } from './wiringCompiler.js';
 import { applySymmetrySides } from './mirrorFrame.js';
+import { flippedPatternCoordinates } from './renderGeometry.js';
 import { LWSEQ_HEADER_BYTES, LWSEQ_MAX_PIXELS, assertLwseqPixelCount, toLwseqBytes } from './standaloneController.js';
 
 // The same two limits the other recorders use. Kept as literals so this file
@@ -186,10 +187,12 @@ export function placedLookColour(look, point, t = 0) {
 function frameAtPhase(look, strips, phase, { symmetry = null } = {}) {
   const pixels = [];
   for (const strip of strips) {
-    for (const point of strip.pixels || []) {
-      const rgb = Number.isFinite(point?.x) && Number.isFinite(point?.y) ? colourAtPhase(look, point, phase) : null;
+    (strip.pixels || []).forEach((point, index) => {
+      const sampling = flippedPatternCoordinates(strip, index);
+      const at = sampling ? { x: sampling.patternX, y: sampling.patternY } : point;
+      const rgb = Number.isFinite(at?.x) && Number.isFinite(at?.y) ? colourAtPhase(look, at, phase) : null;
       pixels.push(rgb ? { r: rgb[0], g: rgb[1], b: rgb[2] } : BLACK);
-    }
+    });
   }
   // Sides 2..n take side 1's finished colours through the same copy the
   // preview and the recorders already use (strip order inside a side, stretch

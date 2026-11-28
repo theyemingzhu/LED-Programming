@@ -591,6 +591,7 @@ function realPatternShape(patternId) {
           transport: cardLink?.transport,
           requiredZoneIds,
           runtimePackage: requireRuntimePackage(),
+          verifyInstalledWiring: true,
         });
         if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
         await pushSectionPreviewToCard(
@@ -605,7 +606,12 @@ function realPatternShape(patternId) {
         }
       } catch (error) {
         if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current || error?.reason === 'superseded') return;
-        const failure = classifyPlaylistControlFailure(error);
+        const failure = error?.liveControlAuthority && error.reason === 'project-mismatch'
+          ? {
+              ...classifyCardActionFailure({ reason: 'section-layout-mismatch' }),
+              message: 'Test & Install this project before previewing its saved mix on the card.',
+            }
+          : classifyPlaylistControlFailure(error);
         dispatchPreviewAction({ type: 'fail', revision: sequence, error: failure.message });
         setPlaylistStatus({ kind: 'err', message: failure.message, physicalPreview: true, failure });
       }
@@ -734,6 +740,7 @@ function realPatternShape(patternId) {
 
     const previewFailureHandler = (() => {
       switch (playlistStatus?.failure?.actionId) {
+        case 'install-sections': return () => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; };
         case 'update-card': return () => { window.location.hash = '#screen=flash'; };
         case 'reconnect-card': return openConnectionCenter;
         case 'open-card-page': return () => openLocalCardPage(host);
