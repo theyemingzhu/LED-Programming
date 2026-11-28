@@ -98,6 +98,24 @@ test('verified hello exposes fresh-install Wi-Fi eligibility without trusting la
   assert.equal(unavailable.identity.freshInstallEligible, false);
   await unavailable.close();
 });
+test('USB hello exposes only a settled local station address', async () => {
+  const station = { stationIp: '192.168.18.70', transition: 'station', transitionPending: false };
+  for (const [wifi, address] of [
+    [station, station.stationIp],
+    [{ ...station, transition: 'handoff-ready' }, ''],
+    [{ ...station, transition: 'reconnecting' }, ''],
+    [{ ...station, transitionPending: true }, ''],
+    [{ ...station, networkBindingsPending: true }, ''],
+    [{ ...station, joinFailed: true }, ''],
+    [{ ...station, stationIp: '192.168.4.1' }, ''],
+  ]) {
+    const port = fakePort(request => response(request, { wifi }));
+    const session = await openUsbWifiSession({ port, expected });
+    assert.equal(session.identity.stationIp, address);
+    await session.close();
+  }
+});
+
 for (const [field, value] of [['cardId', 'lw-wrong'], ['buildId', 'b'.repeat(40)], ['buildNumber', 124], ['firmwareVersion', '1.2.4']]) {
   test(`rejects wrong ${field} before secrets leave Studio`, async () => {
     const port = fakePort(r => response(r, { [field]: value }));

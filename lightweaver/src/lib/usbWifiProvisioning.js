@@ -198,10 +198,14 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
         if (error?.code !== 'timeout' || !helloDeadline || Date.now() >= helloDeadline) throw error;
       }
     }
+    const wifi = reply.wifi;
+    const stationIp = wifi?.transition === 'station' && wifi.transitionPending === false
+      && wifi.networkBindingsPending !== true && wifi.joinFailed !== true
+      ? normalizeWifiHandoffHost(wifi.stationIp) : '';
     identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion,
       buildId: reply.buildId, buildNumber: reply.buildNumber,
       freshInstallEligible: reply.freshInstallEligible === true,
-      stationIp: normalizeWifiHandoffHost(reply.wifi?.stationIp) });
+      stationIp });
   } catch (error) { await close(); throw error; }
   const correlate = reply => {
     if (!attempt || reply.attemptId !== attempt.id || reply.wifi?.handoffGeneration !== attempt.generation) throw failure('attempt_mismatch');

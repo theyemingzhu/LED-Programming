@@ -106,14 +106,23 @@ function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolutio
   if (cardLink?.reason === 'firmware-too-old' || stage === 'install-safely') {
     return [{ id: 'firmware', phaseId: 'connect' }];
   }
-  if (stage === 'set-up-card'
-    && ['setup-required', 'setup-joined'].includes(commissioningFlow?.networkState)) {
-    return [{ id: 'wifi', phaseId: 'connect' }];
-  }
-  // Last stored address is the setup AP: Join Wi-Fi is the next step, even
-  // while the card is still silent and lifecycle still says connect-card.
-  // A failed LAN probe must not invent this — only the remembered host.
-  if (normalizeHost(rememberedHost) === SETUP_MODE_HOST) {
+  // A live station result from the verified boot supersedes earlier setup hints.
+  const status = cardLink?.readiness;
+  const wifi = status?.wifi;
+  const commissioningCardId = commissioningFlow?.expectedCard?.id;
+  const liveHost = normalizeHost(cardLink?.host);
+  const verifiedStation = connectedExactCard(cardLink)
+    && Boolean(cardLink.validatedBootId) && status?.bootId === cardLink.validatedBootId
+    && status.cardId === cardLink.card?.id
+    && Boolean(liveHost) && liveHost !== SETUP_MODE_HOST
+    && (!commissioningCardId || commissioningCardId === status.cardId)
+    && wifi?.transport === 'station'
+    && wifi.transition === 'station' && wifi.transitionPending === false
+    && wifi.networkBindingsPending !== true;
+  if (!verifiedStation && (
+    (stage === 'set-up-card' && ['setup-required', 'setup-joined'].includes(commissioningFlow?.networkState))
+    || normalizeHost(rememberedHost) === SETUP_MODE_HOST
+  )) {
     return [{ id: 'wifi', phaseId: 'connect' }];
   }
   if (stage === 'set-up-card') return [{ id: 'install-project', phaseId: 'connect' }];

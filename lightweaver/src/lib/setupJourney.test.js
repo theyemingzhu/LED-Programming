@@ -142,6 +142,36 @@ test('a paired factory card labels its remaining Wi-Fi work as setup, not anothe
   assert.equal(phaseMap(disconnected).connect.title, 'Connect to your card');
 });
 
+test('verified station status supersedes stale setup instructions for the same card', () => {
+  const cardLink = {
+    ...connectedCard({
+      ...FACTORY_STATUS,
+      wifi: { transport: 'station', transition: 'station', transitionPending: false },
+    }),
+    validatedBootId: FACTORY_STATUS.bootId,
+  };
+  const rememberedHost = '192.168.4.1';
+  const commissioningFlow = {
+    stage: 'set-up-card', networkState: 'setup-joined',
+    expectedCard: cardLink.card,
+  };
+  const setup = deriveSetupJourney({ cardLink, rememberedHost, commissioningFlow });
+  assert.equal(setup.taskId, 'install-project');
+  assert.equal(deriveSetupJourney({ cardLink, rememberedHost }).taskId, 'discover-lights');
+  assert.equal(deriveSetupJourney({
+    cardLink, rememberedHost,
+    commissioningFlow: { ...commissioningFlow, expectedCard: { id: 'lw-different-card' } },
+  }).taskId, 'configure-wifi');
+  for (const unverified of [
+    { ...cardLink, validatedBootId: 'old-boot' },
+    { ...cardLink, expectedCard: { id: 'lw-different-card' } },
+    { ...cardLink, host: rememberedHost },
+    { ...cardLink, readiness: { ...cardLink.readiness, wifi: { ...cardLink.readiness.wifi, transitionPending: true } } },
+  ]) {
+    assert.equal(deriveSetupJourney({ cardLink: unverified, rememberedHost, commissioningFlow }).taskId, 'configure-wifi');
+  }
+});
+
 test('a factory blank exact card goes to light discovery before Layout', () => {
   const journey = deriveSetupJourney({
     cardLink: { ...connectedCard(), cardBlank: true },
