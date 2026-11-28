@@ -26,6 +26,7 @@ import { requestSymmetryReveal, setSymmetryFocus, useMirrorEchoFocus, usePlacedL
 import { placedLookFrame } from '../../../lib/placedLook.js';
 import { PlacedLookFrame, PlacedLookPicture, usePlacedLookClock } from './PlacedLookOverlay.jsx';
 import { LookDesignerTouch, useLookDesignerClock } from './LookDesignerTouch.jsx';
+import { SvgJumperLines, SvgWirePorts } from './SvgLayerWiringOverlay.jsx';
 import { useLookDesigner } from './lookDesignerStore.js';
 import { frameByStrip } from '../../../lib/lookEngine/index.js';
 import './symmetry-offer.css';
@@ -154,6 +155,7 @@ export function LayoutCanvas({
   const layoutPatternFrame = placedFrame || designerFrame || patternFrame;
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
+    svgWireGeometry, svgWireSource, svgWireMessage, activateSvgWirePort, cancelSvgWire,
     wiring, compiledWiring, selectedWiringRunId, onSeamMove,
     firstLedPicker, onFirstLedPick,
     kaleidoscopeEditor, onKaleidoscopeLedPick, onKaleidoscopeSelectPoint,
@@ -184,6 +186,10 @@ export function LayoutCanvas({
     }
   }
   const { mode, drawMode, waypoints, ghostPt, ghostD } = draw;
+  const showSvgWiring = mode === 'draw' && !drawMode && !litActive && !firstLedPicker && !kaleidoscopeEditor;
+  const selectedSvgPort = svgWireGeometry?.ports.get(selStripId);
+  const selectedHasSvgPorts = showSvgWiring && selectedSvgPort && [...svgWireGeometry.ports.values()].some(port =>
+    port.stripId !== selStripId && port.layerId === selectedSvgPort.layerId && port.outputId === selectedSvgPort.outputId);
   const canDragStrip = mode === 'draw' && !drawMode && !firstLedPicker && !kaleidoscopeEditor && wireOverlayMode !== 'chop';
   // The offer is worked out only while it could be shown.
   const offerPossible = mode === 'draw' && !drawMode && !symmetry && !layoutSymmetryOfferDismissed
@@ -467,6 +473,8 @@ export function LayoutCanvas({
                           opacity: effectiveShowLight ? 0.18 : 1, transition: isEditingGesture ? 'none' : 'opacity 0.2s' }}
                  dangerouslySetInnerHTML={{ __html: artworkHTML }}/>
             )}
+            {showSvgWiring && svgWireGeometry?.jumpers.length > 0 &&
+              <SvgJumperLines jumpers={svgWireGeometry.jumpers} selected={selStripId}/>}
 
             {/* ── Coverage heat map ── */}
             {showHeat && (
@@ -653,6 +661,7 @@ export function LayoutCanvas({
                         onKeyDown={event => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
+                            cancelSvgWire?.();
                             selectStrip(s.id);
                           }
                         }}
@@ -674,6 +683,7 @@ export function LayoutCanvas({
                         onClick={e => {
                           e.stopPropagation();
                           if (stripDragSuppressClickRef.current) return;
+                          cancelSvgWire?.();
                           if (wireOverlayMode === 'chop') {
                             chopStripAtEvent(e, s);
                             return;
@@ -1097,12 +1107,14 @@ export function LayoutCanvas({
                    onClick={event => {
                      event.stopPropagation();
                      if (stripDragSuppressClickRef.current) return;
+                     cancelSvgWire?.();
                      if (event.shiftKey || event.metaKey || event.ctrlKey) toggleStripSel(s.id);
                      else selectStrip(s.id);
                    }}>
                   <title>{label}</title>
                   {showChip && (
-                    <g className="lw-strip-chip" data-testid={`strip-chip-${s.id}`}
+                    <g className={`lw-strip-chip${selectedHasSvgPorts && s.id === selStripId ? ' la-svg-port-alternate' : ''}`}
+                       data-testid={`strip-chip-${s.id}`}
                        transform={`translate(${chipX} ${chipY}) scale(${annotationScale})`}
                        style={chipX !== preferredX ? { pointerEvents: 'none' } : undefined}>
                       <rect width={chipWidth} height="20" rx="4"
@@ -1130,7 +1142,7 @@ export function LayoutCanvas({
               const badgeX = Math.max(left, Math.min(right, 0));
               const badgeY = y - labelBounds.y > 33 * annotationScale ? -23 : 23;
               return (
-                <g data-testid="first-led-marker" role="img"
+                <g className={selectedHasSvgPorts ? 'la-svg-port-alternate' : undefined} data-testid="first-led-marker" role="img"
                    aria-label={`LED 1, data input for ${canvasStripLabel(selectedPhysicalStrip, sectionFamilies)}`}
                    transform={`translate(${x} ${y})`} style={{ pointerEvents: 'none' }}>
                   <g transform={`scale(${annotationScale})`} fill="var(--bg-canvas)" stroke="var(--accent-hi)">
@@ -1207,6 +1219,10 @@ export function LayoutCanvas({
               </g>
             )}
 
+            {showSvgWiring && !isEditingGesture && !focusActive && svgWireGeometry?.ports.size > 0 &&
+              <SvgWirePorts ports={svgWireGeometry.ports} selected={selStripId} source={svgWireSource}
+                            scale={annotationScale} bounds={labelBounds} onPort={activateSvgWirePort}/>}
+
             {/* ── Draw mode ghost ── */}
             {drawMode && ghostD && (
               <path d={ghostD} stroke="oklch(0.615 0.112 57)" strokeWidth="1.5" fill="none"
@@ -1260,6 +1276,8 @@ export function LayoutCanvas({
           )}
         </div>
         </div>{/* .stage */}
+
+        {showSvgWiring && svgWireMessage && <p className="la-svg-wire-feedback" role="status">{svgWireMessage}</p>}
 
         {offer && (
           <SymmetryOffer suggestion={offer} strips={strips}

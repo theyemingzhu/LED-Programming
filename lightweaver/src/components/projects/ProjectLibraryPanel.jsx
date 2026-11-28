@@ -313,7 +313,7 @@ export function ProjectLibraryPanel({ googleOutcome, methods, methodsError, retr
           revisions={history}
           loading={historyLoading}
           onClose={() => setHistoryProject(null)}
-          onRestore={library.session.role === 'customer' ? null : restoreRevision}
+          onRestore={library.session.role !== 'customer' || historyProject.draftOfProjectId ? restoreRevision : null}
         />
       )}
 

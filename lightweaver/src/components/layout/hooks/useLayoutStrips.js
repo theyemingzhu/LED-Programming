@@ -40,11 +40,17 @@ import {
 import { derivePxPerMmFromCounts } from '../../../lib/layoutLedCounts.js';
 import { moveStripToSide, sideOfStrip } from '../../../lib/pieceSymmetry.js';
 import { LED_COUNT_MAX } from '../../../lib/controlScale.js';
+import { svgLayerStripId } from '../../../lib/svgLayerWiring.js';
 
 // scaleStrip clamps: never shrink a strip's path below this length (px)…
 const MIN_STRIP_SVG_LENGTH = 20;
 // …and never grow it beyond this multiple of the artwork's larger dimension.
 const MAX_STRIP_LENGTH_ARTWORK_FACTOR = 4;
+
+function sliceStripPixels(pixels, offset, count, reversed) {
+  const from = reversed ? pixels.length - offset - count : offset;
+  return pixels.slice(from, from + count);
+}
 
 // Strip entity CRUD + batch ops (group / merge / duplicate / reorder).
 // Reads the shared layout bundle assembled by useLayoutState.
@@ -162,6 +168,7 @@ export function useLayoutStrips(ctx) {
     const newStrip = {
       ...s, id: newId, name: `${s.name} copy`,
       sourceLayerId: null, sourcePathId: null,
+      svgWiringLayerId: undefined,
       pixels: s.pixels.slice(),
       ...(s.kaleidoscope ? {
         kaleidoscope: { ...s.kaleidoscope, offsets: [...s.kaleidoscope.offsets] },
@@ -392,30 +399,19 @@ export function useLayoutStrips(ctx) {
       ? planStripSplitFromCounts(source.pixelCount, sections)
       : planStripSplitCounts(source.pixelCount, sections);
     if (!counts || counts.counts.length < 2) return null;
-    const paths = splitStripPathsN(source.pathData, counts, source.reversed);
-    if (!paths || paths.length !== counts.counts.length) return null;
     // A strip already cut into several runs in Advanced wiring has no single
     // run to divide; those boundaries are edited there instead.
     const sourceRuns = wiring.runs.filter(run => run.type === 'strip' && run.source?.stripId === id);
     if (sourceRuns.length > 1) return null;
 
+    const svgWiringLayerId = svgLayerStripId(source);
+    const wireReversed = Boolean(svgWiringLayerId && sourceRuns[0]?.physicalDirection === 'source-reverse');
+    const splitReversed = Boolean(source.reversed) !== wireReversed;
+    const paths = splitStripPathsN(source.pathData, counts, splitReversed);
+    if (!paths || paths.length !== counts.counts.length) return null;
+    const keepsSvgPixels = svgWiringLayerId && source.pixels?.length === counts.total;
     const x = source.x || 0;
     const y = source.y || 0;
-    const partOf = (pathData, pixelCount) => ({
-      ...source,
-      pathData,
-      pixelCount,
-      svgLength: svgPathLength(pathData),
-      pixels: sampleStripPixels(pathData, pixelCount, source.reversed, x, y),
-      // Reflection points are placed against a whole run; a cut invalidates them.
-      kaleidoscope: undefined,
-      reflectionPointDraft: undefined,
-      mergedFrom: undefined,
-      // No piece covers the artwork layer on its own any more, so none of
-      // them claims it (same rule "Combine into one strip" applies).
-      sourceLayerId: null,
-      sourcePathId: null,
-    });
 
     // Allocate one fresh id per new piece (the first piece keeps `id`),
     // walking nextStripId forward so two pieces never collide.
@@ -439,11 +435,31 @@ export function useLayoutStrips(ctx) {
       pieceColors.add(stripColorKey(color));
       return color;
     };
+    let offset = 0;
     const pieces = counts.counts.map((pixelCount, index) => {
-      const piece = partOf(paths[index], pixelCount);
-      return index === 0
-        ? { ...piece, id, name: names[0] }
-        : { ...piece, id: newIds[index - 1], name: names[index], color: nextPieceColor() };
+      const pathData = paths[index];
+      const pixels = keepsSvgPixels
+        ? sliceStripPixels(source.pixels, offset, pixelCount, wireReversed)
+        : sampleStripPixels(pathData, pixelCount, source.reversed, x, y);
+      offset += pixelCount;
+      return {
+        ...source,
+        id: index ? newIds[index - 1] : id,
+        name: names[index],
+        color: index ? nextPieceColor() : source.color,
+        pathData,
+        pixelCount,
+        svgLength: svgPathLength(pathData),
+        pixels,
+        ...(svgWiringLayerId ? { svgWiringLayerId, closed: false } : {}),
+        // No piece claims the whole artwork path. The layer wiring and the
+        // original source used by Merge back remain independently recoverable.
+        sourceLayerId: null,
+        sourcePathId: null,
+        kaleidoscope: undefined,
+        reflectionPointDraft: undefined,
+        mergedFrom: undefined,
+      };
     });
 
     const wiringResult = updateWiring(draft => {
@@ -494,7 +510,7 @@ export function useLayoutStrips(ctx) {
     keepPiecesInSide(id, newIds);
     setSectionFamilies(prev => [
       ...prev.filter(family => !family.memberIds?.includes(id)),
-      createSectionFamily(source, pieces),
+      createSectionFamily(source, pieces, { splitReversed }),
     ].filter(Boolean));
     setStripDensities(prev => {
       const next = { ...prev };
@@ -561,15 +577,28 @@ export function useLayoutStrips(ctx) {
     }
     const total = counts.reduce((sum, count) => sum + count, 0);
     const plan = planStripSplitFromCounts(total, counts);
-    const paths = plan ? splitStripPathsN(family.source.pathData, plan, family.source.reversed) : null;
+    const splitReversed = family.splitReversed ?? family.source.reversed;
+    const paths = plan ? splitStripPathsN(family.source.pathData, plan, splitReversed) : null;
     if (!paths) return { ok: false, error: 'The original path could not be divided at those LED boundaries.' };
+    const pixelsByMember = new Map();
+    const memberIds = new Set(family.memberIds);
+    if (sourceStrips.some(strip => memberIds.has(strip.id) && svgLayerStripId(strip))) {
+      const { pathData, reversed, x, y } = family.source;
+      const allPixels = sampleStripPixels(pathData, total, reversed, x, y);
+      let offset = 0;
+      family.memberIds.forEach((id, index) => {
+        const count = counts[index];
+        pixelsByMember.set(id, sliceStripPixels(allPixels, offset, count, splitReversed !== reversed));
+        offset += count;
+      });
+    }
     return resizeSectionFamily({
       family,
       strips: sourceStrips,
       counts,
       paths,
       measurePath: svgPathLength,
-      samplePixels: (member, pixelCount) => sampleStripPixels(
+      samplePixels: (member, pixelCount) => pixelsByMember.get(member.id) ?? sampleStripPixels(
         member.pathData,
         pixelCount,
         member.reversed,
@@ -844,6 +873,7 @@ export function useLayoutStrips(ctx) {
       id: mergedId,
       // Merged from several strips: no single artwork source.
       sourceLayerId: null, sourcePathId: null,
+      svgWiringLayerId: undefined,
       name: mergedName,
       pathData: picked.map(s => translatePathData(s.pathData, s.x || 0, s.y || 0)).filter(Boolean).join(' '),
       pixelCount: picked.reduce((sum, s) => sum + (s.pixelCount || 0), 0),

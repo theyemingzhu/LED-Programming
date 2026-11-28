@@ -1,8 +1,9 @@
 import { DEFAULT_CARD_PATTERN_BANK } from './cardRuntimeContract.js';
+import { CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { DEFAULT_BREATHE_SETTINGS, normalizeBreatheSettings } from './breatheEnvelope.js';
 
 const PATTERN_IDS = new Set([
-  ...DEFAULT_CARD_PATTERN_BANK.map(pattern => pattern.id),
+  ...CARD_PATTERN_BANK.map(pattern => pattern.id),
   'test-red',
   'test-green',
   'test-blue',

@@ -87,6 +87,16 @@
   flex-wrap: wrap;
   gap: 0 8px;
 }
+.pl-section-cue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pl-section-cue .pm-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.pl-section-cue .btn { flex: 0 0 auto; }
 
 /* The card address is a field, not a panel. It sat in a full-width well that
    read as the most important thing on the screen; it is a setting you touch

@@ -72,7 +72,7 @@ assert.deepEqual(
   const context = fs.readFileSync(new URL('../src/state/ProjectContext.jsx', import.meta.url), 'utf8');
   // Through the helpers that write the fields only when set, at the old
   // `mirrorSets` slot, so a project without symmetry keeps its content hash.
-  assert.match(context, /layerGroups: layoutLayerGroups,(\s*\/\/[^\n]*)*\s+\.\.\.symmetryLayoutFields\(layoutSymmetry, layoutSymmetryOfferDismissed\),\s+sectionFamilies,\s+layerOrder: layoutLayerOrder,\s+patchBoard: normalizePatchBoard/, 'serializeProject writes layout.symmetry');
+  assert.match(context, /layerGroups: layoutLayerGroups,(\s*\/\/[^\n]*)*\s+\.\.\.symmetryLayoutFields\(layoutSymmetry, layoutSymmetryOfferDismissed\),\s+sectionFamilies,\s+layerOrder: layoutLayerOrder,\s+patchBoard:/, 'serializeProject writes layout.symmetry');
   assert.match(context, /motionSmoothing, \.\.\.sidesMirroredPatternFields\(sidesMirrored\),\s+\},/, 'serializeProject writes pattern.sidesMirrored');
   assert.match(context, /compileWiring\(\{ wiring, strips, groups: layoutLayerGroups, symmetry: layoutSymmetry \}\)/, 'compiled wiring folds the symmetry in');
   assert.equal(context.includes('mirrorSets'), false, 'ProjectContext no longer reads or writes mirrorSets');

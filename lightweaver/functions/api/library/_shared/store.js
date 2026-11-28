@@ -633,9 +633,8 @@ export function createD1R2LibraryStore(env, options = {}) {
   }
 
   async function restoreRevision({ id, revision: sourceRevision, baseRevision, actor, idempotencyKey }) {
-    requireSharedRole(actor);
     await unusedKey(idempotencyKey);
-    const head = await requireProjectHead(id, baseRevision, actor);
+    await requireProjectHead(id, baseRevision, actor, 'update');
     const source = await db.prepare(`
       SELECT * FROM project_revisions WHERE project_id = ? AND revision = ?
     `).bind(id, sourceRevision).first();
@@ -649,6 +648,14 @@ export function createD1R2LibraryStore(env, options = {}) {
     const updatedAt = timestamp();
     const attemptId = crypto.randomUUID();
     const objectKey = `projects/${id}/revisions/${nextRevision}-${crypto.randomUUID()}.lw.json`;
+    const isCustomer = actor?.role === 'customer';
+    // Assignment can be removed while the revision body is read from R2.
+    const assignmentCondition = isCustomer ? `AND draft_owner_account_id = ? AND EXISTS (
+      SELECT 1 FROM project_assignments a
+      WHERE a.customer_account_id = projects.draft_owner_account_id
+        AND a.project_id = projects.draft_of_project_id
+    )` : '';
+    const assignmentValues = isCustomer ? [actor.accountId] : [];
     await putBody(objectKey, details);
     const statements = [
       db.prepare(`
@@ -657,18 +664,18 @@ export function createD1R2LibraryStore(env, options = {}) {
           project_version, created_at, editor
         )
         SELECT id, ?, archived, ?, ?, ?, ?, ?, ? FROM projects
-        WHERE id = ? AND current_revision = ? AND deleted_at IS NULL
+        WHERE id = ? AND current_revision = ? AND deleted_at IS NULL ${assignmentCondition}
       `).bind(
         nextRevision, objectKey, details.hash, details.bytes, document.version,
-        updatedAt, actorEmail(actor), id, baseRevision,
+        updatedAt, actorEmail(actor), id, baseRevision, ...assignmentValues,
       ),
       db.prepare(`
         UPDATE projects SET current_revision = ?, current_object_key = ?, current_hash = ?,
           current_bytes = ?, updated_at = ?, last_editor = ?
-        WHERE id = ? AND current_revision = ? AND deleted_at IS NULL
+        WHERE id = ? AND current_revision = ? AND deleted_at IS NULL ${assignmentCondition}
       `).bind(
         nextRevision, objectKey, details.hash, details.bytes, updatedAt,
-        actorEmail(actor), id, baseRevision,
+        actorEmail(actor), id, baseRevision, ...assignmentValues,
       ),
       mutationStatement(db, {
         actor,
@@ -684,9 +691,9 @@ export function createD1R2LibraryStore(env, options = {}) {
       attemptId,
       cleanup: [objectKey],
       idempotencyKey,
-      onConflict: async () => (await rawProjectRow(id)).current_revision !== baseRevision,
+      onConflict: async () => (await projectRow(id, actor, 'update')).current_revision !== baseRevision,
     });
-    return publicProject(await rawProjectRow(id));
+    return publicProject(await rawProjectRow(id), { redactAudit: isCustomer });
   }
 
   async function assetRow(kind) {

@@ -66,18 +66,31 @@ export function routeWiringRunToPin(wiring, {
 export function assignWiringRunToPin(draft, {
   runId, pin, controls = {}, supportedOutputPins = [], maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs,
 } = {}) {
+  return assignWiringRunsToPin(draft, { runIds: [runId], pin, controls, supportedOutputPins, maxOutputs });
+}
+
+export function assignWiringRunsToPin(draft, {
+  runIds = [], pin, controls = {}, supportedOutputPins = [], maxOutputs = CARD_HARDWARE_CONTRACT.maxOutputs,
+} = {}) {
   const nextPin = Number(pin);
   if (!supportedOutputPins.includes(nextPin)) throw new Error(`GPIO ${nextPin} cannot drive an LED output.`);
   const control = activeBoardGpios([], controls).find(item => item.pin === nextPin);
   if (control) throw new Error(`GPIO ${nextPin} is already assigned to a board control.`);
-  const source = draft.outputs.find(output => output.runIds.includes(runId));
-  if (!source) throw new Error('That physical run is no longer assigned to an output.');
-  if (source.pin === nextPin) return;
+  const picked = new Set(runIds);
+  const ordered = draft.outputs.flatMap(output => output.runIds.filter(id => picked.has(id)));
+  if (!ordered.length || ordered.length !== picked.size) throw new Error('That physical run is no longer assigned to an output.');
   let target = draft.outputs.find(output => output.pin === nextPin);
-  if (!target && source.runIds.length === 1) {
+  const source = draft.outputs.find(output => output.runIds.length && output.runIds.every(id => picked.has(id)));
+  if (!target && source && source.runIds.length === ordered.length) {
     source.pin = nextPin;
     return;
   }
+  if (target && ordered.every(id => target.runIds.includes(id))) return;
+  const movingIds = ordered.filter(id => !target?.runIds.includes(id));
+  const moving = new Set(movingIds);
+  const vacated = new Set(draft.outputs.filter(output => output.runIds.length && output.runIds.every(id => moving.has(id))));
+  draft.outputs.forEach(output => { output.runIds = output.runIds.filter(id => !moving.has(id)); });
+  draft.outputs = draft.outputs.filter(output => !vacated.has(output));
   if (!target) {
     if (draft.outputs.length >= maxOutputs) throw new Error(`This card supports up to ${maxOutputs} GPIO outputs.`);
     let number = 1;
@@ -85,7 +98,5 @@ export function assignWiringRunToPin(draft, {
     target = { id: `out${number}`, name: `Output ${number}`, pin: nextPin, runIds: [] };
     draft.outputs.push(target);
   }
-  source.runIds = source.runIds.filter(id => id !== runId);
-  target.runIds.push(runId);
-  if (!source.runIds.length) draft.outputs = draft.outputs.filter(output => output.id !== source.id);
+  target.runIds.push(...movingIds);
 }

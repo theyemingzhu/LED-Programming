@@ -46,12 +46,15 @@ export async function verifyStudioEmailCode(email, code) {
   return { ok: true };
 }
 
-export function beginStudioGoogleSignIn(flushProjectAutosave) {
+export function beginStudioGoogleSignIn(flushProjectAutosave, saveProjectId) {
   if (!flushProjectAutosave()) return false;
   try {
-    window.sessionStorage.setItem(GOOGLE_RETURN_KEY, window.location.hash);
+    window.sessionStorage.setItem(GOOGLE_RETURN_KEY, JSON.stringify({
+      hash: window.location.hash,
+      saveProjectId,
+    }));
   } catch {
-    // The draft is already safe in the browser. Only the screen may reset.
+    // The draft is already safe in the browser. The screen and save choice may reset.
   }
   window.location.assign('/api/account/google/start');
   return true;
@@ -62,10 +65,23 @@ export function studioGoogleSignInOutcome() {
   return result === 'success' || result === 'error' ? result : null;
 }
 
-export function clearStudioGoogleSignInReturn() {
-  let hash = '';
+function googleReturnState() {
   try {
-    hash = window.sessionStorage.getItem(GOOGLE_RETURN_KEY) || '';
+    const value = window.sessionStorage.getItem(GOOGLE_RETURN_KEY);
+    if (value?.startsWith('#')) return { hash: value };
+    return JSON.parse(value) || {};
+  } catch {
+    return {};
+  }
+}
+
+export function studioGoogleSignInSaveProject() {
+  return googleReturnState().saveProjectId || '';
+}
+
+export function clearStudioGoogleSignInReturn() {
+  const { hash = '' } = googleReturnState();
+  try {
     window.sessionStorage.removeItem(GOOGLE_RETURN_KEY);
   } catch {
     // Route restoration is optional when session storage is unavailable.
@@ -73,5 +89,5 @@ export function clearStudioGoogleSignInReturn() {
   const url = new URL(window.location.href);
   url.searchParams.delete('lwSignIn');
   window.history.replaceState(window.history.state, '', url);
-  return hash.startsWith('#screen=') ? hash : '#screen=layout';
+  return typeof hash === 'string' && hash.startsWith('#screen=') ? hash : '#screen=layout';
 }

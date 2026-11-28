@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { buildCardRuntimePackageFromProject } from '../src/lib/cardRuntimeProject.js';
 
 // Count-first SVG mapping acceptance:
 // - the artwork stays in its authored 1:2:3 proportions,
@@ -11,7 +12,7 @@ const THREE_ROUTE_SVG = `
     <g id="outer" data-name="Outer halo"><path d="M 40 190 H 340" fill="none" stroke="#66f"/></g>
   </svg>`;
 
-async function freshImportedRoutes(page: any) {
+async function freshImportedArtwork(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -21,6 +22,10 @@ async function freshImportedRoutes(page: any) {
     buffer: Buffer.from(THREE_ROUTE_SVG),
   });
   await expect(page.getByText('Artwork layers')).toBeVisible();
+}
+
+async function freshImportedRoutes(page: any) {
+  await freshImportedArtwork(page);
   await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 }
@@ -160,4 +165,77 @@ test('a total below the number of converted layers is rejected without mutating 
   await total.press('Enter');
   await expect(page.getByTestId('layout-total-led-error')).toHaveText(/at least 3 LEDs/i);
   await savedCounts(page).toEqual(before);
+});
+
+test('imported strips can be named, wired, and sequenced as individual section cues', async ({ page }) => {
+  await freshImportedArtwork(page);
+  const sourceLayer = page.locator('.layer-row').filter({ hasText: 'Inner halo' });
+  await sourceLayer.click();
+  await sourceLayer.getByRole('button', { name: 'Rename Inner halo', exact: true }).click();
+  const sourceName = page.getByRole('textbox', { name: 'New name for Inner halo', exact: true });
+  await sourceName.fill('Crystal center');
+  await sourceName.press('Enter');
+  await page.getByTestId('artwork-create-all-strips').click();
+
+  const sections = [
+    { layer: 'Crystal center', name: 'Center crystal', gpio: 16 },
+    { layer: 'Middle halo', name: 'Bottom crystal', gpio: 17 },
+    { layer: 'Outer halo', name: 'Tree leaves', gpio: 18 },
+  ];
+  for (const { layer, name, gpio } of sections) {
+    const strip = page.locator('.la-strip-row').filter({ hasText: layer });
+    await strip.click();
+    await strip.getByRole('button', { name: `Rename ${layer}`, exact: true }).click();
+    const nameInput = page.getByRole('textbox', { name: `New name for ${layer}`, exact: true });
+    await nameInput.fill(name);
+    await nameInput.press('Enter');
+    await page.getByLabel('GPIO output', { exact: true }).selectOption(String(gpio));
+    await expect(page.getByTestId(`gpio-group-${gpio}`).locator('.la-strip-row').filter({ hasText: name })).toBeVisible();
+  }
+
+  await page.getByRole('button', { name: 'Playlist', exact: true }).click();
+  const picker = page.getByLabel('Section', { exact: true });
+  for (const { name } of sections.slice().reverse()) {
+    await picker.selectOption({ label: name });
+    await page.getByRole('button', { name: 'Add section cue', exact: true }).click();
+  }
+  const reorder = (name: string) => page.getByRole('button', { name: `Reorder ${name}`, exact: true });
+  await reorder('Bottom crystal').press('Home');
+  await reorder('Center crystal').press('Home');
+  const cueRows = page.locator('.pl-row').filter({ hasText: /Center crystal|Bottom crystal|Tree leaves/ });
+  await expect.poll(() => cueRows.locator('.pl-grip').evaluateAll(handles => handles.map(handle => handle.getAttribute('aria-label'))))
+    .toEqual(sections.map(({ name }) => `Reorder ${name}`));
+  const centerLength = page.getByRole('spinbutton', { name: 'Length in minutes for Center crystal' });
+  await centerLength.fill('0.25');
+  await centerLength.press('Enter');
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.devices?.standaloneController?.playlist?.find(item => item.label === 'Center crystal')?.dwellSeconds;
+  })).toBe(15);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(centerLength).toHaveValue('0.25');
+  await expect.poll(() => cueRows.locator('.pl-grip').evaluateAll(handles => handles.map(handle => handle.getAttribute('aria-label'))))
+    .toEqual(sections.map(({ name }) => `Reorder ${name}`));
+  await page.getByTestId('playlist-enabled-toggle').click();
+  const savedProject = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  await expect.poll(async () => (await savedProject()).devices?.standaloneController?.controls?.playlist?.enabled).toBe(true);
+  const project = await savedProject();
+  const { config } = buildCardRuntimePackageFromProject({
+    ...project.layout,
+    standaloneController: project.devices.standaloneController,
+  });
+  expect(config.led.outputs.map(output => output.pin)).toEqual(sections.map(section => section.gpio));
+  const zoneNames = new Map(config.zones.map(zone => [zone.id, zone.label]));
+  const cues = config.playlist.entries.map(entry => config.looks.find(look => look.id === entry.patternId));
+  expect(cues.map(cue => cue.label)).toEqual(sections.map(section => section.name));
+  for (const cue of cues) {
+    const litZones = cue.zones.filter(zone => zone.brightness > 0 && !zone.blackout);
+    expect(litZones.map(zone => zoneNames.get(zone.id))).toEqual([cue.label]);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const addCue = page.getByRole('button', { name: 'Add section cue', exact: true });
+  await addCue.scrollIntoViewIfNeeded();
+  await expect(picker).toBeInViewport({ ratio: 1 });
+  await expect(addCue).toBeInViewport({ ratio: 1 });
 });

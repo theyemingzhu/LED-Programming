@@ -126,10 +126,18 @@ export function EmitCompass({ angle, setAngle, omni, onToggleEmit }) {
   );
 }
 
-export function InlineRename({ value, onCommit, className, style }) {
+export function InlineRename({ value, onCommit, className, style, showButton = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(value);
   const inputRef              = useRef(null);
+  const buttonRef             = useRef(null);
+
+  const begin = (event) => {
+    event.stopPropagation();
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 20);
+  };
 
   const commit = () => {
     setEditing(false);
@@ -139,20 +147,29 @@ export function InlineRename({ value, onCommit, className, style }) {
 
   if (!editing) {
     return (
-      <span className={className} style={style}
-            title="Double-click to rename"
-            onDoubleClick={e => { e.stopPropagation(); setDraft(value); setEditing(true); setTimeout(() => inputRef.current?.select(), 20); }}>
-        {value}
-      </span>
+      <>
+        <span className={className} style={style} title="Double-click to rename" onDoubleClick={begin}>
+          {value}
+        </span>
+        {showButton && <button ref={buttonRef} type="button" className="la-rename-button"
+                              aria-label={`Rename ${value}`} title={`Rename ${value}`} onClick={begin}>
+          {TbIcon.draw}
+        </button>}
+      </>
     );
   }
   return (
-    <input ref={inputRef} value={draft} autoFocus
+    <input ref={inputRef} value={draft} aria-label={`New name for ${value}`} autoFocus
            onChange={e => setDraft(e.target.value)}
            onBlur={commit}
            onKeyDown={e => {
-             if (e.key === 'Enter') { e.preventDefault(); commit(); }
-             if (e.key === 'Escape') { e.stopPropagation(); setEditing(false); }
+             if (e.key === 'Enter' || e.key === 'Escape') {
+               e.preventDefault();
+               e.stopPropagation();
+               if (e.key === 'Enter') commit();
+               else setEditing(false);
+               if (showButton) window.requestAnimationFrame(() => buttonRef.current?.focus());
+             }
            }}
            onClick={e => e.stopPropagation()}
            style={{ ...style, background: 'var(--bg)', border: '1px solid var(--accent)', borderRadius: 3,

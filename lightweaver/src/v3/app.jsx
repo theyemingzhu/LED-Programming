@@ -17,7 +17,7 @@ import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import { useFirmwareReleaseIdentity } from '../hooks/useFirmwareReleaseIdentity.js';
 import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.jsx';
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
-import { clearStudioGoogleSignInReturn, studioGoogleSignInOutcome } from '../lib/studioPasswordlessClient.js';
+import { clearStudioGoogleSignInReturn, studioGoogleSignInOutcome, studioGoogleSignInSaveProject } from '../lib/studioPasswordlessClient.js';
 import { NoticeLayer } from '../components/NoticeLayer.jsx';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge, releaseInheritedBridgeWindowName } from '../lib/cardBridge.js';
@@ -871,14 +871,15 @@ function Shell({ offlineUpdateController = null }) {
     remoteId: cloudLibrary.activeRemoteProject?.id || '',
   };
   const [googleOutcome, setGoogleOutcome] = useState(studioGoogleSignInOutcome);
-  const [projectsPanelOpen, setProjectsPanelOpen] = useState(() => Boolean(googleOutcome));
+  const [googleSaveProjectId] = useState(() => googleOutcome ? studioGoogleSignInSaveProject() : '');
+  const [projectsPanelOpen, setProjectsPanelOpen] = useState(() => Boolean(googleOutcome && !googleSaveProjectId));
   useEffect(() => {
     if (!googleOutcome || !studioGoogleSignInOutcome()) return;
     const returnHash = clearStudioGoogleSignInReturn();
     resumeUserNavigated.current = true;
     routeStore.replace(returnHash);
   }, [googleOutcome, routeStore]);
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveDialogMode, setSaveDialogMode] = useState(() => googleSaveProjectId ? 'google-return' : null);
   const [projectAssociationSaveBlocked, setProjectAssociationSaveBlockedState] = useState(isProjectLibrarySaveBlocked);
   const setProjectAssociationSaveBlocked = useCallback(blocked => {
     setProjectLibrarySaveBlocked(blocked);
@@ -1911,13 +1912,18 @@ function Shell({ offlineUpdateController = null }) {
   }, []);
 
   // real project actions
-  const onSave = useCallback(async () => {
+  const onSave = useCallback(async (destination) => {
     if (projectAssociationSaveBlocked) {
       showWorkspaceEvent('Saving is blocked because Studio could not establish a safe destination for this project. Open another project or restore browser storage before retrying.', { kind: 'error', persistent: true, review: true });
       return { ok: false, reason: 'association-save-blocked' };
     }
-    if (cloudLibrary.session.status === 'authenticated' && cloudLibrary.activeRemoteProject) {
-      const result = await cloudLibrary.saveNow();
+    if (destination === 'choose') {
+      setSaveDialogMode('choose');
+      return { ok: false, reason: 'destination-required' };
+    }
+    if (destination === 'online' || (destination !== 'browser'
+      && cloudLibrary.session.status === 'authenticated' && cloudLibrary.activeRemoteProject)) {
+      const result = await cloudLibrary.saveNow({ expectedRemoteId: latestProjectSaveStateRef.current.remoteId });
       if (result.ok) showWorkspaceEvent('Saved online');
       else if (result.reason === 'queued' || Number(result.error?.status) >= 500) {
         showWorkspaceEvent('Save queued — waiting to retry online.', { kind: 'offline', persistent: true, review: true, source: 'cloud-save-waiting' });
@@ -1926,8 +1932,8 @@ function Shell({ offlineUpdateController = null }) {
       }
       return result;
     }
-    if (cloudLibrary.session.status === 'authenticated' && cloudLibrary.session.role !== 'customer') {
-      setSaveDialogOpen(true);
+    if (destination !== 'browser' && cloudLibrary.session.status === 'authenticated' && cloudLibrary.session.role !== 'customer') {
+      setSaveDialogMode('online');
       return { ok: false, reason: 'destination-required' };
     }
     try {
@@ -2473,7 +2479,11 @@ function Shell({ offlineUpdateController = null }) {
       const result = await importProjectFromPickedFile(file, { replaceProject, ...projectImportCleanup });
       if (result.ok) {
         setProjectsPanelOpen(false);
-        showWorkspaceEvent(`Opened ${result.project?.name || 'project'} from file`);
+        if (result.missingRecordingNotice) {
+          showWorkspaceEvent(result.missingRecordingNotice, { kind: 'info', persistent: true });
+        } else {
+          showWorkspaceEvent(`Opened ${result.project?.name || 'project'} from file`);
+        }
       } else if (result.reason === 'invalid') {
         showWorkspaceEvent('Could not open this project file. Choose a compatible Lightweaver project backup.', { kind: 'error', persistent: true });
       }
@@ -2626,12 +2636,8 @@ function Shell({ offlineUpdateController = null }) {
         lifecycleLabel={projectHeaderLifecycleLabel}
         hasUnsavedChanges={projectHasUnsavedChanges}
         onRenameProject={setProjectName}
-        onNew={onNew} onLoad={onLoad} onDownload={onDownload} onSave={onSave}
-        saveTitle={cloudLibrary.session.status === 'authenticated' && cloudLibrary.activeRemoteProject
-          ? 'Save changes to the online project'
-          : cloudLibrary.session.status === 'authenticated' && cloudLibrary.session.role !== 'customer'
-            ? 'Choose where to save the project'
-            : 'Save a copy in this browser'}
+        onNew={onNew} onLoad={onLoad} onDownload={onDownload} onSave={() => onSave('choose')}
+        saveTitle="Choose where to save the project"
         onPreferences={() => openCardSection('preferences')}
       />
       <Rail view={underlyingView} navigate={navigateStudio} openCard={openCardSection} />
@@ -2836,11 +2842,17 @@ function Shell({ offlineUpdateController = null }) {
         )}
         onLibraryMutated={refreshBrowserAssociationSnapshot}
       />
-      {saveDialogOpen && (
+      {saveDialogMode && !projectAssociationSaveBlocked
+        && (saveDialogMode !== 'google-return' || googleSaveProjectId === latestProjectSaveStateRef.current.project.id) && (
         <ProjectSaveDialog
           projectName={projectName}
+          projectId={latestProjectSaveStateRef.current.project.id}
+          googleOutcome={saveDialogMode === 'google-return' ? googleOutcome : null}
+          skipDestination={saveDialogMode === 'online'}
+          onSaveBrowser={() => { setSaveDialogMode(null); void onSave('browser'); }}
+          onSaveOnline={() => { setSaveDialogMode(null); void onSave('online'); }}
           onClose={result => {
-            setSaveDialogOpen(false);
+            setSaveDialogMode(null);
             if (result?.saved) showWorkspaceEvent('Saved online');
           }}
         />

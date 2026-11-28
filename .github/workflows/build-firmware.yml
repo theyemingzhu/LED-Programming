@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: firmware-release
     permissions:
-      contents: write
+      contents: read
       actions: write
     env:
       SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
@@ -258,7 +258,7 @@ jobs:
           npm run test:production-jobs --prefix lightweaver
       - name: Verify signed release set
         run: npm run ci:artifact:contracts --prefix lightweaver
-      - name: Commit the signed release if it changed
+      - name: Prepare the signed release if it changed
         id: release
         shell: bash
         run: |
@@ -313,7 +313,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${RELEASE_PATHS[@]}"
-          git commit -m "CI: publish signed Lightweaver firmware release"
+          # The signer validates this generated commit and dispatches its
+          # exact SHA. Do not start a second pipeline from the SSH push.
+          git commit -m "CI: publish signed Lightweaver firmware release" -m "[skip ci]"
           git fetch origin main
           if ! git diff --quiet "$SOURCE_REVISION..origin/main" -- "${RELEASE_INPUTS[@]}"; then
             echo "::error::Main changed a release input while this signer ran; refusing a stale signature."
@@ -322,10 +324,29 @@ jobs:
           git rebase origin/main
           npm run ci:artifact --prefix lightweaver
           npm run ci:artifact:release-ui --prefix lightweaver
-          git push origin HEAD:main
           signed_sha="$(git rev-parse HEAD)"
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "signed_sha=$signed_sha" >> "$GITHUB_OUTPUT"
+      - name: Commit the signed release if it changed
+        if: steps.release.outputs.changed == 'true'
+        env:
+          SIGNER_PUSH_KEY: ${{ secrets.LIGHTWEAVER_SIGNER_PUSH_KEY }}
+          SIGNED_SHA: ${{ steps.release.outputs.signed_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SIGNED_SHA"
+          if [ -z "$SIGNER_PUSH_KEY" ]; then
+            echo "::error::The firmware-release environment has no signer push key."
+            exit 1
+          fi
+          ssh_dir="$(mktemp -d "$RUNNER_TEMP/lightweaver-signer.XXXXXX")"
+          trap 'rm -- "$ssh_dir/key" "$ssh_dir/known_hosts"; rmdir -- "$ssh_dir"' EXIT
+          umask 077
+          printf '%s\n' "$SIGNER_PUSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$ssh_dir/known_hosts"
+          unset SIGNER_PUSH_KEY
+          export GIT_SSH_COMMAND="ssh -i '$ssh_dir/key' -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$ssh_dir/known_hosts'"
+          git push "git@github.com:$GITHUB_REPOSITORY.git" "$SIGNED_SHA:refs/heads/main"
       - name: Trigger exact signed-revision deploy
         env:
           GH_TOKEN: ${{ github.token }}

@@ -3016,6 +3016,7 @@ String runtimeFirmwareInfo() {
   doc["lastCrash"] = serialized(lightweaverCrashLastCrashJson());
   doc["capabilities"]["ownerNoTouch"] = LW_OWNER_NO_TOUCH_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
+  doc["capabilities"]["warmFade"] = 1;
   lightweaverReportRecordedMedia(doc["capabilities"].as<JsonObject>());
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
   doc["capabilities"]["firmwareUpdate"]["network"] = true;

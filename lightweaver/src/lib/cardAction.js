@@ -1,4 +1,5 @@
 export const PHYSICAL_PREVIEW_FAILURE_MESSAGE = 'Studio changed, but the card did not verify that it applied the preview command. Reconnect and retry.';
+export const WARM_FADE_UPDATE_MESSAGE = 'Update this card to play Warm Fade.';
 
 const CARD_ACTION_FAILURES = Object.freeze({
   'section-layout-mismatch': Object.freeze({
@@ -13,6 +14,11 @@ const CARD_ACTION_FAILURES = Object.freeze({
   }),
   'firmware-too-old': Object.freeze({
     message: 'This card is running old software and cannot report which preview command it applied. Update the card, then retry.',
+    actionId: 'update-card',
+    actionLabel: 'Update card',
+  }),
+  'warm-fade-unsupported': Object.freeze({
+    message: WARM_FADE_UPDATE_MESSAGE,
     actionId: 'update-card',
     actionLabel: 'Update card',
   }),

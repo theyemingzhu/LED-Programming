@@ -19,6 +19,7 @@ import { useLayoutArtwork } from './useLayoutArtwork.js';
 import { useLayoutWire } from './useLayoutWire.js';
 import { useLayoutCanvasInteraction } from './useLayoutCanvasInteraction.js';
 import { useLayoutImport } from './useLayoutImport.js';
+import { useWiringCard } from '../modes/useWiringCard.js';
 
 // Stable empty stand-ins so the derived selection views keep referential
 // identity across renders when the selection is a different kind.
@@ -92,9 +93,13 @@ export function useLayoutState() {
     updateStripKaleidoscope,
     starterPending,
     replaceLayoutGeometry,
+    mapArtworkStrips,
+    standaloneController,
+    updateWiring,
   } = project;
 
   const usbLedMaxPixels = usbLedStatus?.maxPixels || 300;
+  const wiringCard = useWiringCard();
 
   // Per-strip detail expander (ephemeral view state — stays local to the screen)
   const [expandedStrips, setExpandedStrips] = useState({});
@@ -224,7 +229,8 @@ export function useLayoutState() {
     projectRevision,
     projectWarnings, updateStripKaleidoscope,
     kaleidoscopeResetNotices, setKaleidoscopeResetNotices,
-    patchBoard, setPatchBoard, updatePatchBoard,
+    patchBoard, setPatchBoard, updatePatchBoard, wiring, updateWiring, wiringCard,
+    standaloneController, mapArtworkStrips,
     pushLayoutHistory, undoLayout, redoLayout,
     selection,
     selectStrip, selectStrips, toggleStripSel, selectLayer,
@@ -291,7 +297,7 @@ export function useLayoutState() {
     strips, layers, hidden, setHidden,
     viewBox, svgText, density, pxPerMm,
     editCounts, setEditCounts, layerGroups, sectionFamilies, layerOrder, setLayers,
-    patchBoard,
+    patchBoard, wiringCard,
     selectStrip, selectLayer, selectPaths, toggleStripSel,
     clearLayoutSelection, renameLayoutSelection,
     layoutHistLen, layoutFutLen, pushLayoutHistory,

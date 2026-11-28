@@ -893,7 +893,9 @@ export function SetupScreen({
       : file => importProjectFromPickedFile(file, { replaceProject: data => replaceProject?.(data) });
     importFile(file)
       .then(replacement => {
-        if (replacement?.reason === 'invalid') {
+        if (replacement?.ok && replacement.missingRecordingNotice) {
+          setAdoptionNotice(replacement.missingRecordingNotice);
+        } else if (replacement?.reason === 'invalid') {
           reportAdoptionFailure('invalid', null, 'Could not open this project file. Choose a compatible Lightweaver project backup.');
         } else if (!replacement?.ok && replacement?.reason !== 'cancelled') {
           reportAdoptionFailure(replacement?.reason);

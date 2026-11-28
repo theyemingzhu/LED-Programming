@@ -293,6 +293,7 @@ test('[FA-resume-usb-wifi] saved exact preserving update opens its USB resume ac
 test('[FA-wifi-saved] saved home Wi-Fi continues to the next unfinished step', async ({ page }) => {
   const card = await bootSetUp(page);
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   const savedFingerprint = await page.evaluate(async projectId => {
     const { listProjectLibraryRecords } = await import('/src/lib/projectStorage.js');

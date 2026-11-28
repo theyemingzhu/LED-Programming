@@ -4,8 +4,11 @@ import {
   stripSourceKey,
   nextStripId,
   layerArtworkMarkup,
+  measureSubPaths,
 } from '../../../lib/layoutGeometry.js';
 import { isClosedPathData } from '../../../lib/pathClosure.js';
+import { allocateLedCountsByLength } from '../../../lib/layoutLedCounts.js';
+import { addSvgLayerWiring, svgLayerStripId } from '../../../lib/svgLayerWiring.js';
 
 // Artwork side: layers, layer/strip groups, layer order, path selection,
 // add-as-strip flows, and rename/hide/delete for artwork.
@@ -24,6 +27,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     pathSel, pathSelName,
     selLayer,
     nextColor, makeStrip, scrollToStrip, stripGroupMember,
+    wiring, wiringCard, standaloneController, mapArtworkStrips,
   } = ctx;
 
   // Layer panel expand + drag state (ephemeral view state — stays local)
@@ -31,6 +35,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
   const [layerDragging, setLayerDragging] = useState(null);
   const [layerDragOver, setLayerDragOver] = useState(null);
   const [stripGroupDragOver, setStripGroupDragOver] = useState(null);
+  const [svgWiringIssue, setSvgWiringIssue] = useState('');
 
   // ── Inline SVG artwork ─────────────────────────────────────────────────────
   const artworkHTML = useMemo(() => {
@@ -103,55 +108,91 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
 
   // ── Add-as-strip flows ─────────────────────────────────────────────────────
 
+  function createSvgStrips(entries, { replace = false } = {}) {
+    const nextStrips = replace ? [] : [...strips];
+    // Retired IDs cannot attach their saved looks to an unrelated SVG shape.
+    const idPool = [...strips];
+    const groups = [];
+    const created = [];
+    for (const { layer, paths, counts, useWholeLayer } of entries) {
+      const existingStripIds = replace ? [] : nextStrips
+        .filter(strip => strip.sourceLayerId === layer.layerId || svgLayerStripId(strip) === layer.layerId)
+        .map(strip => strip.id);
+      const layerStrips = paths.map((path, index) => {
+        const sourcePathId = useWholeLayer ? null : path.pathId;
+        const existing = !replace && nextStrips.find(strip =>
+          strip.sourceLayerId === layer.layerId && strip.sourcePathId === sourcePathId);
+        if (existing) return existing;
+        const id = nextStripId(idPool);
+        const definition = {
+          ...layer,
+          name: path.stripName || (sourcePathId ? `${layer.name} · ${path.name}` : layer.name),
+          pathData: path.pathData,
+          svgLength: path.svgLength,
+        };
+        const strip = {
+          ...makeStrip(definition, counts[index], id, nextStrips),
+          sourcePathId,
+          svgLayerWired: true,
+        };
+        idPool.push(strip);
+        nextStrips.push(strip);
+        created.push(strip);
+        return strip;
+      });
+      if (layerStrips.some(strip => created.includes(strip))) groups.push({ layer, strips: layerStrips, existingStripIds });
+    }
+    if (!groups.length) return [];
+    const result = addSvgLayerWiring(replace ? null : wiring, groups, {
+      availablePins: wiringCard.availablePins,
+      maxOutputs: wiringCard.maxOutputs,
+      controls: standaloneController?.controls,
+    });
+    if (!result.ok) {
+      setSvgWiringIssue(result.error);
+      return [];
+    }
+    setSvgWiringIssue(result.warning);
+    mapArtworkStrips(nextStrips, result.wiring, { replace });
+    return created;
+  }
+
+  function finishCreatedStrips(created) {
+    if (!created.length) return;
+    selectStrip(created[0].id);
+    scrollToStrip(created[0].id);
+  }
+
+  function entryForLayer(layer) {
+    const measured = layer.subPaths?.length ? layer.subPaths : measureSubPaths(layer.pathData, layer.layerId);
+    const paths = measured.filter(path => path.svgLength > 0);
+    if (!paths.length) return null;
+    const count = getLedCount(layer);
+    const allocation = allocateLedCountsByLength(paths, Math.max(count, paths.length));
+    if (!allocation.ok) {
+      setSvgWiringIssue(allocation.error);
+      return null;
+    }
+    return { layer, paths, counts: allocation.counts, useWholeLayer: paths.length === 1 };
+  }
+
   const addStrip = () => {
     if (!selLayer) return;
-    // Re-sampling an existing whole-layer strip keeps its id (so patches, wiring
-    // and selection survive the update); a brand-new strip gets a fresh id.
-    const existing = strips.find(s => stripSourceKey(s) === selLayer.layerId);
-    const id = existing ? existing.id : nextStripId(strips);
-    const newStrip = makeStrip(selLayer, getLedCount(selLayer), id);
-    const newStrips = [...strips.filter(s => s.id !== id), newStrip];
-    pushLayoutHistory();
-    setStrips(newStrips);
-    selectStrip(newStrip.id);
-    scrollToStrip(newStrip.id);
+    const entry = entryForLayer(selLayer);
+    if (entry) finishCreatedStrips(createSvgStrips([entry]));
   };
 
-  const addSubPathStrip = (sp, layer) => {
-    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathEl.setAttribute('d', sp.pathData);
-    const count = Math.max(1, Math.round((sp.svgLength / pxPerMm) * density / 1000));
-    const pixels = libSamplePath(pathEl, count);
-    const existing = strips.find(s => stripSourceKey(s) === sp.pathId);
-    const id = existing ? existing.id : nextStripId(strips);
-    const newStrip = {
-      id,
-      sourceLayerId: layer.layerId,
-      sourcePathId: sp.pathId,
-      calibratedFromArtwork: true,
-      name: `${layer.name} · ${sp.name}`,
-      pathData: sp.pathData,
-      svgLength: sp.svgLength,
-      pixelCount: count,
-      pixels,
-      color: layer._color,
-      x: 0, y: 0,
-      emit: 'dir',
-      angle: 0,
-      reversed: false,
-      speed: 1.0,
-      brightness: 1.0,
-      hueShift: 0,
-      patternId: null,
-    };
-    const newStrips = [...strips.filter(s => s.id !== id), newStrip];
-    pushLayoutHistory();
-    setStrips(newStrips);
-    selectStrip(newStrip.id);
-    scrollToStrip(newStrip.id);
+  const addSubPathStrip = (path, layer) => {
+    const existing = strips.find(strip => stripSourceKey(strip) === path.pathId);
+    if (existing) {
+      finishCreatedStrips([existing]);
+      return;
+    }
+    const count = Math.max(1, Math.round((path.svgLength / pxPerMm) * density / 1000));
+    finishCreatedStrips(createSvgStrips([{ layer, paths: [path], counts: [count] }]));
   };
 
-  const addSelectedPathsAsStrips = useCallback((mode = 'merged') => {
+  const addSelectedPathsAsStrips = (mode = 'merged') => {
     if (!pathSel.length) return;
 
     if (mode === 'merged') {
@@ -181,35 +222,17 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
       return;
     }
 
-    let running = strips;
-    const created = pathSel.map((p) => {
-      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pathEl.setAttribute('d', p.pathData);
-      const count = Math.max(1, Math.round((p.svgLength / pxPerMm) * density / 1000));
-      const pixels = libSamplePath(pathEl, count);
-      const layerColor = layers.find(l => l.layerId === p.layerId)?._color;
-      const strip = {
-        id: nextStripId(running),
-        sourceLayerId: p.layerId ?? null,
-        sourcePathId: p.pathId ?? null,
-        calibratedFromArtwork: true,
-        name: p.name,
-        pathData: p.pathData,
-        svgLength: p.svgLength,
-        closed: isClosedPathData(p.pathData, p.closed),
-        pixelCount: count,
-        pixels,
-        x: 0, y: 0,
-        color: layerColor || nextColor(),
-        emit: 'dir', angle: 0, reversed: false,
-        speed: 1.0, brightness: 1.0, hueShift: 0, patternId: null,
-      };
-      running = [...running, strip];
-      return strip;
-    });
-    const newStrips = [...strips, ...created];
-    pushLayoutHistory();
-    setStrips(newStrips);
+    const entries = new Map();
+    for (const path of pathSel) {
+      const layer = layers.find(item => item.layerId === path.layerId);
+      if (!layer || !(path.svgLength > 0)) continue;
+      if (!entries.has(layer.layerId)) entries.set(layer.layerId, { layer, paths: [], counts: [] });
+      const entry = entries.get(layer.layerId);
+      entry.paths.push({ ...path, stripName: path.name });
+      entry.counts.push(Math.max(1, Math.round((path.svgLength / pxPerMm) * density / 1000)));
+    }
+    const created = createSvgStrips([...entries.values()]);
+    if (!created.length) return;
     selectStrips(created.map(s => s.id));
 
     if (mode === 'grouped' && created.length > 1) {
@@ -228,23 +251,17 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     }
 
     scrollToStrip(created[0]?.id);
-  }, [pathSel, pathSelName, strips, layers, editCounts, hidden, svgText, viewBox, density, pxPerMm, layerGroups.length, pushLayoutHistory, selectStrip, selectStrips]);
+  };
 
-  const addAllStrips = useCallback(() => {
-    if (strips.length > 0 &&
-        typeof window !== 'undefined' &&
-        !window.confirm(`Replace the current LED strips with new strips from every artwork layer? Review the data wiring and affected looks before installing again.`)) {
-      return;
-    }
-    const newStrips = [];
-    for (const l of layers.filter(l => l.pathData)) {
-      newStrips.push(makeStrip(l, getLedCount(l), nextStripId(newStrips), newStrips));
-    }
-    pushLayoutHistory();
-    setStrips(newStrips);
-    if (newStrips.length > 0) selectStrip(newStrips[0].id);
-    scrollToStrip(newStrips[0]?.id);
-  }, [strips, layers, editCounts, hidden, svgText, viewBox, density, pushLayoutHistory, selectStrip]);
+  const addAllStrips = () => {
+    const drawableLayers = layers.filter(layer => layer.pathData);
+    const entries = drawableLayers.map(entryForLayer);
+    if (entries.some(entry => !entry)) return;
+    const hasArtworkStrips = strips.length > 0;
+    if (hasArtworkStrips && typeof window !== 'undefined' &&
+        !window.confirm('Replace the current LED strips with separate runs from every artwork layer? Review the data wiring and affected looks before installing again.')) return;
+    finishCreatedStrips(createSvgStrips(entries, { replace: true }));
+  };
 
   // ── Rename helpers ─────────────────────────────────────────────────────────
 
@@ -428,7 +445,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     addStrip,
     addSubPathStrip,
     addSelectedPathsAsStrips,
-    addAllStrips,
+    addAllStrips, svgWiringIssue,
     renameLayer,
     renameSubPath,
     renameGroup,

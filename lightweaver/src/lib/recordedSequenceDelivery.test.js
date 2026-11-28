@@ -228,6 +228,38 @@ test('a corrupt portable bundle writes no earlier valid recording', async () => 
   await assert.rejects(() => readRecordedMedia(hash), { code: 'recorded_media_missing' });
 });
 
+test('a reference-only project file opens on another computer without making its missing recording installable', async () => {
+  const { next, snapshot } = await recorded('legacy-local-missing');
+  const asset = next.sequenceAssets[0];
+  const document = createDefaultProject();
+  document.layout.svgText = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L1 1"/></svg>';
+  document.devices.standaloneController = next;
+  const originalBytes = await verifyStoredSequenceAsset(asset);
+  const fullBackup = await makePortableProject(document);
+  await deleteRecordedMedia(asset.mediaRef.sha256);
+  assert.equal(asset.portableMedia, undefined);
+
+  const open = fileDocument => importProjectFromPickedFile({}, {
+    readProjectFile: async (_file, onRead) => onRead(fileDocument),
+    replaceProject: async project => ({ ok: true, project: migrateProject(project) }),
+  });
+  const opened = await open(document);
+  assert.equal(opened.ok, true);
+  assert.match(opened.missingRecordingNotice, /recording missing.*record the sequence again/i);
+  assert.equal(opened.project.layout.svgText, document.layout.svgText);
+  const recovered = opened.project.devices.standaloneController.sequenceAssets[0];
+  assert.deepEqual(recovered.manifest.scene, asset.manifest.scene);
+  assert.deepEqual(recovered.mediaRef, asset.mediaRef);
+  await assert.rejects(() => makePortableProject(opened.project), { code: 'recorded_media_missing' });
+  await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimeFor([recovered]), {
+    project: snapshot,
+    readEvidence: async () => assert.fail('missing recording should fail before card I/O'),
+  }), { code: 'recorded_media_missing' });
+  const restored = await open(fullBackup);
+  assert.equal(restored.missingRecordingNotice, undefined);
+  assert.deepEqual(await verifyStoredSequenceAsset(restored.project.devices.standaloneController.sequenceAssets[0]), originalBytes);
+});
+
 test('an assigned buyer opens the owner’s artwork and verified recording without the owner’s browser storage', async () => {
   const { result, next } = await recorded('online-artwork');
   const sourceAsset = next.sequenceAssets[0];

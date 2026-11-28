@@ -13,8 +13,7 @@ import { deriveCardAccess } from '../lib/cardAccess.js';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook } from './v3-data.js';
-import { getCardPatternById } from '../lib/cardPatternBank.js';
-import { DEFAULT_CARD_PATTERN_BANK } from '../lib/cardRuntimeContract.js';
+import { CARD_PATTERN_BANK, getCardPatternById } from '../lib/cardPatternBank.js';
 import { CardPushError, cardStorageJson, readCardProjectEvidence, withCardReadRetry, CARD_READ_RETRY } from '../lib/cardPushClient.js';
 import { noteCardRestartPlanned, noteCardRestartSettled } from '../lib/cardLink.js';
 import { recordingStoreWords } from '../lib/recordingStore.js';
@@ -22,7 +21,7 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { CARD_RESTART_WAIT_MS, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { evaluateCardInstallGate, readCardCommissioningVerification } from '../lib/cardInstallGate.js';
-import { deriveSectionTargets, normalizeSavedLooks } from '../lib/sectionLookModel.js';
+import { deriveSectionTargets, normalizeSavedLooks, saveCurrentLookToController } from '../lib/sectionLookModel.js';
 import { addProjectStacksToPlaylist, getProjectStackCompatibility, summarizeProjectStack } from '../lib/projectStacks.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { normalizeCardVisualLook } from '../lib/cardVisualLook.js';
@@ -42,6 +41,7 @@ import {
   CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
+  makeComboPlaylistItem,
   makePatternPlaylistItem,
   makeSequencePlaylistItem,
   normalizeCardPlaylist,
@@ -249,11 +249,15 @@ function realPatternShape(patternId) {
     const [expandedStackIds, setExpandedStackIds] = useState([]);
     const [stackFeedback, setStackFeedback] = useState('');
     const [repeatFeedback, setRepeatFeedback] = useState('');
+    const [sectionCueId, setSectionCueId] = useState('');
+    const [sectionCueError, setSectionCueError] = useState('');
     React.useEffect(() => {
       setSourceChoice(readPlaylistSource(projectId, savedLooks.length > 0));
       setSelectedStackIds([]);
       setExpandedStackIds([]);
       setStackFeedback('');
+      setSectionCueId('');
+      setSectionCueError('');
       setRepeatFeedback('');
     }, [projectId]);
     const chooseSource = (source) => {
@@ -268,9 +272,12 @@ function realPatternShape(patternId) {
     const otherModeTargets = useMemo(() => layoutSymmetry
       ? deriveSectionTargets({
           strips, patchBoard: board, wiring, compiledWiring, symmetry: layoutSymmetry,
-          sidesMirrored: !liveSidesMirrored,
+          sidesMirrored: !liveSidesMirrored, defaultLook: standaloneController?.defaultLook,
         })
-      : sectionTargets, [board, compiledWiring, layoutSymmetry, liveSidesMirrored, sectionTargets, strips, wiring]);
+      : sectionTargets, [board, compiledWiring, layoutSymmetry, liveSidesMirrored, sectionTargets, standaloneController?.defaultLook, strips, wiring]);
+    const sectionCueTargets = (liveSidesMirrored ? otherModeTargets : sectionTargets)
+      .filter(target => target.kind === 'section' && target.pixelCount > 0);
+    const sectionCueTarget = sectionCueTargets.find(target => target.id === sectionCueId);
     const stackSummaries = new Map(savedLooks.map(look => {
       // The authoring workspace can be in a different mode from this saved look.
       const targets = (look.sidesMirrored !== false) === liveSidesMirrored ? sectionTargets : otherModeTargets;
@@ -356,8 +363,8 @@ function realPatternShape(patternId) {
     const safeProjectName = (projectName || 'lightweaver-piece').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
     // ── live playlist write-back to the standalone controller ─────────────
-    const writePlaylist = (nextItems) => {
-      const normalized = normalizeCardPlaylist(nextItems, { savedLooks, sequenceAssets, allowEmpty: true });
+    const writePlaylist = (nextItems, nextLooks) => {
+      const normalized = normalizeCardPlaylist(nextItems, { savedLooks: nextLooks ?? savedLooks, sequenceAssets, allowEmpty: true });
       // Entries the owner took out of the playlist leave the card too (L1).
       const removed = derivePlaylistLookIds(playlist).length - derivePlaylistLookIds(normalized).length;
       if (removed > 0) noteLooksRemovedByOwner(removed);
@@ -372,6 +379,7 @@ function realPatternShape(patternId) {
         const current = prev || {};
         return {
           ...current,
+          ...(nextLooks ? { looks: nextLooks } : {}),
           playlist: normalized,
           controls: {
             ...(current.controls || {}),
@@ -914,6 +922,39 @@ function realPatternShape(patternId) {
       }
     };
 
+    const addSectionCue = (event) => {
+      event.preventDefault();
+      if (!sectionCueTarget || recoveryPendingRef.current) return;
+      const limit = playlistTiming.enabled ? CARD_PLAYLIST_ENTRY_LIMIT : CARD_PLAYLIST_LIMIT;
+      if (enabledPlaylistCount >= limit) {
+        setSectionCueError(`Remove or disable a cue before adding another. This playlist holds ${limit} active cues.`);
+        return;
+      }
+      const fallback = normalizeCardVisualLook();
+      const dark = { ...fallback, brightness: 0 };
+      const current = sectionCueTarget.look;
+      const lit = sectionIsOff({ patternId: current?.patternId, look: current }) || !getCardPatternById(current?.patternId)
+        ? fallback
+        : current;
+      try {
+        // Save the look and its playlist entry together without selecting the
+        // new look or changing the artwork's current section appearances.
+        const next = saveCurrentLookToController(standaloneController, {
+          label: sectionCueTarget.label,
+          defaultLook: dark,
+          targets: sectionCueTargets.map(target => ({ ...target, look: target.id === sectionCueId ? lit : dark })),
+          sidesMirrored: false,
+        });
+        const item = makeComboPlaylistItem(next.looks.at(-1));
+        if (!writePlaylist([...playlist, item], next.looks)) {
+          throw new Error('Check this project’s wiring before adding the cue.');
+        }
+        setSectionCueError('');
+      } catch (error) {
+        setSectionCueError(error.message);
+      }
+    };
+
     const addCombo = (savedLook) => {
       if (recoveryPendingRef.current || !savedLook) return;
       if (playlistContainsCombo(playlist, savedLook.id)) { void previewSavedLookOnCard(savedLook); return; }
@@ -1014,7 +1055,7 @@ function realPatternShape(patternId) {
     // ── derived view data (real banks, mockup shapes) ─────────────────────
     // Keep the bank in one canonical order. Added patterns remain in place so
     // the library does not reshuffle under the operator's pointer or memory.
-    const patternTiles = DEFAULT_CARD_PATTERN_BANK.map((pattern) => ({
+    const patternTiles = CARD_PATTERN_BANK.map((pattern) => ({
       ...realPatternShape(pattern.id),
       added: playlistContainsPattern(playlist, pattern.id),
     }));
@@ -1257,6 +1298,18 @@ function realPatternShape(patternId) {
                     </div>
                     <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Browse looks &amp; patterns</button>
                   </div>
+                  {sectionCueTargets.length > 0 && <form className="pl-section-cue" onSubmit={addSectionCue}>
+                    <select className="pm-input" aria-label="Section" value={sectionCueTarget?.id || ''} disabled={recoveryPending} onChange={event => {
+                      setSectionCueId(event.target.value);
+                      setSectionCueError('');
+                    }}>
+                      <option value="" disabled>Choose a section</option>
+                      {sectionCueTargets.map(target => <option key={target.id} value={target.id}>{target.label}</option>)}
+                    </select>
+                    <button type="submit" className="btn" disabled={!sectionCueTarget || recoveryPending}
+                      title="Add a cue that lights only the selected section">Add section cue</button>
+                  </form>}
+                  {sectionCueError && <p className="pl-stack-feedback" role="status">{sectionCueError}</p>}
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>

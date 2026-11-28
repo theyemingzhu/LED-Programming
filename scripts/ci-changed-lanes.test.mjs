@@ -81,6 +81,7 @@ test('classifier repair diff validates firmware without requiring a signed relea
   assert.equal(classifyChangedPaths(paths).firmware, true);
   assert.equal(firmwareBundleOnly(paths), true);
   assert.equal(firmwareBundleOnly(['scripts/ci-changed-lanes.mjs']), true);
+  assert.equal(firmwareBundleOnly(['.github/workflows/merge-danger.yml']), true);
   assert.equal(firmwareBundleOnly(paths, { conservative: true }), false);
   assert.equal(firmwareBundleOnly([...paths, 'firmware/lightweaver-controller/VERSION']), false);
 });

@@ -62,6 +62,7 @@ async function makeDraft(page: Page, name: string, save: boolean) {
   await page.getByTestId('project-name-input').press('Enter');
   if (save) {
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    await page.getByRole('button', { name: 'Save in browser' }).click();
     await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   } else {
     await expect(page.getByTestId('project-dirty-dot')).toBeVisible();

@@ -186,6 +186,7 @@ test('Branch tests proves pull requests on hosted runners and can never deploy',
     assert.doesNotMatch(await read(downstream), /Branch tests/, downstream);
   }
   assert.match(branch, /^on:\n  pull_request:/m);
+  assert.doesNotMatch(branch, /^    paths(?:-ignore)?:/m, 'required PR checks must also report on docs-only changes');
   assert.doesNotMatch(branch, /^  (push|merge_group|workflow_run|workflow_dispatch|pull_request_target):/m);
   assert.match(branch, /^permissions:\n  contents: read$/m);
   assert.doesNotMatch(branch, /secrets\./, 'pull requests from forks must not reach repository secrets');
@@ -199,7 +200,7 @@ test('Branch tests proves pull requests on hosted runners and can never deploy',
     const start = text.indexOf(`\n  ${name}:\n`);
     assert.notEqual(start, -1, name);
     const rest = text.slice(start + 1);
-    const next = rest.slice(1).search(/\n  [a-z_]+:\n/);
+    const next = rest.slice(1).search(/\n  [a-z_-]+:\n/);
     return (next === -1 ? rest : rest.slice(0, next + 1)).trimEnd();
   };
   for (const name of ['source', 'browser', 'browser_journeys', 'browser_windowless', 'browser_firmware_update', 'cloud', 'production']) {
@@ -288,7 +289,11 @@ test('focused package scripts compose existing checks without weakening launch c
   // The signed manifest must be read back through the install screen in a
   // browser BEFORE it is pushed. A generated signer commit never triggers
   // Tests, so this is the only gate a manifest-shaped break reaches.
-  assert.match(signer, /git rebase origin\/main\s*\n\s*npm run ci:artifact --prefix lightweaver\s*\n\s*npm run ci:artifact:release-ui --prefix lightweaver\s*\n\s*git push origin HEAD:main/);
+  assert.match(signer, /git rebase origin\/main\s*\n\s*npm run ci:artifact --prefix lightweaver\s*\n\s*npm run ci:artifact:release-ui --prefix lightweaver\s*\n\s*signed_sha="\$\(git rev-parse HEAD\)"/);
+  assert.match(signer, /environment: firmware-release\s*\n\s*permissions:\s*\n\s*contents: read/);
+  assert.match(signer, /Commit the signed release if it changed\s*\n\s*if: steps\.release\.outputs\.changed == 'true'\s*\n\s*env:\s*\n\s*SIGNER_PUSH_KEY:/);
+  assert.match(signer, /git push "git@github\.com:\$GITHUB_REPOSITORY\.git" "\$SIGNED_SHA:refs\/heads\/main"/);
+  assert.doesNotMatch(signer, /git push origin HEAD:main/);
 });
 
 test('deploy workflow explicitly records a credential-skipped publish as not run', async () => {

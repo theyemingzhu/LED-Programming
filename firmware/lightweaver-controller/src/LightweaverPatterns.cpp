@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include "LightweaverBreathe.h"
+#include "LightweaverWarmFade.h"
 
 static inline uint32_t scaleTime(uint32_t now, float speed) {
   if (speed <= 0.0f) return now;
@@ -428,6 +429,7 @@ static bool isSupportedLegacyProceduralPattern(const String& patternId) {
          patternId == "rainbow" ||
          patternId == "sparkle" ||
          patternId == "breathe" ||
+         patternId == "warm-fade" ||
          patternId == "meteor" ||
          patternId == "chase" ||
          patternId == "scanner" ||
@@ -494,7 +496,16 @@ bool renderProceduralPattern(const String& preset, CRGB* leds, uint16_t totalPix
   const uint8_t calmLevel = preset == "calm"
     ? resolveBreatheScale(t, 15, 59, 12)
     : 255;
-  if (preset == "custom-color") {
+  if (preset == "warm-fade") {
+    const WarmFadeColor sampled = sampleWarmFade(t);
+    CRGB color(sampled.r, sampled.g, sampled.b);
+    if (mods.hueShift != 0) {
+      LwExactHsv hsv = rgbToExactHsv(color);
+      hsv.hue = shiftHue(hsv.hue, mods.hueShift);
+      color = exactHsvToRgb(hsv);
+    }
+    fill_solid(leds, totalPixels, color);
+  } else if (preset == "custom-color") {
     // Start from the canonical neutral color so the shared post-pass owns hue,
     // saturation, speed-scaled Drift, and wall-clock custom Breathe exactly as
     // it does for every other compiled pattern.

@@ -179,7 +179,7 @@ function OwnerAccounts({ library, passwordless = false }) {
   );
 }
 
-export function AccountAccessPanel({ googleOutcome, methods, methodsError, retryMethods }) {
+export function AccountAccessPanel({ googleOutcome, methods, methodsError, retryMethods, saveProjectId }) {
   const library = useCloudLibrary();
   const [login, setLogin] = useState({ username: '', password: '' });
   const [bootstrap, setBootstrap] = useState({ username: '', displayName: '', temporaryPassword: '' });
@@ -233,7 +233,7 @@ export function AccountAccessPanel({ googleOutcome, methods, methodsError, retry
   );
   if ((!methods && !methodsError) || library.session.status === 'loading') return <p role="status">Checking online library access…</p>;
   if (methods?.enabled && !authenticated) {
-    return <PasswordlessSignIn methods={methods} googleOutcome={googleOutcome} onSignedIn={library.retrySession} />;
+    return <PasswordlessSignIn methods={methods} googleOutcome={googleOutcome} onSignedIn={library.retrySession} saveProjectId={saveProjectId} />;
   }
   if (library.session.status === 'password-change') return <PasswordChange key={sessionBoundary} library={library} />;
   if (library.session.status === 'access-required') return (

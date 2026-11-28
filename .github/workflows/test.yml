@@ -143,10 +143,13 @@ jobs:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
     runs-on: ubuntu-24.04
-    # Split from browser on 2026-11-24: one job hit the 45-min cap (45:15 on
-    # run 45290952413). The journey chunk now runs beside it in parallel.
-    timeout-minutes: 45
-    name: browser smoke (journeys)
+    # Three file-level shards keep the 30-minute journey suite off the critical path.
+    timeout-minutes: 30
+    name: browser smoke (journeys ${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       LW_BROWSER_FAIL_FAST: 'true'
     steps:
@@ -168,12 +171,12 @@ jobs:
         working-directory: lightweaver
       - name: Run journey browser smoke
         working-directory: lightweaver
-        run: npm run ci:browser-smoke-journeys
+        run: npm run ci:browser-smoke-journeys -- --shard ${{ matrix.shard }}/3
       - name: Upload failed browser traces
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: browser-failure-${{ matrix.shard }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: lightweaver/test-results/
           if-no-files-found: ignore
           retention-days: 7

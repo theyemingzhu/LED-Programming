@@ -305,6 +305,7 @@ export function layoutReducer(state, action) {
           kaleidoscope: { ...source.kaleidoscope, offsets: [...source.kaleidoscope.offsets] },
         } : {}),
       };
+      delete dup.svgWiringLayerId;
       const strips = state.strips.flatMap(s => s.id === action.id ? [s, dup] : [s]);
       return {
         ...state,
@@ -321,6 +322,7 @@ export function layoutReducer(state, action) {
       if (members.length < 2) return state;
       const id = `strip-${state.nextStripSeq}`;
       const merged = { ...action.merged, id, sourceLayerId: null, sourcePathId: null };
+      delete merged.svgWiringLayerId;
       delete merged.kaleidoscope;
       delete merged.reflectionPointDraft;
       const insertAt = state.strips.findIndex(s => picked.has(s.id));
@@ -566,7 +568,8 @@ export function layoutReducer(state, action) {
 export function makeLayoutSnapshot(state) {
   const exactPixelIds = new Set((state.sectionFamilies || []).flatMap(family => family.memberIds || []));
   return {
-    strips: state.strips.map(({ pixels, ...rest }) => exactPixelIds.has(rest.id) ? { ...rest, pixels } : rest),
+    strips: state.strips.map(({ pixels, ...rest }) =>
+      exactPixelIds.has(rest.id) || rest.svgWiringLayerId ? { ...rest, pixels } : rest),
     starterPending: state.starterPending === true,
     layers: state.layers,
     layerGroups: state.layerGroups,
