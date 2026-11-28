@@ -28,6 +28,7 @@ const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.y
   || path === '.github/workflows/exhaustive.yml'
   || path === '.github/workflows/branch-tests.yml'
   || path === '.github/workflows/merge-danger.yml'
+  || path === '.github/workflows/merge-danger.yml'
   || path === 'scripts/ci-changed-lanes.mjs'
   || path === 'scripts/ci-changed-lanes.test.mjs';
 // Browser updater code is exercised by card/production validation, but these
