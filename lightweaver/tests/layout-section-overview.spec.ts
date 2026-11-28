@@ -11,7 +11,6 @@ test('Layout shows actual section shape, output inventory, and exact pattern act
   await page.setInputFiles('input[accept=".svg"]', {
     name: 'branch.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(ARBITRARY_ARTWORK),
   });
-  await page.getByTestId('artwork-create-all-strips').click();
 
   const group = page.getByTestId('gpio-group-16');
   await expect(group.getByTestId('layout-output-inventory')).toContainText('1 section');

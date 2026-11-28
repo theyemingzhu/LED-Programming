@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './layout/layout-workspace.css';
 import { TbIcon } from './layout/shared/InspectorPrimitives.jsx';
 import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
@@ -33,6 +33,7 @@ import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
 import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
 import { takeLedTotal } from '../lib/ledCountHandoff.js';
 import { displayStripName } from '../lib/stripLabels.js';
+import { pixelsInPlaybackOrder } from '../lib/wiringCompiler.js';
 
 function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }) {
   if (!strip) return (
@@ -122,6 +123,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const previewTrigger = useRef(null);
   const shapesTrigger = useRef(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [inspectorView, setInspectorView] = useState('wire');
+  const [wireTrace, setWireTrace] = useState(null);
+  const traceButtonRef = useRef(null);
   useEffect(() => {
     if (showInstallerSheet) setInspectorCollapsed(false);
   }, [showInstallerSheet]);
@@ -251,6 +255,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     // mode (Draw | Wire)
     mode, setMode,
   } = state;
+  useEffect(() => setInspectorView('wire'), [projectId, svgText]);
 
   const selectedSpecsStrip = strips.find(strip => strip.id === selStripId) || null;
   const selectedSpecsLedType = normalizeCardLedType(
@@ -309,6 +314,36 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   };
 
   const markerRun = wiring.runs.find(run => run.id === firstLedMarkerRunId && run.type === 'strip' && run.source.stripId === selStripId);
+  const canTrace = compiledWiring?.pixels.some(pixel => !pixel.inactive)
+    && inspectorView === 'wire' && !installerSetup && !specsOpen && !shapesOpen
+    && !state.starterLayoutActive && !drawMode && !state.pendingDraw && !firstLedPicker && !kaleidoscopeEditor;
+  const activeWireTrace = canTrace && wireTrace?.compiled === compiledWiring ? wireTrace : null;
+  const stopWireTrace = useCallback(() => setWireTrace(null), []);
+  useEffect(() => {
+    if (wireTrace && !activeWireTrace) stopWireTrace();
+  }, [wireTrace, activeWireTrace, stopWireTrace]);
+  const traceRun = compiledWiring?.runs.find(run => run.id === markerRun?.id)
+    || compiledWiring?.runs.find(run => run.type === 'strip' && run.source?.stripId === selStripId);
+  const startWireTrace = (run = null) => {
+    const pixels = pixelsInPlaybackOrder(compiledWiring)
+      .filter(pixel => !pixel.inactive && (!run || (pixel.outputId === run.outputId && pixel.index >= run.start)));
+    if (!pixels.length) return;
+    cancelSvgWire();
+    setWireTrace({ compiled: compiledWiring, pixels });
+    if (run) traceButtonRef.current?.focus();
+  };
+  const wireTraceControl = canTrace && (
+    <div className="la-wire-trace-controls" role="group" aria-label="Trace wire route">
+      <button ref={traceButtonRef} type="button" className="btn"
+        title={activeWireTrace ? undefined : 'Trace all physical outputs on the canvas'}
+        onClick={activeWireTrace ? stopWireTrace : () => startWireTrace()}>
+        {activeWireTrace ? 'Stop tracer' : 'Trace wire'}
+      </button>
+      {traceRun && !activeWireTrace && <button type="button" className="btn"
+        title="Trace from this strip to the end of its output"
+        onClick={() => startWireTrace(traceRun)}>Trace from selection</button>}
+    </div>
+  );
 
   const updateKaleidoscope = (stripId, next, options) => {
     state.updateStripKaleidoscope(stripId, next, options);
@@ -443,6 +478,8 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     wire: {
       wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
       svgWireGeometry, svgWireSource, svgWireMessage, activateSvgWirePort, cancelSvgWire,
+      grouping: !installerSetup && inspectorView === 'group',
+      trace: activeWireTrace?.pixels, onTraceComplete: stopWireTrace,
       wiring, compiledWiring,
       firstLedPicker,
       onFirstLedPick: pickFirstLed,
@@ -706,6 +743,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <div className={`la-inspector-main${shapesOpen && !state.starterLayoutActive ? ' is-choosing-shape' : ''}`} hidden={specsOpen}>
             <DrawModePanel state={state}
                          installerSetup={installerSetup}
+                         inspectorView={inspectorView}
+                         setInspectorView={setInspectorView}
+                         wireTraceControl={wireTraceControl}
                          addChooserOpen={shapesOpen}
                          setAddChooserOpen={setShapesOpen}
                          onCloseShapes={closeShapes}

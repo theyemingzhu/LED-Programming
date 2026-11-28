@@ -36,7 +36,7 @@ import { STRIP_DISCOVERY_ROUTE } from '../../lib/cardAction.js';
 import { assignProductionWiringIdentity } from '../../lib/productionWiringIdentity.js';
 import { canPushDirectlyToCard, discoverCardStatus, readStoredCardHost, readStoredCardHostHistory } from '../../lib/cardConnection.js';
 import { compileWiring } from '../../lib/wiringCompiler.js';
-import { createWiringChaseSession } from '../../lib/wiringChase.js';
+import { buildWiringTraceFrames, createWiringChaseSession } from '../../lib/wiringChase.js';
 import {
   CARD_COMMISSIONING_CHANGED_EVENT,
   CARD_COMMISSIONING_STAGES,
@@ -108,6 +108,7 @@ function runtimePackageFromSnapshot(snapshot = {}, identity = {}) {
     strips: snapshot.layout?.strips || [],
     patchBoard: snapshot.layout?.patchBoard || null,
     wiring: snapshot.layout?.wiring || null,
+    layerGroups: snapshot.layout?.layerGroups,
     symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
     symSettings: snapshot.symSettings || null,
     standaloneController: snapshot.devices?.standaloneController || {},
@@ -294,6 +295,7 @@ export function CardCommissioningPanel({
   const [inspectionRetry, setInspectionRetry] = useState(0);
   const [detection, setDetection] = useState({ state: 'idle' });
   const [lightCheckState, setLightCheckState] = useState('idle');
+  const [lightTraceActive, setLightTraceActive] = useState(false);
   const [candidateVerdict, setCandidateVerdict] = useState(null);
   const [lightCheckNotice, setLightCheckNotice] = useState('');
   const [bridgeHandoffStatus, setBridgeHandoffStatus] = useState(null);
@@ -306,6 +308,7 @@ export function CardCommissioningPanel({
   // owner to diagnose which boot path the card took.
   const markerSessionRef = useRef(null);
   const markerTimeoutRef = useRef(null);
+  const markerMountedRef = useRef(false);
   const acknowledgementPersistenceRef = useRef('');
   const autoReconnectAttemptRef = useRef('');
   const reconnectContextRef = useRef(null);
@@ -352,13 +355,17 @@ export function CardCommissioningPanel({
     };
   }, []);
 
-  useEffect(() => () => {
-    if (markerTimeoutRef.current != null) window.clearTimeout(markerTimeoutRef.current);
-    markerTimeoutRef.current = null;
-    const session = markerSessionRef.current;
-    markerSessionRef.current = null;
-    if (session) void session.stop().catch(() => {});
-    if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
+  useEffect(() => {
+    markerMountedRef.current = true;
+    return () => {
+      markerMountedRef.current = false;
+      if (markerTimeoutRef.current != null) window.clearTimeout(markerTimeoutRef.current);
+      markerTimeoutRef.current = null;
+      const session = markerSessionRef.current;
+      markerSessionRef.current = null;
+      if (session) void session.stop().catch(() => {});
+      if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -1339,26 +1346,29 @@ export function CardCommissioningPanel({
     if (!claim.ok) throw new Error('Another Studio tab is changing this light check. Wait for it to finish, then try again.');
     try {
       const mutation = await beginCardLightCheckMutation(flow, claim.lease);
-      const assertAuthority = () => {
+      const isSameCard = () => {
         const latest = getCardLinkState();
+        return (candidateVerdictOnly || isCardLinkConnected(latest))
+          && latest.host === observed.host
+          && latest.validatedBootId === bootId
+          && (latest.operationGeneration || 0) === generation;
+      };
+      const assertAuthority = () => {
         if (!mutation.ok
           || !verifyCardLightCheckMutation(flow, claim.lease.id, mutation.fencingToken)
-          || (!candidateVerdictOnly && !isCardLinkConnected(latest))
-          || latest.host !== observed.host
-          || latest.validatedBootId !== bootId
-          || (latest.operationGeneration || 0) !== generation) {
+          || !isSameCard()) {
           throw new Error('Card readiness changed before the light-check command. Nothing was changed.');
         }
       };
       assertAuthority();
-      return { lease: claim.lease, host: observed.host, assertAuthority };
+      return { lease: claim.lease, host: observed.host, assertAuthority, isSameCard, status };
     } catch (error) {
       await releaseCardRestoration(flow.flowId, claim.lease.id).catch(() => false);
       throw error;
     }
   };
 
-  const startLightCheck = async () => {
+  const startLightCheck = async ({ trace = false } = {}) => {
     const activationId = flow.project.pendingActivationId;
     if (lightCheckState !== 'idle') return;
     setFailure('');
@@ -1367,31 +1377,81 @@ export function CardCommissioningPanel({
     let mutationAuthority = null;
     try {
       mutationAuthority = await acquireFreshLightCheckMutation();
+      if (!markerMountedRef.current) return;
       if (!activationId) {
-        const frame = commissioningMarkerFrame(flow.project.snapshot);
-        if (!frame.length) throw new Error('The saved project has no LED outputs to test.');
+        const snapshot = flow.project.snapshot;
+        const markerFrame = commissioningMarkerFrame(snapshot);
+        if (!markerFrame.length) throw new Error('The saved project has no LED outputs to test.');
+        let traceFrames = null;
+        let firstFrame = markerFrame;
+        if (trace) {
+          const { layout } = snapshot;
+          const compiled = compileWiring({ wiring: layout.wiring, strips: layout.strips });
+          const expectedOutputs = runtimePackageFromSnapshot(snapshot).config.led.outputs;
+          const status = mutationAuthority.status;
+          if (status.projectId !== snapshot.id || status.projectRevision !== flow.project.revision
+            || status.projectFingerprint !== flow.project.fingerprint
+            || JSON.stringify(finalOutputs(status.outputs)) !== JSON.stringify(finalOutputs(expectedOutputs))) {
+            throw new Error('The card’s installed project or wiring differs from this setup. Restore the saved project before tracing its LED order.');
+          }
+          traceFrames = buildWiringTraceFrames(compiled);
+          firstFrame = traceFrames.next().value;
+          if (!firstFrame) throw new Error('The saved project has no active LEDs to trace.');
+        }
         const startMarkers = window.__LW_START_COMMISSIONING_MARKERS_FOR_TEST__;
+        const canTrace = () => markerMountedRef.current && mutationAuthority.isSameCard();
         let session;
         if (typeof startMarkers === 'function') {
           mutationAuthority.assertAuthority();
-          session = await startMarkers(frame, { host: mutationAuthority.host });
+          session = await startMarkers(firstFrame, { host: mutationAuthority.host });
         } else {
-          session = createWiringChaseSession({ host: mutationAuthority.host });
+          mutationAuthority.assertAuthority();
+          session = createWiringChaseSession({
+            host: mutationAuthority.host,
+            ...(trace ? { canSendFrame: canTrace, requireFullFrame: true } : {}),
+          });
+        }
+        if (!markerMountedRef.current) {
+          await session.stop();
+          return;
         }
         markerSessionRef.current = session;
-        if (typeof startMarkers !== 'function') {
-          mutationAuthority.assertAuthority();
-          await session.show(frame);
-        }
+        if (typeof startMarkers !== 'function') await session.show(firstFrame);
+        if (markerSessionRef.current !== session) return;
         markerTimeoutRef.current = window.setTimeout(() => {
           const active = markerSessionRef.current;
           markerSessionRef.current = null;
           markerTimeoutRef.current = null;
           void active?.stop?.().catch(() => {});
+          setLightTraceActive(false);
           setLightCheckState('idle');
           setLightCheckNotice('The 30-second marker test ended and the working look is restored.');
         }, 30_000);
         setLightCheckState('testing');
+        if (traceFrames) {
+          setLightTraceActive(true);
+          void (async () => {
+            try {
+              for (const frame of traceFrames) {
+                if (markerSessionRef.current !== session) return;
+                if (!canTrace()) throw new Error('The card connection changed during the LED trace.');
+                await session.show(frame);
+              }
+              if (markerSessionRef.current !== session) return;
+              await session.show(markerFrame);
+            } catch (error) {
+              if (markerSessionRef.current !== session) return;
+              window.clearTimeout(markerTimeoutRef.current);
+              markerTimeoutRef.current = null;
+              markerSessionRef.current = null;
+              await session.stop().catch(() => {});
+              setFailure(error?.message || 'The LED trace was interrupted.');
+              setLightCheckState('idle');
+            } finally {
+              if (markerMountedRef.current) setLightTraceActive(false);
+            }
+          })();
+        }
         return;
       }
       const activate = typeof window.__LW_ACTIVATE_COMMISSIONING_WIRING_FOR_TEST__ === 'function'
@@ -1436,6 +1496,7 @@ export function CardCommissioningPanel({
         markerTimeoutRef.current = null;
         const session = markerSessionRef.current;
         markerSessionRef.current = null;
+        setLightTraceActive(false);
         mutationAuthority.assertAuthority();
         await session?.stop?.();
         if (visible) {
@@ -1700,16 +1761,21 @@ export function CardCommissioningPanel({
             <div className="card-commissioning-network">
               {lightCheckState === 'testing' ? (
                 <>
-                  <p>Check every connected output. Do you see a <strong>blue first pixel and red final pixel</strong>, with green LEDs between them?</p>
+                  <p>{lightTraceActive ? 'Follow the green light from the first LED to the last on each GPIO.' : <>Check every connected output. Do you see a <strong>blue first pixel and red final pixel</strong>, with green LEDs between them?</>}</p>
                   <div className="card-connection-actions">
-                    <button type="button" className="btn primary" disabled={!lightCheckPreflight.ok} onClick={() => finishLightCheck(true)}>Yes, every output is correct</button>
+                    <button type="button" className="btn primary" disabled={!lightCheckPreflight.ok || lightTraceActive} onClick={() => finishLightCheck(true)}>Yes, every output is correct</button>
                     <button type="button" className="btn" disabled={!lightCheckPreflight.ok} onClick={() => finishLightCheck(false)}>No, restore working look</button>
                   </div>
                 </>
               ) : (
                 <>
                   <p>This marker frame runs for at most 30 seconds, then releases the card back to its normal working look automatically.</p>
-                  <button type="button" className="btn primary" disabled={lightCheckState !== 'idle' || !lightCheckPreflight.ok} onClick={startLightCheck}>{lightCheckState === 'starting' ? 'Starting bounded marker test…' : 'Start bounded marker test'}</button>
+                  <div className="card-connection-actions">
+                    <button type="button" className="btn primary" disabled={lightCheckState !== 'idle' || !lightCheckPreflight.ok} onClick={startLightCheck}>{lightCheckState === 'starting' ? 'Starting bounded marker test…' : 'Start bounded marker test'}</button>
+                    {flow.project.snapshot?.layout?.wiring && (
+                      <button type="button" className="btn" disabled={lightCheckState !== 'idle' || !lightCheckPreflight.ok} onClick={() => startLightCheck({ trace: true })}>Trace LED order</button>
+                    )}
+                  </div>
                 </>
               )}
               {lightCheckNotice && <p role="status">{lightCheckNotice}</p>}

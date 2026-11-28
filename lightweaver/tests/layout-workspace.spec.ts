@@ -26,9 +26,8 @@ test('keeps current artwork and assigned routes when replacement is declined', a
   const replacement = svg('Replacement', 'M320 20 V380');
   await picker.setInputFiles(current);
   await expect(page.getByText('Reference paths', { exact: true })).toBeVisible();
-  await expect(page.locator('.la-strip-row')).toHaveCount(0);
-  await page.getByTestId('artwork-create-all-strips').click();
   const row = page.locator('.la-strip-row');
+  await expect(row).toContainText('Existing');
   await row.click({ position: { x: 8, y: 8 } });
   const route = page.getByTestId('layout-selected-data-route');
   await expect(page.getByTestId('gpio-group-16').locator('.la-gpio-group-head')).toContainText('GPIO 16');
@@ -47,7 +46,7 @@ test('keeps current artwork and assigned routes when replacement is declined', a
 
   page.once('dialog', dialog => dialog.accept());
   await picker.setInputFiles(replacement);
-  await expect(row).toHaveCount(0);
+  await expect(row).toContainText('Replacement');
   await expect(page.locator('.layer-row')).toContainText('Replacement');
 
   await page.getByRole('button', { name: 'Undo', exact: true }).click();

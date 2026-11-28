@@ -70,6 +70,9 @@ export function buildPatternPreviewSegments({
   if (compiled?.ok) {
     // The SVG already uses the flipped drawing coordinates.
     const playbackIndices = previewPlaybackDirection ? playbackSourceIndices(compiled, { includePathFlip: false }) : null;
+    const orderedGroupIds = new Set((compiled.groups || [])
+      .filter(group => group.ordered === true)
+      .map(group => String(group.groupId || group.id || '')));
     for (const zone of compiled.zones || []) {
       const pixels = [];
       const indices = [];
@@ -86,7 +89,10 @@ export function buildPatternPreviewSegments({
         }
       }
       if (pixels.length) pixelsByTargetId.set(zone.id, pixels);
-      if (playbackIndices && !zone.continuous && indices.some(index => playbackIndices[index] !== index)) {
+      // Ordered effect groups fill one pattern span and still send each run in
+      // its own data direction. Symmetry sides keep the separate mirror rules.
+      const usesRunDirection = !zone.continuous || orderedGroupIds.has(zone.id);
+      if (playbackIndices && usesRunDirection && indices.some(index => playbackIndices[index] !== index)) {
         const offsets = new Map(indices.map((index, offset) => [index, offset]));
         playbackOrderByTarget.set(zone.id, indices.map((index, offset) => offsets.get(playbackIndices[index]) ?? offset));
       }

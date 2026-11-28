@@ -414,14 +414,18 @@ function zonesFor(state: CardStateSpec & { zoneIds?: string[]; zoneControls: Map
   // stale zone shape behind.
   const ids = state.zoneIds && state.zoneIds.length ? state.zoneIds : [ZONE_ID];
   const configured = (state as CardSimulator['state']).installedZones;
-  return ids.map(id => ({
-    id,
-    label: String(configured?.find(zone => zone.id === id)?.label || 'All lights'),
-    patternId: String(configured?.find(zone => zone.id === id)?.patternId || state.currentId),
-    ...zoneControlsFor(state, id),
-    blackout: state.currentId === 'blackout',
-    ranges: configured?.find(zone => zone.id === id)?.ranges || [{ start: 0, count: state.pixels }],
-  }));
+  return ids.map(id => {
+    const zone = configured?.find(item => item.id === id);
+    return {
+      id,
+      label: String(zone?.label || 'All lights'),
+      patternId: String(zone?.patternId || state.currentId),
+      ...zoneControlsFor(state, id),
+      blackout: state.currentId === 'blackout',
+      ...(zone?.continuous === true ? { continuous: true } : {}),
+      ranges: zone?.ranges || [{ start: 0, count: state.pixels }],
+    };
+  });
 }
 
 function statusBody(state: CardSimulator['state']) {

@@ -26,7 +26,6 @@ async function freshImportedArtwork(page: any) {
 
 async function freshImportedRoutes(page: any) {
   await freshImportedArtwork(page);
-  await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 }
 
@@ -168,17 +167,10 @@ test('a total below the number of converted layers is rejected without mutating 
 });
 
 test('imported strips can be named, wired, and sequenced as individual section cues', async ({ page }) => {
-  await freshImportedArtwork(page);
-  const sourceLayer = page.locator('.layer-row').filter({ hasText: 'Inner halo' });
-  await sourceLayer.click();
-  await sourceLayer.getByRole('button', { name: 'Rename Inner halo', exact: true }).click();
-  const sourceName = page.getByRole('textbox', { name: 'New name for Inner halo', exact: true });
-  await sourceName.fill('Crystal center');
-  await sourceName.press('Enter');
-  await page.getByTestId('artwork-create-all-strips').click();
+  await freshImportedRoutes(page);
 
   const sections = [
-    { layer: 'Crystal center', name: 'Center crystal', gpio: 16 },
+    { layer: 'Inner halo', name: 'Center crystal', gpio: 16 },
     { layer: 'Middle halo', name: 'Bottom crystal', gpio: 17 },
     { layer: 'Outer halo', name: 'Tree leaves', gpio: 18 },
   ];

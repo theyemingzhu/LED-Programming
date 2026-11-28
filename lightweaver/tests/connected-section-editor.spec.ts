@@ -13,7 +13,6 @@ async function importedArtwork(page: any) {
   await page.setInputFiles('input[accept=".svg"]', {
     name: 'connected-halos.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(HALO_ARTWORK),
   });
-  await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
   await page.locator('.la-strip-row .layer-name').first().click();
 }

@@ -27,9 +27,7 @@ export function deriveSectionTargets({
   if (compiled?.ok) {
     const fallbackLook = normalizeSectionVisualLook(defaultLook);
     // A target carries TWO identities and they are not interchangeable:
-    //   `id`     — the patch id. Studio's own identity for a section. Every
-    //              write path keys off it (applyLookToPatchBoard matches
-    //              patch.id, saved mixes store sectionLooks under it).
+    //   `id`     — Studio's saved look identity, normally the patch id.
     //   `zoneId` — the compiled zone id. The card's identity, what runtime
     //              commands address.
     // Compiled wiring supplies the authoritative pixel geometry, but it must
@@ -45,7 +43,23 @@ export function deriveSectionTargets({
     }
     // A zone may span several strips (a layer group compiles to one zone), so
     // recover its strips from the pixels its ranges cover.
+    const orderedGroupIds = new Set((compiled.groups || [])
+      .filter(group => group.ordered === true)
+      .map(group => String(group.groupId || group.id || '')));
+    const effectGroupsById = new Map((compiled.groups || [])
+      .filter(group => group.patternAnchorStripId || group.effectTarget)
+      .map(group => [group.groupId, {
+        ...group,
+        stripIds: effectGroupStripIds(group, { inherited: true }),
+      }]));
     const zonePatch = (zone) => {
+      const effectGroup = effectGroupsById.get(zone.id);
+      if (effectGroup) {
+        const anchor = effectGroup.stripIds.includes(effectGroup.patternAnchorStripId) && patchesByStripId.get(effectGroup.patternAnchorStripId);
+        if (anchor) return anchor;
+        const memberPatch = effectGroup.stripIds.map(id => patchesByStripId.get(id)).find(Boolean);
+        if (memberPatch) return memberPatch;
+      }
       for (const range of zone.ranges || []) {
         const start = Math.max(0, Math.trunc(Number(range.start) || 0));
         const count = Math.max(0, Math.trunc(Number(range.count) || 0));
@@ -67,8 +81,9 @@ export function deriveSectionTargets({
     const sideZoneIds = new Set(sides.map(side => side.id));
     const sectionFor = (zone, overrides = {}) => {
       const patch = zonePatch(zone);
+      const effectGroup = effectGroupsById.get(zone.id);
       return {
-        id: patch?.id || zone.id,
+        id: effectGroup?.effectTarget ? zone.id : patch?.id || zone.id,
         zoneId: zone.id,
         patchId: patch?.id || '',
         stripId: patch?.source?.stripId || zone.id,
@@ -79,6 +94,8 @@ export function deriveSectionTargets({
         end: (zone.ranges.at(-1)?.start || 0) + Math.max(0, (zone.ranges.at(-1)?.count || 0) - 1),
         ranges: zone.ranges,
         look: patch ? lookFromPatchPlayback(patch.playback, fallbackLook) : fallbackLook,
+        ...(orderedGroupIds.has(zone.id) ? { orderedGroup: true } : {}),
+        ...(effectGroup?.effectTarget ? { groupStripIds: effectGroup.stripIds } : {}),
         ...overrides,
       };
     };
@@ -142,10 +159,51 @@ export function deriveSectionTargets({
   return targets;
 }
 
+export function effectGroupStripIds(group, { inherited = false } = {}) {
+  const overrides = new Set(Array.isArray(group?.patternOverrideStripIds) ? group.patternOverrideStripIds : []);
+  return (group?.members || []).map(member => typeof member === 'string' ? member : member?.stripId)
+    .filter(id => id && (!inherited || !overrides.has(id)));
+}
+
+export function setEffectGroupPattern({
+  groups = [], groupId, stripId, patternId, groupLook, lineLook, patchBoard, strips = [],
+} = {}) {
+  const group = groups.find(item => item.groupId === groupId && item.effectTarget);
+  if (!group || (stripId && !effectGroupStripIds(group).includes(stripId))) return null;
+  const overrides = new Set(group.patternOverrideStripIds || []);
+  const sharedLook = normalizeSectionVisualLook(groupLook || group.patternFallbackLook);
+  const nextGroup = { ...group, patternFallbackLook: sharedLook };
+  let nextBoard = patchBoard;
+  if (stripId) {
+    if (patternId) overrides.add(stripId);
+    else overrides.delete(stripId);
+    nextGroup.patternOverrideStripIds = [...overrides];
+    nextBoard = applyLookToPatchBoard({
+      patchBoard, strips, targetId: groupId, groupStripIds: [stripId],
+      look: patternId ? { ...(lineLook || sharedLook), patternId } : sharedLook,
+    });
+    // Keep the inherited group's look when its original anchor takes an override.
+    const inherited = effectGroupStripIds(nextGroup, { inherited: true });
+    nextGroup.patternAnchorStripId = inherited.includes(group.patternAnchorStripId)
+      ? group.patternAnchorStripId : inherited[0];
+    if (inherited.length) nextBoard = applyLookToPatchBoard({
+      patchBoard: nextBoard, strips, targetId: groupId, groupStripIds: inherited, look: sharedLook,
+    });
+  } else {
+    nextGroup.patternFallbackLook = normalizeSectionVisualLook({ ...sharedLook, patternId });
+    const inherited = effectGroupStripIds(nextGroup, { inherited: true });
+    if (inherited.length) nextBoard = applyLookToPatchBoard({
+      patchBoard, strips, targetId: groupId, groupStripIds: inherited, look: nextGroup.patternFallbackLook,
+    });
+  }
+  return { groups: groups.map(item => item === group ? nextGroup : item), patchBoard: nextBoard };
+}
+
 export function applyLookToPatchBoard({
   patchBoard = null,
   strips = [],
   targetId = ALL_SECTIONS_TARGET_ID,
+  groupStripIds = [],
   look = {},
   symmetry = null,
   sidesMirrored = true,
@@ -158,14 +216,14 @@ export function applyLookToPatchBoard({
   // that side, or of every side when the look mirrors them, so all of them
   // agree on the look the side shows.
   const sideIndex = !isAll && symmetry?.sides ? symmetry.sides.findIndex(side => side.id === targetId) : -1;
-  const sideStripIds = sideIndex < 0 ? null : new Set(
-    (sidesMirrored === false ? [symmetry.sides[sideIndex]] : symmetry.sides).flatMap(side => side.stripIds || []).map(String),
-  );
+  const targetStripIds = sideIndex < 0
+    ? (groupStripIds.length ? new Set(groupStripIds) : null)
+    : new Set((sidesMirrored === false ? [symmetry.sides[sideIndex]] : symmetry.sides).flatMap(side => side.stripIds || []).map(String));
 
   for (const patch of board.patches || []) {
     if (patch?.source?.type !== 'strip' || patch.output?.mode === 'off') continue;
     const matches = isAll
-      || (sideStripIds ? sideStripIds.has(String(patch.source.stripId)) : (patch.id === targetId || sanitizeId(patch.id) === normalizedTarget));
+      || (targetStripIds ? targetStripIds.has(String(patch.source.stripId)) : (patch.id === targetId || sanitizeId(patch.id) === normalizedTarget));
     if (!matches) continue;
     patch.playback = lookToPlayback(nextLook, patch.playback);
   }
@@ -280,6 +338,7 @@ export function applySavedLookToPatchBoard({
   patchBoard = null,
   strips = [],
   savedLook = {},
+  sectionTargets = [],
 } = {}) {
   const look = normalizeSavedLooks([{ id: 'applied-look', ...savedLook }])[0];
   if (!look) return normalizePatchBoard(patchBoard, strips);
@@ -288,9 +347,11 @@ export function applySavedLookToPatchBoard({
   const board = normalizePatchBoard(patchBoard, strips);
   const targetsByPatchId = new Map(deriveSectionTargets({ patchBoard: board, strips })
     .filter(target => target.kind === 'section').map(target => [target.patchId, target]));
+  const groupTargetsByStripId = new Map(sectionTargets.flatMap(target =>
+    (target.groupStripIds || []).map(stripId => [stripId, target])));
   for (const patch of board.patches) {
     if (patch?.source?.type !== 'strip' || patch.output?.mode === 'off') continue;
-    const target = targetsByPatchId.get(patch.id);
+    const target = groupTargetsByStripId.get(patch.source.stripId) || targetsByPatchId.get(patch.id);
     const appearance = (target && findSavedSectionLook(look, target)) || look.defaultLook;
     patch.playback = lookToPlayback(appearance, patch.playback);
   }

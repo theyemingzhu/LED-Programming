@@ -322,3 +322,71 @@ test('Layout does not play on a ready card holding another project with matching
   await expect(gallery.getByRole('status')).toContainText('Install this exact Studio project');
   expect(controlPosts).toEqual([]);
 });
+
+test('an effect group and its lines keep independent pattern selections across reload', async ({ page }) => {
+  const project = sectionProject('effect-group-pattern-overrides');
+  const [first, second] = project.layout.strips;
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'First output', pin: 16, runIds: [`run-${first.id}`] },
+    { id: 'out2', name: 'Second output', pin: 17, runIds: [`run-${second.id}`] },
+  ];
+  project.layout.layerGroups = [{
+    groupId: 'wave', name: 'Wave', type: 'strip', ordered: true, effectTarget: true,
+    patternAnchorStripId: first.id, members: [first.id, second.id].map(stripId => ({ stripId })),
+  }];
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(savedProject => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
+  }, project);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const group = page.getByRole('group', { name: 'Wave patterns' });
+  const shared = group.getByRole('combobox', { name: 'Pattern for Wave', exact: true });
+  const firstLine = group.getByRole('combobox', { name: `Pattern for ${first.name} in Wave`, exact: true });
+  const secondLine = group.getByRole('combobox', { name: `Pattern for ${second.name} in Wave`, exact: true });
+  await expect(shared).toHaveValue('fire');
+  await expect(firstLine).toHaveValue('');
+  await expect(secondLine).toHaveValue('');
+  await shared.selectOption('scanner');
+  await firstLine.selectOption('ocean');
+  await expect(shared).toHaveValue('scanner');
+  await expect(firstLine).toHaveValue('ocean');
+  await expect(secondLine).toHaveValue('');
+
+  const readRuntime = () => page.evaluate(async () => {
+    const { layout } = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const modulePath = '/src/lib/cardRuntimeProject.js';
+    const { buildCardRuntimePackageFromProject } = await import(modulePath);
+    const { config } = buildCardRuntimePackageFromProject(layout);
+    return { wiring: layout.wiring.outputs, group: layout.layerGroups[0], zones: config.zones };
+  });
+  await expect.poll(async () => (await readRuntime()).zones).toMatchObject([
+    { id: first.id, patternId: 'ocean' },
+    { id: 'wave', continuous: true, patternId: 'scanner' },
+  ]);
+  const overridden = await readRuntime();
+  expect(overridden.wiring).toEqual(project.layout.wiring.outputs);
+  expect(overridden.group.members.map(member => member.stripId)).toEqual([first.id, second.id]);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(shared).toHaveValue('scanner');
+  await expect(firstLine).toHaveValue('ocean');
+  await secondLine.selectOption('fire');
+  await expect(shared).toHaveValue('scanner');
+  await expect(firstLine).toHaveValue('ocean');
+  await expect(secondLine).toHaveValue('fire');
+  await shared.selectOption('rainbow');
+  await firstLine.selectOption('');
+  await secondLine.selectOption('');
+  await expect(shared).toHaveValue('rainbow');
+  await expect.poll(async () => (await readRuntime()).zones).toMatchObject([
+    { id: 'wave', continuous: true, patternId: 'rainbow' },
+  ]);
+
+  const speed = page.getByRole('slider', { name: 'Preview speed' });
+  await speed.fill('1.75');
+  await expect(speed).toHaveValue('1.75');
+  await expect(speed.locator('..')).toContainText('1.75×');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(group).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
+});

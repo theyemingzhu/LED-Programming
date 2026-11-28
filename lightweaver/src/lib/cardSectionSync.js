@@ -1,5 +1,5 @@
 import { CardPushError, cardConfigStructuralWiringChangedFromInfo, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
-import { cardZoneRangesMatch, readCardZonesFromCard } from './cardLiveControl.js';
+import { cardZoneTopologyMatches, readCardZonesFromCard } from './cardLiveControl.js';
 import { prepareCardDeployment, verifyCardPostSaveState, waitForCardRestart } from './cardDeployment.js';
 import { getCardLinkState, noteCardRestartPlanned, noteCardRestartSettled } from './cardLink.js';
 import { installRecordedMediaForRuntimePackage } from './cardRecordedMedia.js';
@@ -231,7 +231,12 @@ export async function ensureCardSectionsForPreview({
 export function cardSectionDifference(sectionTargets = [], zonesPayload = null) {
   const sections = (Array.isArray(sectionTargets) ? sectionTargets : [])
     .filter(target => target?.kind === 'section')
-    .map(target => ({ zoneId: String(target.zoneId || ''), label: String(target.label || target.zoneId || ''), ...(target.ranges ? { ranges: target.ranges } : {}) }))
+    .map(target => ({
+      zoneId: String(target.zoneId || ''),
+      label: String(target.label || target.zoneId || ''),
+      ...(target.ranges ? { ranges: target.ranges } : {}),
+      ...(target.orderedGroup ? { ordered: true } : {}),
+    }))
     .filter(section => section.zoneId);
   if (!Array.isArray(zonesPayload?.zones)) {
     return { known: false, held: [], missing: sections, extra: [] };
@@ -239,10 +244,10 @@ export function cardSectionDifference(sectionTargets = [], zonesPayload = null) 
   const cardZones = zonesPayload.zones
     .map(zone => ({ zoneId: String(zone?.id || ''), label: String(zone?.label || zone?.id || ''), ranges: zone?.ranges }))
     .filter(zone => zone.zoneId);
-  const cardById = new Map(cardZones.map(zone => [zone.zoneId, zone]));
+  const cardById = new Map(zonesPayload.zones.map(zone => [String(zone?.id || ''), zone]));
   const projectIds = new Set(sections.map(section => section.zoneId));
   const matches = section => cardById.has(section.zoneId)
-    && (!section.ranges || cardZoneRangesMatch(section.ranges, cardById.get(section.zoneId).ranges));
+    && (!section.ranges || cardZoneTopologyMatches(section.ranges, cardById.get(section.zoneId), section.ordered));
   return {
     known: true,
     held: sections.filter(matches),

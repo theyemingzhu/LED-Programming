@@ -259,6 +259,7 @@ export function useLayoutState() {
     resetView: canvas.resetView,
     setDrawMode: canvas.setDrawMode,
     setWaypoints: canvas.setWaypoints,
+    mapImportedArtwork: artworkApi.mapImportedArtwork,
   });
 
   const createStarterPrimitive = (type, requestedCount, requestedDensity, requestedLengthM) => {

@@ -47,6 +47,12 @@ const SHAPE_TAGS = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyli
 // Attributes that describe a primitive's own (pre-flatten) geometry, plus
 // `transform` — excluded when copying attributes onto a freshly-built
 // <path> replacement, since both are fully absorbed into the new `d`.
+const originalShapeTags = new WeakMap();
+
+export function sourceShapeTag(element) {
+  return originalShapeTags.get(element) || tagOf(element);
+}
+
 const GEOMETRY_ATTRS = new Set([
   'x', 'y', 'width', 'height', 'rx', 'ry',
   'cx', 'cy', 'r', 'x1', 'y1', 'x2', 'y2',
@@ -626,6 +632,11 @@ export function expandUses(svgRoot, { maxDepth = 4, maxExpansions = 2000 } = {})
       // instance must not lose its name on the way through expansion.
       const sourceName = child.getAttribute('data-name');
       if (sourceName) wrapper.setAttribute('data-name', sourceName);
+      for (const attr of Array.from(child.attributes || [])) {
+        if (['id', 'class', 'style', 'stroke', 'fill', 'color'].includes(attr.name)) {
+          wrapper.setAttribute(attr.name, attr.value);
+        }
+      }
 
       // A <symbol> (or a <use> that targets a nested <svg>) doesn't render
       // itself — only its children do — so unwrap it into the wrapper.
@@ -723,6 +734,7 @@ function convertShapeToPath(doc, el, tag, transformedD) {
   }
   const parent = el.parentElement;
   const pathEl = createSvgElement(doc, el, 'path');
+  originalShapeTags.set(pathEl, tag);
   for (const attr of [...(el.attributes || [])]) {
     if (GEOMETRY_ATTRS.has(attr.name.toLowerCase())) continue;
     pathEl.setAttribute(attr.name, attr.value);

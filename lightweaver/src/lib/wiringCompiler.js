@@ -143,14 +143,21 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
     else if (grouped) symmetryRejection = `Ungroup ${stripsById.get(grouped)?.name || grouped} first.`;
   }
   const appliedSymmetry = symmetryRejection ? null : requestedSymmetry;
-  const sideOrderByStripId = new Map();
+  const zoneOrderByStripId = new Map();
+  const orderedGroupIds = new Set();
   for (const group of groups || []) {
     const id = String(group.groupId || group.id || '');
     if (!id) continue;
-    for (const member of group.members || []) {
+    const ordered = group.ordered === true;
+    const overrides = new Set(Array.isArray(group.patternOverrideStripIds) ? group.patternOverrideStripIds : []);
+    const identity = { id, label: String(group.name || group.label || id), ...(ordered ? { continuous: true } : {}) };
+    if (ordered) orderedGroupIds.add(id);
+    (group.members || []).forEach((member, index) => {
       const stripId = typeof member === 'string' ? member : member?.stripId;
-      if (stripId) zoneByStripId.set(stripId, { id, label: String(group.name || group.label || id) });
-    }
+      if (!stripId || overrides.has(stripId)) return;
+      zoneByStripId.set(stripId, identity);
+      if (ordered) zoneOrderByStripId.set(stripId, index);
+    });
   }
   // Sides claim their strips after layer groups; validation already refused any
   // strip that is also in a group.
@@ -158,7 +165,7 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
     const identity = { id: side.id, label: side.label, continuous: true };
     side.stripIds.forEach((stripId, index) => {
       zoneByStripId.set(stripId, identity);
-      sideOrderByStripId.set(stripId, index);
+      zoneOrderByStripId.set(stripId, index);
     });
   }
   const outputs = [];
@@ -227,17 +234,12 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
   }
 
   if (pixels.length > capabilities.maxPixels) errors.push({ code: 'pixel-limit', message: `Compiled wiring uses ${pixels.length} pixels; hardware supports ${capabilities.maxPixels}.` });
-  // Side zones list their ranges in stripIds order, whatever order the wiring
-  // visits the strips in. Coalescing only ever joins ranges of the same strip,
-  // so two neighbouring strips in one side stay two ranges.
-  const sideIds = new Set((appliedSymmetry?.sides || []).map(side => side.id));
+  // Continuous zones follow the authored member order. A member's own
+  // ranges retain their physical order, which is also used by legacy zones.
   for (const zone of zoneMap.values()) {
-    if (!sideIds.has(zone.id)) continue;
-    const orderOf = range => sideOrderByStripId.get(pixels[range.start]?.stripId) ?? Number.MAX_SAFE_INTEGER;
-    zone.ranges = zone.ranges
-      .map((range, index) => ({ range, index }))
-      .sort((x, y) => orderOf(x.range) - orderOf(y.range) || x.index - y.index)
-      .map(entry => entry.range);
+    if (!zone.continuous) continue;
+    const orderOf = range => zoneOrderByStripId.get(pixels[range.start]?.stripId) ?? Number.MAX_SAFE_INTEGER;
+    zone.ranges.sort((a, b) => orderOf(a) - orderOf(b) || a.start - b.start);
   }
   const zones = [...zoneMap.values()].map(zone => (
     coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById)
@@ -269,6 +271,16 @@ export function compileWiring({ wiring, strips = [], groups = [], symmetry = nul
   for (const zone of zones) if (zone.ranges.length > capabilities.maxRangesPerZone) errors.push({ code: 'zone-range-limit', zoneId: zone.id, message: `Zone ${zone.id} has too many ranges.` });
   const kaleidoscope = compileCardKaleidoscopeMappings({ strips, pixels, zones });
   errors.push(...kaleidoscope.errors);
+  for (const mapping of kaleidoscope.mappings) {
+    if (!orderedGroupIds.has(mapping.zoneId)) continue;
+    const name = stripsById.get(mapping.id)?.name || mapping.id;
+    errors.push({
+      code: 'effect-group-kaleidoscope',
+      zoneId: mapping.zoneId,
+      stripId: mapping.id,
+      message: `Turn off Kaleidoscope on ${name} to play it as part of an ordered group.`,
+    });
+  }
   const ok = errors.length === 0;
   const sendReady = ok && model.locked && model.verified && model.runs.every(run => run.verified) && model.migrationWarnings.length === 0;
   return { ok, sendReady, errors, warnings, totalPixels: pixels.length, physicalOutputCount: outputs.length, outputs, runs, pixels, zones, groups, symmetry: appliedSymmetry, kaleidoscopeMappings: kaleidoscope.mappings };

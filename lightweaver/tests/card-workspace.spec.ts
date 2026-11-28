@@ -1102,6 +1102,70 @@ test('installed check-lights progress runs a bounded marker test and restores th
   await expect(page.getByRole('button', { name: 'Start bounded marker test', exact: true })).toBeVisible();
 });
 
+test('installed light check traces physical LED order only after verifying the installed wiring', async ({ page }) => {
+  const frames: string[][] = [];
+  let stops = 0;
+  await page.exposeFunction('__captureTraceFrame', (frame: string[]) => { frames.push(frame); });
+  await page.exposeFunction('__captureTraceStop', () => { stops += 1; });
+  await page.addInitScript(() => {
+    (window as any).__LW_START_COMMISSIONING_MARKERS_FOR_TEST__ = async (first: string[]) => {
+      await (window as any).__captureTraceFrame(first);
+      return {
+        show: (next: string[]) => (window as any).__captureTraceFrame(next),
+        stop: () => (window as any).__captureTraceStop(),
+      };
+    };
+  });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'test-installed');
+  await connectCommissioningCard(page);
+  const installed = await page.evaluate(async () => {
+    const commissioning = await import('/src/lib/cardCommissioningFlow.js');
+    const { makeDefaultWiring } = await import('/src/lib/wiringModel.js');
+    const { runtimePackageFromSnapshot } = await import('/src/components/card/CardCommissioningPanel.jsx');
+    const flow = commissioning.readCardCommissioning();
+    const snapshot = flow.project.snapshot;
+    const strips = [{ id: 'strip-1', pixelCount: 3 }, { id: 'strip-2', pixelCount: 2 }];
+    const wiring = makeDefaultWiring(strips);
+    wiring.runs[0].physicalDirection = 'source-reverse';
+    wiring.outputs = [
+      { id: 'out1', pin: 16, runIds: [wiring.runs[0].id] },
+      { id: 'out2', pin: 17, runIds: [wiring.runs[1].id] },
+    ];
+    Object.assign(snapshot.layout, { strips, wiring });
+    flow.project.fingerprint = commissioning.fingerprintCommissioningProject(snapshot);
+    flow.project.restoredFingerprint = flow.project.fingerprint;
+    await commissioning.writeCardCommissioning(flow, { locks: null });
+    return {
+      projectId: snapshot.id,
+      projectRevision: flow.project.revision,
+      projectFingerprint: flow.project.fingerprint,
+      outputs: runtimePackageFromSnapshot(snapshot).config.led.outputs,
+    };
+  });
+  let exactOutputs = false;
+  await page.route('**/api/status', route => route.fulfill({
+    json: readyStatus('lw-aabbccddeeff', {
+      firmwareVersion: '1.2.3',
+      ...installed,
+      outputs: exactOutputs ? installed.outputs : [...installed.outputs].reverse(),
+    }),
+  }));
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
+  const trace = page.getByRole('button', { name: 'Trace LED order', exact: true });
+  await trace.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'installed project or wiring differs' })).toBeVisible();
+  expect(frames).toEqual([]);
+
+  exactOutputs = true;
+  await trace.click();
+  await expect(page.getByText(/blue first pixel and red final pixel/i)).toBeVisible();
+  expect(frames.slice(0, -1).map(frame => frame.indexOf('001A00'))).toEqual([0, 1, 2, 3, 4]);
+  expect(frames.at(-1)).toEqual(['00001A', '001A00', '1A0000', '00001A', '1A0000']);
+  await page.getByRole('button', { name: 'No, restore working look', exact: true }).click();
+  await expect.poll(() => stops).toBe(1);
+});
+
 test('commissioning requires an independent exact final wiring GET before clearing the flow', async ({ page }) => {
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'test');

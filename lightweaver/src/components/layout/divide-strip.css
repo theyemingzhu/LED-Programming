@@ -430,6 +430,90 @@
 .la-artwork-create > .btn { grid-column: 1 / -1; }
 .la-strip-item + .la-strip-item { border-top: 1px solid var(--border-soft); }
 .la-strip-item.is-editing { background: var(--bg-panel); }
+
+.la-inspector-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.la-inspector-tabs .btn { justify-content: center; min-height: 32px; }
+.la-inspector-tabs [aria-selected="true"] { background: var(--accent-soft); color: var(--accent-hi); }
+.la-wire-pane { display: flex; flex: 0 0 auto; flex-direction: column; min-width: 0; }
+.la-wire-trace-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+}
+.la-wire-trace-controls .btn { min-height: 32px; }
+.la-effect-groups { min-width: 0; padding-bottom: 8px; }
+.la-effect-picker { padding-bottom: 8px; }
+.la-effect-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-inline: 8px;
+  gap: 2px 8px;
+}
+.la-effect-check, .la-effect-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-hi);
+  min-height: 32px;
+}
+.la-effect-check span, .la-effect-member span, .la-gpio-source-layer {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.la-effect-check input { margin: 0; accent-color: var(--accent); }
+.la-effect-create { padding: 4px 8px 0; }
+.la-effect-create input[type="text"] { min-width: 0; }
+.la-effect-group { border-top: 1px solid var(--border-soft); }
+.la-effect-group-head, .la-effect-members li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-inline: 8px;
+}
+.la-effect-group-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  color: var(--text-hi);
+}
+.la-effect-group-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.la-effect-group-name input { width: 100%; }
+.la-effect-group-head .la-section-pattern-action { min-height: 32px; }
+.la-effect-members { margin: 0; padding: 0; list-style: none; }
+.la-effect-member {
+  flex: 1;
+  cursor: grab;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  padding: 0 0 0 6px;
+}
+.la-effect-members .is-hidden .la-effect-member { color: var(--text-mid); }
+.la-effect-group .is-drop-target { background: var(--accent-soft); }
+.la-effect-icon.btn { min-width: 28px; min-height: 32px; padding: 0 4px; justify-content: center; }
+.la-effect-add-selection { margin: 4px 8px; }
+.la-gpio-heading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.la-gpio-source-layer { color: var(--text-mid); }
+@media (max-width: 600px), (pointer: coarse) {
+  .la-wire-trace-controls .btn { min-height: var(--lw-tap, 44px); }
+  .la-inspector-tabs .btn, .la-effect-check, .la-effect-member,
+  .la-effect-group-head .la-section-pattern-action, .la-effect-icon.btn { min-height: var(--lw-tap, 44px); }
+  .la-effect-icon.btn { min-width: var(--lw-tap, 44px); }
+}
 .la-strip-settings-label {
   color: var(--text-mid);
   font-size: 11px;

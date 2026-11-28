@@ -230,6 +230,21 @@ test('layer names and ids survive, including the Inkscape label fallback', () =>
   assert.equal(layers[1].name, 'plain');
 });
 
+test('named layers, unnamed groups and loose shapes retain their document order', () => {
+  const doc = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <line x1="0" y1="10" x2="100" y2="10"/>
+    <g id="front" data-name="Front"><path d="M 0,20 L 100,20 m -100,10 l 100,0"/></g>
+    <g id="back"><path d="M 0,40 L 100,40"/></g>
+    <line x1="0" y1="50" x2="100" y2="50"/>
+  </svg>`);
+  assert.equal(prepareSvgDocumentForImport(doc).ok, true);
+  const layers = measureLayers(doc);
+  assert.deepEqual(layers.map(({ layerId, subPaths }) => [layerId, subPaths.map(path => path.svgOrder)]),
+    [['all-shapes', [0, 4]], ['front', [1, 2]], ['back', [3]]]);
+  const ordered = layers.flatMap(layer => layer.subPaths).sort((a, b) => a.svgOrder - b.svgOrder);
+  assert.deepEqual(ordered.map(path => pointsOf(path.pathData)[0].y), [10, 20, 30, 40, 50]);
+});
+
 // ── Pathological references degrade, they do not hang ──────────────────────
 
 test('a <use> pointing at another <use> expands both', () => {

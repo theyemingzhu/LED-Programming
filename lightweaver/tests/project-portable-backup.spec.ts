@@ -12,7 +12,6 @@ test('downloads an editable project backup and opens it in a fresh browser', asy
   await page.setInputFiles('input[accept=".svg"]', {
     name: 'bench-art.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork),
   });
-  await page.getByRole('button', { name: '+ All (2)' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
   await page.getByTestId('project-name-edit').click();
   await page.getByTestId('project-name-input').fill('Bench Mandala');

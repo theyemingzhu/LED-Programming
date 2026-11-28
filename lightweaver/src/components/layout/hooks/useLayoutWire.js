@@ -38,7 +38,7 @@ export function useLayoutWire(ctx) {
       }
       selectStrip(stripId);
       setSvgWireSource(stripId);
-      setSvgWireMessage(`Choose an IN on the same layer as ${target.name}.`);
+      setSvgWireMessage(`Choose another strip’s IN in the same GPIO group as ${target.name}.`);
       return;
     }
     const source = svgWireGeometry.ports.get(svgWireSource);
@@ -48,7 +48,7 @@ export function useLayoutWire(ctx) {
       return;
     }
     if (source.stripId === stripId || source.layerId !== target.layerId || source.outputId !== target.outputId) {
-      setSvgWireMessage('Choose another strip on the same SVG layer and output.');
+      setSvgWireMessage('Choose another strip in the same GPIO group.');
       return;
     }
     const output = wiring.outputs.find(item => item.id === source.outputId);
