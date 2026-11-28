@@ -580,30 +580,26 @@ test('firmware workflow builds, signs, commits, and uploads one release set', as
     'the source-only runner must fail closed if the normal launch gate changes',
   );
   const signedVerification = workflow.indexOf('Verify signed release set');
+  const releasePrepare = workflow.indexOf('Prepare the signed release if it changed');
   const releaseCommit = workflow.indexOf('Commit the signed release if it changed');
   const artifactUpload = workflow.indexOf('Upload signed release set');
-  assert.ok(signedVerification > 0 && signedVerification < releaseCommit);
+  assert.ok(signedVerification > 0 && signedVerification < releasePrepare && releasePrepare < releaseCommit);
   assert.ok(releaseCommit < artifactUpload);
-  assert.match(workflow.slice(signedVerification, releaseCommit), /npm run ci:artifact:contracts --prefix lightweaver/);
+  assert.match(workflow.slice(signedVerification, releasePrepare), /npm run ci:artifact:contracts --prefix lightweaver/);
   assert.match(packageJson.scripts['ci:artifact:contracts'], /release-build-identity\.mjs/);
   assert.match(packageJson.scripts['ci:artifact:contracts'], /firmwareRelease\.test\.js/);
+  const releasePrepareStep = workflow.slice(releasePrepare, releaseCommit);
   const releaseCommitStep = workflow.slice(releaseCommit, artifactUpload);
-  assert.match(releaseCommitStep, /git fetch origin main/);
-  assert.match(releaseCommitStep, /git diff --quiet "\$SOURCE_REVISION\.\.origin\/main" -- "\$\{RELEASE_INPUTS\[@\]\}"/);
+  assert.match(releasePrepareStep, /git fetch origin main/);
+  assert.match(releasePrepareStep, /git diff --quiet "\$SOURCE_REVISION\.\.origin\/main" -- "\$\{RELEASE_INPUTS\[@\]\}"/);
   assert.match(
-    releaseCommitStep,
+    releasePrepareStep,
     /if git diff --quiet[\s\S]*?npm run ci:artifact --prefix lightweaver[\s\S]*?changed=false[\s\S]*?exit 0/,
     'an unchanged signer result must still prove committed binary freshness',
   );
-  assert.ok(
-    releaseCommitStep.indexOf('git rebase origin/main') < releaseCommitStep.indexOf('git push origin HEAD:main'),
-    'a signer must integrate harmless concurrent main updates before publishing',
-  );
-  assert.ok(
-    releaseCommitStep.indexOf('git rebase origin/main') < releaseCommitStep.lastIndexOf('npm run ci:artifact --prefix lightweaver')
-      && releaseCommitStep.lastIndexOf('npm run ci:artifact --prefix lightweaver') < releaseCommitStep.indexOf('git push origin HEAD:main'),
-    'the signer must verify committed binary freshness after rebase and before publishing main',
-  );
+  assert.match(releasePrepareStep, /git rebase origin\/main\s+\n?\s*npm run ci:artifact --prefix lightweaver\s+\n?\s*npm run ci:artifact:release-ui --prefix lightweaver\s+\n?\s*signed_sha="\$\(git rev-parse HEAD\)"/);
+  assert.match(releaseCommitStep, /SIGNED_SHA: \$\{\{ steps\.release\.outputs\.signed_sha \}\}/);
+  assert.match(releaseCommitStep, /git push "git@github\.com:\$GITHUB_REPOSITORY\.git" "\$SIGNED_SHA:refs\/heads\/main"/);
   assert.match(
     deployWorkflow,
     /workflow_run:\s*\n\s*workflows: \["Tests"\]\s*\n\s*types: \[completed\]\s*\n\s*branches: \[main\]/,
