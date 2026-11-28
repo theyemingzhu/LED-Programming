@@ -19,6 +19,7 @@ test('downloads an editable project backup and opens it in a fresh browser', asy
   await page.getByTestId('project-name-input').press('Enter');
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('Bench Mandala saved in browser library');
   await page.getByTestId('topbar-projects').click();
   const projects = page.getByRole('dialog', { name: 'Projects' });

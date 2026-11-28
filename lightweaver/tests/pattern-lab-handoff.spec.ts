@@ -248,6 +248,7 @@ for (const family of ['Lab', 'Flow'] as const) {
     }, JSON.parse(saved.asset).manifest.lwseqSha256)).toBe(JSON.parse(saved.asset).byteLength);
     await page.screenshot({ path: testInfo.outputPath(`saved-${family}-rebake-phone.png`), fullPage: true });
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    await page.getByRole('button', { name: 'Save in browser' }).click();
     await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Saved in browser');
     await page.reload();
     await page.goto('/#screen=playlist');

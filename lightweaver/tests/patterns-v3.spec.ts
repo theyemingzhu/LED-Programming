@@ -754,6 +754,7 @@ test('verified Install persists the auditioned section assignment in Studio', as
   expect(configRequests).toHaveLength(1);
   expect(cardProjectFingerprint(saved)).toBe(configRequests[0].projectFingerprint);
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(async () => (
     (await import('/src/lib/cardLink.js')).getCardLinkState().readiness?.cardId

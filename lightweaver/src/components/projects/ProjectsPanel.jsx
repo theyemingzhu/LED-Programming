@@ -28,7 +28,7 @@ import {
   renameProjectLibraryRecordGuarded,
 } from '../../lib/projectStorage.js';
 import { projectCopyKind, projectCopyLabel } from '../../lib/projectCopyLabel.js';
-import { readStudioPasswordlessMethods } from '../../lib/studioPasswordlessClient.js';
+import { useStudioSignInMethods } from './useStudioSignInMethods.js';
 import { ProjectLibraryPanel } from './ProjectLibraryPanel.jsx';
 
 // Preferences (and any other surface) asks the shell to open the panel by
@@ -92,20 +92,7 @@ export function ProjectsPanel({
   const closeRef = useRef(null);
   const searchRef = useRef(null);
   const onlineHeadingRef = useRef(null);
-  const [signInMethods, setSignInMethods] = useState(null);
-  const [signInMethodsError, setSignInMethodsError] = useState(false);
-  const [signInMethodsAttempt, setSignInMethodsAttempt] = useState(0);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    let active = true;
-    setSignInMethodsError(false);
-    readStudioPasswordlessMethods().then(
-      value => { if (active) setSignInMethods(value); },
-      () => { if (active) setSignInMethodsError(true); },
-    );
-    return () => { active = false; };
-  }, [open, signInMethodsAttempt]);
+  const { methods: signInMethods, methodsError: signInMethodsError, retryMethods } = useStudioSignInMethods(open);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -381,7 +368,7 @@ export function ProjectsPanel({
 
       <div className="projects-online">
         <ProjectLibraryPanel googleOutcome={googleOutcome} methods={signInMethods} methodsError={signInMethodsError}
-          retryMethods={() => setSignInMethodsAttempt(attempt => attempt + 1)} headingRef={onlineHeadingRef} />
+          retryMethods={retryMethods} headingRef={onlineHeadingRef} />
       </div>
     </section>
   );

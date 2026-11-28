@@ -336,6 +336,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
   const [session, setSession] = useState({ status: 'loading', username: '', displayName: '', role: null, error: null });
   const [projectsByState, setProjectsByState] = useState({ active: [], archived: [] });
   const [activeRemoteProject, setActiveRemoteProject] = useState(null);
+  const [restoringOnlineProject, setRestoringOnlineProject] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
   const [syncError, setSyncError] = useState(null);
   const [conflict, setConflict] = useState(null);
@@ -875,6 +876,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
     const authEpoch = beginAuthTransition();
     let nativeIdentity = null;
     if (mountedRef.current) {
+      setRestoringOnlineProject(Boolean(readActiveRemoteAssociation()));
       const loading = { ...sessionRef.current, status: 'loading', error: null };
       sessionRef.current = loading;
       setSession(loading);
@@ -996,6 +998,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
       }
     } catch (rawError) {
       if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
+      setRestoringOnlineProject(false);
       beginAuthTransition();
       const error = normalizeError(rawError);
       if (nativeIdentity && error.code === 'access_required') {
@@ -1027,6 +1030,8 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         error: error.state === 'offline' ? error : null,
         generation: current.generation + 1,
       }));
+    } finally {
+      if (authEpochIsCurrent(authEpoch)) setRestoringOnlineProject(false);
     }
   }, [authEpochIsCurrent, beginAuthTransition, client, handleLibraryError, loadWorkspaceAssets, markProjectPersisted, refreshProjects, setActiveRemote, setCurrentConflict, suppliedClient]);
 
@@ -1941,6 +1946,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
     activeProjects: projectsByState.active,
     archivedProjects: projectsByState.archived,
     activeRemoteProject,
+    restoringOnlineProject,
     syncState,
     workspaceAssets,
     browserProjects,
@@ -1986,7 +1992,8 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
     changePassword, claimBrowserProjects, createAccount, createProject, deleteProject, duplicateProject,
     exportMaster, exportProject, importProject, listAccounts, listAssignments, listHistory, listProjectDrafts, login, logout,
     detachProject, loadSession, openMatchingCardProject, openProject, projectsByState, readCardProjectCandidate, refreshProjects, renameProject, resolveConflict,
-    promoteDraft, resetAccountPassword, resolveWorkspaceAssetConflict, restoreHistory, restoreMaster, saveNow,
+    promoteDraft, resetAccountPassword, resolveWorkspaceAssetConflict, restoreHistory, restoreMaster,
+    restoringOnlineProject, saveNow,
     session, setAccountRole, setAccountStatus, signIn, syncState, unarchiveProject, unassignProject, workspaceAssets,
   ]);
 

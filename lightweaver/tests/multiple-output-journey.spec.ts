@@ -128,6 +128,7 @@ test('a blank card discovers two GPIO strips, installs their saved pattern, play
   expect(savedLookId).toBeTruthy();
   await page.getByRole('button', { name: 'Add Two-strip saved look to playlist' }).click();
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   const savedPlaylistId = await page.evaluate(({ lookId }) => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.playlist?.find(

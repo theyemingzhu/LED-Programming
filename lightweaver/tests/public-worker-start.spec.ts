@@ -124,6 +124,7 @@ test('a worker can import artwork, count and split it, choose a pattern, save, a
   await expect(page.getByTestId('look-save-status')).toContainText('Saved');
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('button', { name: 'Save in browser' }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
   await expect.poll(() => page.evaluate(() => {
     const records = JSON.parse(localStorage.getItem('lw_project_library_v1') || '{}').records || [];
